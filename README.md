@@ -2,22 +2,33 @@
 <div align="center">
   <img src=".github/card.png" width="200"></img>
   <br/>
-  <h1 align="center">P03 Kernel for Fedora</h1>
-    <p align="center">A zero-misplay kernel with CachyOS, TKG, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
 </div>
 
-## 💾 About
+---
+
+<div align="center">
+  <img src=".github/title-darkmode.png#gh-dark-mode-only" width="450">
+  <img src=".github/title-lightmode.png#gh-light-mode-only" width="450">
+  <p align="center">A zero-misplay kernel with CachyOS, TKG, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
+</div>
 
 This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.
 
-<h1 align="center">⚠️</h1>
-<h4 align="center">Thar will be dragons!</h4>
+<div align="center">
+  <h1>⚠️</h1>
+  <h4>Thar will be dragons!</h4>
+</div>
 
 This project is a work-in-progress and primarily intended for personal use. While a COPR repository is mentioned in the code, it does not exist yet. It may contain many configurations specifically made for my own setup (-march alderlake, ASUS WMI, etc).
 
 If you build the kernel in this WIP state, without removing these specific tweaks, you MIGHT end up on a Misplay screen.
 
-## ✨ Features
+---
+
+<div align="center">
+  <img src=".github/floppy.png" width="80"></img>
+  <h4>F E A T U R E S</h4>
+</div>
 
  - Built on top of Fedora Koji Sources
  - Automatic Secureboot Signing (For nvidia drivers too!)
@@ -37,8 +48,13 @@ If you build the kernel in this WIP state, without removing these specific tweak
 
 For nvidia, install using `sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check`, since kernel modules are already installed.
 
+---
 
-### 📑 Credits
+<div align="center">
+  <h4>📑</h4>
+  <h4>C R E D I T S</h4>
+</div>
+
  - P03 and Inscryption are property of Daniel Mullins Games and Devolver Digital. This kernel is a non-commercial fan project and not affiliated with or endorsed by the original creators.
  - Patches and configuration files from [Linux-TKG](https://github.com/Frogging-Family/linux-tkg)
  - Patches from [Mauri870's Custom Kernel](https://github.com/mauri870/linux-kernel/)
