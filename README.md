@@ -25,7 +25,7 @@ If you build the kernel in this WIP state, without removing these specific tweak
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and x86-64v2)
  - 1000hz tickrate
- - Built with LLVM O3 + Polly Clang
+ - Built with LLVM + O3 + Polly Clang
  - BORE scheduler
  - BBRv3 congestion control and CAKE queue management for the sake of bufferbloat
  - OpenRGB Support

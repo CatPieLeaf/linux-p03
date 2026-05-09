@@ -1,0 +1,30 @@
+Total Misplay
+diff --git a/drivers/gpu/drm/drm_panic.c b/drivers/gpu/drm/drm_panic.c
+--- a/drivers/gpu/drm/drm_panic.c
++++ b/drivers/gpu/drm/drm_panic.c
+@@ -34,9 +34,20 @@
+-	PANIC_LINE("     .--.        _"),
+-	PANIC_LINE("    |o_o |      | |"),
+-	PANIC_LINE("    |:_/ |      | |"),
+-	PANIC_LINE("   //   \\ \\     |_|"),
+-	PANIC_LINE("  (|     | )     _"),
+-	PANIC_LINE(" /'\\_   _/`\\    (_)"),
+-	PANIC_LINE(" \\___)=(___/"),
++	PANIC_LINE(" "),
++	PANIC_LINE("     |\\|\\|\\                    ________"),
++	PANIC_LINE("    _|_|_|_|_____________________|________ \\"),
++	PANIC_LINE("  / ---------------------------|-|-|_---- \\ \\"),
++	PANIC_LINE(" | |                                     | | |"),
++	PANIC_LINE(" | |                                     | |_/"),
++	PANIC_LINE(" |_|                                     | |"),
++	PANIC_LINE(" | |     =========         =========     | |"),
++	PANIC_LINE(" |_|         =====             =====     | |"),
++	PANIC_LINE(" | |                                     | |"),
++	PANIC_LINE(" | |                        =            | |"),
++	PANIC_LINE(" | |             ============            | |"),
++	PANIC_LINE(" | |           ==           =            | |"),
++	PANIC_LINE(" | |_____                            _____| |"),
++	PANIC_LINE(" |    =   \\                        //  =  \\ |"),
++	PANIC_LINE(" |  ===== |                        ||  =  | |"),
++	PANIC_LINE(" |    =   |_______________________|\\  =  / |"),
++	PANIC_LINE("  \\________________|_|_|_|________________/"),

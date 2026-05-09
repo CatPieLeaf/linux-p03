@@ -1,16 +1,27 @@
-# ==============================================================================
-# MOK certificate paths
-# ==============================================================================
-%define _mok_dir /etc/kernel/certs/p03-kernel
-%define _mok_der %{_mok_dir}/mok.der
-%define _mok_key %{_mok_dir}/mok.key
-%define _mok_pem %{_mok_dir}/mok.pem
+
+#     |\|\|\                       ________
+#    _|_|_|_|_____________________|________ \
+#  / ---------------------------|-|-|_---- \ \
+# | |                                     | | |
+# | |                                     | |_/
+# |_|                                     | |
+# | |     =========        =========      | |     LINUX    LINUX   LINUX
+# |_|         =====            =====      | |     NU   L  L   N L      L
+# | |                                     | |     XLINUX  I  I  X   LIN
+# | |                        =            | |     IN      N L   U      N
+# | |             ============            | |     UX       UXLIN   LINUX
+# | |           ==          =             | |
+# | |_____                           _____| |
+# |    =   \                       //  =  \ |
+# |  ===== |                       ||  =  | |
+# |    =   |_______________________|\  =  / |
+#  \________________|_|_|_|________________/
 
 # ==============================================================================
 # Platform guard — Fedora only
 # ==============================================================================
 %if 0%{?rhel}
-%{error: Building on RHEL/CentOS/AlmaLinux is not supported. This spec targets Fedora only.}
+%{error: Building on RHEL/CentOS/AlmaLinux is not supported for now. This spec targets Fedora only.}
 %endif
 
 # ==============================================================================
@@ -30,7 +41,7 @@
 # Kernel version
 # ==============================================================================
 %define _basekver   7.0
-%define _stablekver .3
+%define _stablekver .4
 # -rc0 or .0
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
@@ -54,22 +65,26 @@
 %define _kver   %{_rpmver}.%{_arch}
 
 # ==============================================================================
-# Feature flags
+# Feature flags — General
 # ==============================================================================
 
 # Build a minimal kernel via modprobed.db to reduce build times.
 # The default modprobed.db is intended for CI only, not production.
 %define _build_minimal 0
 
-# Build with Clang and enable LTO
+# Build with Clang and enable Thin LTO + Polly + O3.
 %define _build_lto 1
 
-# Enable Alder Lake-native tuning:
-#   - -march/-mtune=alderlake in KCFLAGS
-#   - -Ctarget-cpu=alderlake in KRUSTFLAGS
-#   - Native Intel CPU Kconfig (MNATIVE_INTEL / X86_NATIVE_CPU)
-#   - Intel hardware drivers (INTEL_PSTATE, INTEL_TCC_COOLING, SCHED_MC_PRIO)
-%define _build_alderlake 1
+# Sign the kernel image (vmlinuz) and all modules (.ko) with a self-generated
+# MOK key.  Also enables the matching Kconfig options (IMA, MODULE_SIG_FORCE,
+# kernel lockdown).  Requires: openssl, nss-tools, pesign.
+#
+# Set to 0 to produce an unsigned build (useful for development VMs or
+# machines where Secure Boot is disabled in firmware).
+#
+# After the first install, enroll the key once:
+#   mokutil --import /etc/kernel/certs/p03-kernel/mok.der
+%define _build_secureboot 1
 
 # Tickrate: valid values are 100, 250, 300, 500, 600, 750, 1000.
 # An invalid value will fall back to 1000 Hz.
@@ -80,6 +95,31 @@
 %define _x86_64_lvl 3
 
 %define _interactive_config 1
+
+# ==============================================================================
+# Feature flags — Hardware Specific
+# ==============================================================================
+
+# Enable Alder Lake-native tuning (Intel 12th gen — Core i7-12xxx / i9-12xxx):
+#   - -march/-mtune=alderlake in KCFLAGS
+#   - -Ctarget-cpu=alderlake in KRUSTFLAGS
+#   - CPU Kconfig: MNATIVE_INTEL, MALDERLAKE
+#   - Intel drivers: INTEL_PSTATE, INTEL_TCC_COOLING, SCHED_MC_PRIO
+#   - Intel memory/checksum opts: X86_INTEL_USERCOPY, X86_USE_PPRO_CHECKSUM
+#   - NR_CPUS=20  (8P-core + 4E-core = 20 threads)
+#   - CMDLINE: intel_pstate=passive split_lock_detect=off
+%define _build_alderlake 1
+
+# ==============================================================================
+# Secure Boot — MOK certificate paths
+# (only defined when _build_secureboot = 1)
+# ==============================================================================
+%if %{_build_secureboot}
+%define _mok_dir /etc/kernel/certs/p03-kernel
+%define _mok_der %{_mok_dir}/mok.der
+%define _mok_key %{_mok_dir}/mok.key
+%define _mok_pem %{_mok_dir}/mok.pem
+%endif
 
 # ==============================================================================
 # NVIDIA open kernel modules
@@ -155,8 +195,8 @@ BuildRequires: perl-interpreter
 BuildRequires: python-srpm-macros
 BuildRequires: python3-devel
 BuildRequires: python3-pyyaml
-# BuildRequires: rust
-# Rust is provided via rustup, not the system package
+BuildRequires: rust
+# Comment if using rustup instead of rust system package
 
 %if %{_build_lto}
 BuildRequires: clang
@@ -165,10 +205,13 @@ BuildRequires: llvm
 BuildRequires: polly
 %endif
 
-%if %{_build_nv}
-BuildRequires: gcc-c++
+%if %{_build_secureboot}
 BuildRequires: nss-tools
 BuildRequires: pesign
+%endif
+
+%if %{_build_nv}
+BuildRequires: gcc-c++
 %endif
 
 BuildRequires: ncurses-devel
@@ -219,10 +262,12 @@ Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main
 Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
+# Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.0-rc2-poc-selector-v2.6.1.patch
 Patch20: %{_tkg_patches}/0003-glitched-cfs.patch
 Patch21: %{_tkg_patches}/0003-glitched-base.patch
 Patch22: %{_tkg_patches}/0002-clear-patches.patch
 Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
 
 # ==============================================================================
 %description
@@ -258,14 +303,20 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
 %patch -P 16 -p1
 %patch -P 17 -p1
 %patch -P 18 -p1
+# patch -P 19 -p1
 %patch -P 20 -p1
 %patch -P 21 -p1
 %patch -P 22 -p1
 %patch -P 23 -p1
+%patch -P 24 -p1
 
     cp %{SOURCE1} .config
 
-# --- Base ---
+# ------------------------------------------------------------------------------
+# Kconfig — General
+# ------------------------------------------------------------------------------
+
+    # --- Base scheduler ---
     scripts/config -e SCHED_BORE
 
     # --- SELinux activation for Fedora ---
@@ -278,11 +329,6 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
 
     # Do not override the system hostname
     scripts/config -u DEFAULT_HOSTNAME
-
-    # --- Kernel CMDLINE ---
-    scripts/config -e CMDLINE_BOOL
-    scripts/config -d CMDLINE_OVERRIDE
-    scripts/config --set-str CMDLINE "intel_pstate=passive split_lock_detect=off"
 
     # --- Tickrate ---
     case %{_hz_tick} in
@@ -302,6 +348,7 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     %endif
 
     # --- Secure Boot: IMA, module signing, and kernel lockdown ---
+    %if %{_build_secureboot}
     # IMA (Integrity Measurement Architecture)
     scripts/config -e  CONFIG_IMA
     scripts/config -e  CONFIG_IMA_APPRAISE
@@ -330,6 +377,7 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     scripts/config -e  SYSTEM_EXTRA_CERTIFICATE
     scripts/config --set-val SYSTEM_EXTRA_CERTIFICATE_SIZE 4096
     scripts/config -e  SYSTEM_TRUSTED_KEYRING
+    %endif
 
     # --- LTO-specific configs ---
     %if %{_build_lto}
@@ -344,8 +392,7 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
         scripts/config -e POLLY_CLANG
     %endif
 
-    # --- Custom Features ---
-
+    # --- Custom features ---
     scripts/config -d CONFIG_CFI
     scripts/config -d CONFIG_CFI_AUTO_DEFAULT
     scripts/config -d ARCH_USES_CFI_TRAPS
@@ -358,9 +405,6 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
 
     # ACPI Call module
     scripts/config -m ACPI_CALL
-
-    # I2C NCT6775
-    scripts/config -m I2C_NCT6775
 
     # --- Tickless idle (Tickless 2) ---
     scripts/config -d NO_HZ_FULL_NODEF
@@ -386,17 +430,6 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     scripts/config -d DEBUG_INFO_DWARF5
     scripts/config -d GDB_SCRIPTS
 
-    # Intel-specific memory/checksum optimizations
-    scripts/config -e X86_INTEL_USERCOPY
-    scripts/config -e X86_USE_PPRO_CHECKSUM
-
-    # --- Android Binder (Waydroid) ---
-    scripts/config -e ANDROID
-    scripts/config -e ANDROID_BINDER_IPC
-    scripts/config -e ANDROID_BINDERFS
-    scripts/config -d ANDROID_BINDER_IPC_SELFTEST
-    scripts/config --set-str ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
-
     # --- Rust compatibility ---
     # Disable BTF to allow Rust + LTO to coexist
     scripts/config -d DEBUG_INFO_BTF
@@ -416,12 +449,7 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     scripts/config -e ZENIFY
     scripts/config -e RANDOM_TRUST_CPU
 
-    # --- NR_CPUS ---
-    scripts/config -d CPUMASK_OFFSTACK
-    scripts/config -d MAXSMP
-    scripts/config --set-val NR_CPUS 20
-
-    # --- Native Optimizations (LZ4) ---
+    # --- Native compression (LZ4) ---
     scripts/config -e CRYPTO_LZ4
     scripts/config -e CRYPTO_LZ4HC
     scripts/config -e LZ4_COMPRESS
@@ -432,24 +460,71 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
     scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
 
-    # --- Hardware: Intel Alder Lake ---
+    # --- Memory management: MGLRU ---
+    scripts/config -e LRU_GEN
+    scripts/config -e LRU_GEN_ENABLED
+    scripts/config -d LRU_GEN_STATS
+
+    # --- Android Binder (Waydroid) ---
+    scripts/config -e ANDROID
+    scripts/config -e ANDROID_BINDER_IPC
+    scripts/config -e ANDROID_BINDERFS
+    scripts/config -d ANDROID_BINDER_IPC_SELFTEST
+    scripts/config --set-str ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
+
+    # --- Networking: BBR v3 + FQ ---
+    # BBR must be built-in (=y), not a module (=m), to be set as default in Kconfig.
+    # These must come after olddefconfig to prevent being reset.
+    scripts/config --enable  CONFIG_TCP_CONG_BBR
+    scripts/config --enable  CONFIG_TCP_CONG_CUBIC
+    scripts/config --disable CONFIG_DEFAULT_CUBIC
+    scripts/config --enable  CONFIG_DEFAULT_BBR
+    scripts/config --set-str CONFIG_DEFAULT_TCP_CONG bbr
+    scripts/config --enable  CONFIG_NET_SCH_CAKE
+    scripts/config --enable  CONFIG_NET_SCH_DEFAULT
+    scripts/config --enable  CONFIG_NET_SCH_FQ
+    scripts/config --enable  CONFIG_NET_SCH_FQ_CODEL
+    scripts/config --enable  CONFIG_DEFAULT_CAKE
+
+# ------------------------------------------------------------------------------
+# Kconfig — Hardware Specific
+# ------------------------------------------------------------------------------
+
+    # --- Intel Alder Lake (12th gen) ---
     %if %{_build_alderlake}
+    # CPU architecture and power management drivers
     scripts/config -e INTEL_PSTATE
     scripts/config -e INTEL_TCC_COOLING
     scripts/config -e SCHED_MC_PRIO
     scripts/config -e CONFIG_MALDERLAKE
     scripts/config -e MALDERLAKE
+
+    # Intel x86 memory and checksum optimizations
+    scripts/config -e X86_INTEL_USERCOPY
+    scripts/config -e X86_USE_PPRO_CHECKSUM
+
+    # NR_CPUS tuned for Core i7-12xxx/i9-12xxx (8P-core + 4E-core = 20 threads)
+    scripts/config -d CPUMASK_OFFSTACK
+    scripts/config -d MAXSMP
+    scripts/config --set-val NR_CPUS 20
+
+    # Kernel CMDLINE: Intel P-state passive mode + split-lock disable
+    scripts/config -e CMDLINE_BOOL
+    scripts/config -d CMDLINE_OVERRIDE
+    scripts/config --set-str CMDLINE "intel_pstate=passive split_lock_detect=off"
     %endif
 
-    # --- Hardware: ASUS TUF Gaming ---
+    # --- ASUS TUF Gaming ---
     scripts/config -e ACPI_WMI
     scripts/config -e ASUS_NB_WMI
     scripts/config -e ASUS_WMI
 
-    # --- Memory management: MGLRU ---
-    scripts/config -e LRU_GEN
-    scripts/config -e LRU_GEN_ENABLED
-    scripts/config -d LRU_GEN_STATS
+    # I2C NCT6775 (ASUS SuperIO / fan control chip)
+    scripts/config -m I2C_NCT6775
+
+# ------------------------------------------------------------------------------
+# Interactive config (after all hardware-specific blocks)
+# ------------------------------------------------------------------------------
 
     %if %{_interactive_config}
         # Se houver um DISPLAY, tenta abrir o xconfig (GUI Qt)
@@ -462,7 +537,10 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
         fi
     %endif
 
-    # --- First config pass ---
+# ------------------------------------------------------------------------------
+# First config pass
+# ------------------------------------------------------------------------------
+
     %if %{_build_minimal}
         %make_build LSMOD=%{SOURCE2} localmodconfig
     %else
@@ -490,26 +568,6 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     scripts/config --set-val CONFIG_DRM_PANIC_FOREGROUND_COLOR 0x08e4ff
 
     %make_build olddefconfig
-
-    # --- Networking: BBR v3 + FQ ---
-    # BBR must be built-in (=y), not a module (=m), to be set as default in Kconfig.
-    # These must come after olddefconfig to prevent being reset.
-    scripts/config --enable  CONFIG_TCP_CONG_BBR
-    scripts/config --enable  CONFIG_TCP_CONG_CUBIC
-    scripts/config --disable CONFIG_DEFAULT_CUBIC
-    scripts/config --enable  CONFIG_DEFAULT_BBR
-    scripts/config --set-str CONFIG_DEFAULT_TCP_CONG bbr
-    scripts/config --enable  CONFIG_NET_SCH_CAKE
-    scripts/config --enable  CONFIG_NET_SCH_DEFAULT
-    scripts/config --enable  CONFIG_NET_SCH_FQ
-    scripts/config --enable  CONFIG_NET_SCH_FQ_CODEL
-    scripts/config --enable  CONFIG_DEFAULT_CAKE
-
-    # --- CPU arch: must be set AFTER all olddefconfig passes ---
-    # Kconfig always resets it back to GENERIC_CPU (the default).
-    %if %{_build_alderlake}
-        scripts/config -d GENERIC_CPU -e MNATIVE_INTEL -d X86_NATIVE_CPU
-    %endif
 
     diff -u %{SOURCE1} .config || :
 
@@ -548,7 +606,9 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
         cd %{_builddir}/%{_srcdir}
     %endif
 
-    # 3. MOK key — persistent across rebuilds
+    # 3. Secure Boot — MOK key generation, vmlinuz signing, module signing
+    %if %{_build_secureboot}
+    # 3a. MOK key — persistent across rebuilds
     # Tries /etc/kernel/certs first; falls back to $HOME if not writable.
     MOK_CN="P03 Kernel Secure Boot"
     if [ -w "/etc/kernel/certs" ] || ( [ ! -e "/etc/kernel/certs" ] && [ -w "/etc/kernel" ] ); then
@@ -573,7 +633,7 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
         echo "Reusing existing MOK key from ${MOK_DIR}"
     fi
 
-    # 4. Install and sign vmlinuz
+    # 3b. Install and sign vmlinuz
     echo "Installing and signing kernel image..."
     SB_VMLINUZ="%{buildroot}%{_kernel_dir}/vmlinuz"
     install -Dm644 "$(%make_build -s image_name)" "$SB_VMLINUZ"
@@ -588,7 +648,7 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
     trap - EXIT
     rm -rf "$TMP_NSS"
 
-    # 5. Sign all modules (.ko.zst) — kernel + NVIDIA
+    # 3c. Sign all modules (.ko.zst) — kernel + NVIDIA
     echo "Signing all modules for Secure Boot..."
     SIGN_SCRIPT="%{_builddir}/%{_srcdir}/scripts/sign-file"
 
@@ -605,12 +665,18 @@ Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-
         fi
     done < <(find "%{buildroot}%{_kernel_dir}" -name "*.ko.zst")
 
-    # 6. Development files
-    zstdmt -19 < Module.symvers > %{buildroot}%{_kernel_dir}/symvers.zst
-
-    # Install MOK DER to kernel-specific path and to the fixed permanent path
+    # 3d. Install MOK DER to kernel-specific path and to the fixed permanent path
     install -Dm644 "${MOK_DER}" "%{buildroot}%{_kernel_dir}/secureboot-p03.der"
     install -Dm644 "${MOK_DER}" "%{buildroot}/etc/kernel/certs/p03-kernel/mok.der"
+
+    %else
+    # Secure Boot disabled — install unsigned kernel image
+    echo "Installing unsigned kernel image (Secure Boot disabled)..."
+    install -Dm644 "$(%make_build -s image_name)" "%{buildroot}%{_kernel_dir}/vmlinuz"
+    %endif
+
+    # 4. Development files
+    zstdmt -19 < Module.symvers > %{buildroot}%{_kernel_dir}/symvers.zst
 
     install -Dt %{buildroot}%{_devel_dir} -m644 .config Makefile Module.symvers System.map
     [ -f tools/bpf/bpftool/vmlinux.h ] && install -m644 tools/bpf/bpftool/vmlinux.h %{buildroot}%{_devel_dir}/ || true
@@ -749,6 +815,7 @@ Recommends: linux-firmware
             fi
         fi
     fi
+%if %{_build_secureboot}
     # Remind the user to enroll the MOK key if Secure Boot is active
     if [ -f "%{_kernel_dir}/secureboot-p03.der" ]; then
         if command -v mokutil &>/dev/null; then
@@ -766,6 +833,7 @@ Recommends: linux-firmware
             echo "======================================================================"
         fi
     fi
+%endif
 
 %preun core
     /bin/kernel-install remove %{_kver} || exit $?
@@ -777,12 +845,14 @@ Recommends: linux-firmware
     %license COPYING
     %ghost %attr(0600, root, root) /boot/initramfs-%{_kver}.img
     %ghost %attr(0644, root, root) /boot/symvers-%{_kver}.zst
+%if %{_build_secureboot}
     /etc/kernel/certs/p03-kernel/mok.der
+    %{_kernel_dir}/secureboot-p03.der
+%endif
     %{_kernel_dir}/System.map
     %{_kernel_dir}/config
     %{_kernel_dir}/modules.builtin
     %{_kernel_dir}/modules.builtin.modinfo
-    %{_kernel_dir}/secureboot-p03.der
     %{_kernel_dir}/symvers.zst
     %{_kernel_dir}/vmlinuz
 
