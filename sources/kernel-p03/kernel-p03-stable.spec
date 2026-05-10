@@ -18,6 +18,13 @@
 #  \________________|_|_|_|________________/
 
 # ==============================================================================
+# Platform guard — Fedora only
+# ==============================================================================
+%if 0%{?rhel}
+%{error: Building on RHEL/CentOS/AlmaLinux is not supported for now. This spec targets Fedora only.}
+%endif
+
+# ==============================================================================
 # Build system overrides
 # ==============================================================================
 %define __spec_install_post   %{__os_install_post}
@@ -25,7 +32,7 @@
 %define _default_patch_fuzz   2
 %define _disable_source_fetch 0
 %define debug_package         %{nil}
-%define make_build            make %{?_clang_args} %{?_smp_mflags}
+%define make_build            make %{?_lto_args} %{?_smp_mflags}
 %undefine __brp_mangle_shebangs
 %undefine _auto_set_build_flags
 %undefine _include_frame_pointers
@@ -46,7 +53,7 @@
 # e.g.:  koji list-builds --package=kernel --state=COMPLETE
 # ==============================================================================
 %define _patchver   200
-%define _koji_rel   %{_patchver}.fc%{?fedora}
+%define _koji_rel   %{_patchver}.fc44
 %define _koji_srpm  kernel-%{_tarkver}-%{_koji_rel}.src.rpm
 %define _koji_url   https://kojipkgs.fedoraproject.org/packages/kernel/%{_tarkver}/%{_koji_rel}/src/%{_koji_srpm}
 
@@ -65,43 +72,8 @@
 # The default modprobed.db is intended for CI only, not production.
 %define _build_minimal 0
 
-# Compiler selection — pick exactly one.
-#
-#   _build_clang 1 : Use Clang/LLVM toolchain (CC=clang, LD=lld, LLVM=1).
-#                    LTO mode is controlled by _lto_thin / _lto_full below.
-#   _build_gcc   1 : Use GCC toolchain.
-#                    If _lto_thin or _lto_full is also 1, GCC LTO is enabled
-#                    via KCFLAGS=-flto (no kernel Kconfig symbol; LTO_GCC was
-#                    dropped from mainline before 6.x).
-#
-# Setting both to 1 aborts the build.  Setting neither also aborts.
-%define _build_clang 1
-%define _build_gcc   0
-
-# LTO mode — pick at most one.
-#
-#   _lto_thin 1 : Clang ThinLTO  (fast incremental links, good parallelism)
-#                 GCC: treated as "LTO on" → KCFLAGS=-flto
-#   _lto_full 1 : Clang FullLTO  (slower link, potentially better codegen)
-#                 GCC: treated as "LTO on" → KCFLAGS=-flto
-#   both 0      : no LTO for either compiler
-#
-# Setting both to 1 aborts the build.
-#
-# _build_lto: enables LTO.
+# Build with Clang and enable Thin LTO + Polly + O3.
 %define _build_lto 1
-
-%define _lto_thin 1
-%define _lto_full 0
-
-# Optimization level — integer.
-#
-#   0 : no -O flag; compiler and Kconfig keep their own defaults
-#   2 : -O2 / -Copt-level=2   → Kconfig: CC_OPTIMIZE_FOR_PERFORMANCE
-#   3 : -O3 / -Copt-level=3   → Kconfig: CC_OPTIMIZE_FOR_PERFORMANCE_O3
-#   N : -ON / -Copt-level=N   → Kconfig left at base-config default
-#
-%define _opt_level 0
 
 # Sign the kernel image (vmlinuz) and all modules (.ko) with a self-generated
 # MOK key.  Also enables the matching Kconfig options (IMA, MODULE_SIG_FORCE,
@@ -122,45 +94,21 @@
 # An invalid value will fall back to x86_64_v3.
 %define _x86_64_lvl 3
 
-%define _interactive_config 0
-
-# NR_CPUS switch
-#
-#   _set_nr_cpus 1 : set NR_CPUS=<_nr_cpus> via scripts/config during prep
-#   _set_nr_cpus 0 : skip the NR_CPUS kconfig entirely (kernel default applies)
-#
-# _nr_cpus: the value passed to NR_CPUS when _set_nr_cpus = 1.
-#   Default: auto-detected from the build machine at parse time via (nproc).
-#   To pin a specific number instead, replace the (nproc) expression with
-#   a literal integer, e.g.:
-#   define _nr_cpus 20
-%define _set_nr_cpus 1
-%define _nr_cpus     %(nproc)
+%define _interactive_config 1
 
 # ==============================================================================
 # Feature flags — Hardware Specific
 # ==============================================================================
 
-# Enable Intel-specific Kconfig options:
+# Enable Alder Lake-native tuning (Intel 12th gen — Core i7-12xxx / i9-12xxx):
+#   - -march/-mtune=alderlake in KCFLAGS
+#   - -Ctarget-cpu=alderlake in KRUSTFLAGS
+#   - CPU Kconfig: MNATIVE_INTEL, MALDERLAKE
 #   - Intel drivers: INTEL_PSTATE, INTEL_TCC_COOLING, SCHED_MC_PRIO
-#   - CMDLINE: intel_pstate=passive
-%define _build_intel 1
-
-# ==============================================================================
-# Validation — do not edit below this line
-# ==============================================================================
-
-%if %{_build_clang} && %{_build_gcc}
-%{error: _build_clang and _build_gcc are mutually exclusive — set only one to 1}
-%endif
-
-%if !%{_build_clang} && !%{_build_gcc}
-%{error: no compiler selected — set either _build_clang or _build_gcc to 1}
-%endif
-
-%if %{_lto_thin} && %{_lto_full}
-%{error: _lto_thin and _lto_full are mutually exclusive — set only one to 1}
-%endif
+#   - Intel memory/checksum opts: X86_INTEL_USERCOPY, X86_USE_PPRO_CHECKSUM
+#   - NR_CPUS=20  (8P-core + 4E-core = 20 threads)
+#   - CMDLINE: intel_pstate=passive split_lock_detect=off
+%define _build_alderlake 1
 
 # ==============================================================================
 # Secure Boot — MOK certificate paths
@@ -187,60 +135,21 @@
 %define _kernel_dir /lib/modules/%{_kver}
 
 # ==============================================================================
-# Compiler flags
+# LTO build environment (Clang / Thin LTO / O3)
 # ==============================================================================
+%if %{_build_lto}
+%define _lto_args   CC=clang CXX=clang++ LD=ld.lld LLVM=1 LLVM_IAS=1
+%define _opt_cflags -O3
 
-# C opt flag: empty when _opt_level is 0.
-%if %{_opt_level}
-%define _opt_cflags -O%{_opt_level}
+%if %{_build_alderlake}
+%define _arch_cflags  -march=alderlake -mtune=alderlake
+%define _kcflags      %{_arch_cflags} %{_opt_cflags}
+%define _krustflags   -Ctarget-cpu=alderlake -Copt-level=3
 %else
-%define _opt_cflags %{nil}
-%endif
-
-# --- Clang -------------------------------------------------------------------
-%if %{_build_clang}
-
-# _clang_args is used by the make_build macro above, and by NVIDIA's build.
-# Defined whenever Clang is selected, regardless of LTO mode.
-%define _clang_args CC=clang CXX=clang++ LD=ld.lld LLVM=1 LLVM_IAS=1
-
 %define _kcflags      %{_opt_cflags}
-%if %{_opt_level}
-%define _krustflags   -Copt-level=%{_opt_level}
-%else
-%define _krustflags   %{nil}
-%endif
-
-%endif
-# --- GCC ---------------------------------------------------------------------
-%if %{_build_gcc}
-
-%if %{_opt_level}
-# GCC LTO requires -flto to be part of both CFLAGS and link flags;
-# appending it here ensures the kernel top-level Makefile picks it up.
-%if %{_build_lto}
-%define _kcflags     %{_opt_cflags} -flto
-%else
-%define _kcflags     %{_opt_cflags}
-%endif
-%else
-%if %{_build_lto}
-%define _kcflags     -flto
-%else
-%define _kcflags     %{nil}
+%define _krustflags   -Copt-level=3
 %endif
 %endif
-
-# Rust uses its own toolchain regardless of the C compiler; no KRUSTFLAGS
-# needed for the compiler backend, but opt-level is still useful.
-%if %{_opt_level}
-%define _krustflags  -Copt-level=%{_opt_level}
-%else
-%define _krustflags  %{nil}
-%endif
-
-%endif
-# -----------------------------------------------------------------------------
 
 # ==============================================================================
 # External module build arguments
@@ -262,7 +171,7 @@ Requires: kernel-modules-core-uname-r = %{_kver}
 Requires: kernel-modules-uname-r     = %{_kver}
 
 Provides: installonlypkg(kernel)
-Provides: kernel-%{_custom_tag} > 6.12.9-cb1.0%{?_clang_args:.lto}.%{_custom_tag}%{?dist}
+Provides: kernel-%{_custom_tag} > 6.12.9-cb1.0%{?_lto_args:.lto}.%{_custom_tag}%{?dist}
 
 Obsoletes: kernel-%{_custom_tag} <= 6.12.9-cb1.0.lto.%{_custom_tag}%{?dist}
 
@@ -294,7 +203,7 @@ BuildRequires: rust
 BuildRequires: rustfmt
 # Comment if using rustup instead of the system rust package
 
-%if %{_build_clang}
+%if %{_build_lto}
 BuildRequires: clang
 BuildRequires: lld
 BuildRequires: llvm
@@ -319,7 +228,7 @@ BuildRequires: libXi-devel
 # Indexes 0-9 are reserved for the kernel; 10-19 for NVIDIA.
 # ==============================================================================
 Source0: %{_koji_url}
-Source1: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/kconfig/linux-p03.config
+Source1: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/kconfig/cachyifiedtkg.config
 
 %if %{_build_minimal}
 Source2: https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-config/%{_basekver}/minimal-modprobed.db
@@ -337,8 +246,7 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 
 %define _tkg_patches https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/%{_basekver}
 
-# Clang-specific patches: polly loop opts + dkms clang wrapper
-%if %{_build_clang}
+%if %{_build_lto}
 Patch1: %{_cachy_patches}/misc/0001-clang-polly.patch
 Patch2: %{_cachy_patches}/misc/dkms-clang.patch
 %endif
@@ -380,8 +288,7 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     # The SRPM contains the upstream tarball — extract it
     tar xf linux-%{_tarkver}.tar.xz
     cd %{_srcdir}
-
-%if %{_build_clang}
+%if %{_build_lto}
 %patch -P 1 -p1
 %patch -P 2 -p1
 %endif
@@ -408,16 +315,22 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 %patch -P 23 -p1
 %patch -P 24 -p1
 
-    # grab config from srpm
-    cp %{_builddir}/kernel-x86_64-fedora.config .config
-
-    # merge with p03 config
-    ./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
+    cp %{SOURCE1} .config
 
 # ------------------------------------------------------------------------------
 # Kconfig — General
 # ------------------------------------------------------------------------------
-# I know this is a mess. i'll fix it later, i'm tired.
+
+    # --- Base scheduler ---
+    scripts/config -e SCHED_BORE
+
+    # --- SELinux activation for Fedora ---
+    scripts/config -e AUDIT
+    scripts/config -e SECURITY_SELINUX
+    scripts/config -e DEFAULT_SECURITY_SELINUX
+    scripts/config -d DEFAULT_SECURITY_DAC
+    scripts/config --set-str LSM "lockdown,yama,integrity,selinux,bpf,landlock,apparmor"
+    scripts/config --set-str CONFIG_LSM "lockdown,yama,integrity,selinux,bpf,landlock,apparmor"
 
     # Do not override the system hostname
     scripts/config -u DEFAULT_HOSTNAME
@@ -434,6 +347,9 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     # --- x86_64 ISA level ---
     %if %{_x86_64_lvl} < 5 && %{_x86_64_lvl} > 0
         scripts/config --set-val X86_64_VERSION %{_x86_64_lvl}
+    %else
+        echo "Invalid x86_64 ISA Level. Using x86_64_v3"
+        scripts/config --set-val X86_64_VERSION 3
     %endif
 
     # --- Secure Boot: IMA, module signing, and kernel lockdown ---
@@ -468,44 +384,17 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     scripts/config -e  SYSTEM_TRUSTED_KEYRING
     %endif
 
-    # --- LTO Kconfig ---
-    # Clang LTO: Kconfig symbols exist for thin/full.
-    # GCC LTO: no kernel Kconfig symbol (LTO_GCC removed from mainline);
-    #          -flto is injected via KCFLAGS in the compiler flags section above.
-    %if %{_build_clang} && %{_build_lto}
+    # --- LTO-specific configs ---
+    %if %{_build_lto}
+        # Thin LTO mode configured via custom.myfrag / customization.cfg
         scripts/config -d CONFIG_LTO_NONE
-        # Polly loop optimizations (requires clang-polly patch — Patch1)
-        scripts/config -e POLLY_CLANG
-        %if %{_lto_thin}
-        scripts/config -e  CONFIG_LTO_CLANG_THIN
-        scripts/config -e  LTO_CLANG_THIN
-        scripts/config -d  CONFIG_LTO_CLANG_FULL
-        scripts/config -d  LTO_CLANG_FULL
-        %endif
-        %if %{_lto_full}
-        scripts/config -e  CONFIG_LTO_CLANG_FULL
-        scripts/config -e  LTO_CLANG_FULL
-        scripts/config -d  CONFIG_LTO_CLANG_THIN
-        scripts/config -d  LTO_CLANG_THIN
-        %endif
-    %endif
+        scripts/config -e CONFIG_LTO_CLANG_THIN
+        scripts/config -e LTO_CLANG_THIN
+        scripts/config -d CONFIG_LTO_CLANG_FULL
+        scripts/config -d LTO_CLANG_FULL
 
-    # --- Optimization level (Kconfig side) ---
-    # Kept in sync with _opt_level so Kconfig and KCFLAGS agree.
-    # Note: Patch17 (optimize_harder_O3) injects -O3 into the top-level Makefile;
-    # it will silently override _opt_level < 3 for C code unless Patch17 is removed.
-    %if %{_opt_level} == 3
-        scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-        scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
-        scripts/config -d CONFIG_CC_OPTIMIZE_FOR_SIZE
-    %else
-    %if %{_opt_level} == 2
-        scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-        scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
-        scripts/config -d CONFIG_CC_OPTIMIZE_FOR_SIZE
-    %else
-        # _opt_level 0 or other — leave Kconfig CC optimization at base-config default
-    %endif
+        # Polly loop optimizations (enabled by the clang-polly patch)
+        scripts/config -e POLLY_CLANG
     %endif
 
     # --- Custom features ---
@@ -515,36 +404,119 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     scripts/config -d CONFIG_FINEIBT
     scripts/config -d CONFIG_FINEIBT_BHI
 
+    # ADIOS I/O Scheduler
+    scripts/config -e MQ_IOSCHED_ADIOS
+    scripts/config -e MQ_IOSCHED_DEFAULT_ADIOS
+
+    # ACPI Call module
+    scripts/config -m ACPI_CALL
+
+    # --- Tickless idle (Tickless 2) ---
+    scripts/config -d NO_HZ_FULL_NODEF
+    scripts/config -d HZ_PERIODIC
+    scripts/config -d NO_HZ_FULL
+    scripts/config -d TICK_CPU_ACCOUNTING
+    scripts/config -d CONTEXT_TRACKING_FORCE
+    scripts/config -e NO_HZ_IDLE
+    scripts/config -e NO_HZ
+    scripts/config -e NO_HZ_COMMON
+    scripts/config -e CONTEXT_TRACKING
+    scripts/config -e VIRT_CPU_ACCOUNTING
+    scripts/config -e VIRT_CPU_ACCOUNTING_GEN
+
+    # Hibernation compression
+    scripts/config -e HIBERNATION_COMP_LZ4
+    scripts/config --set-str HIBERNATION_DEF_COMP "lz4"
+
+    # Debug info stripping
+    scripts/config -e DEBUG_INFO_NONE
+    scripts/config -d DEBUG_INFO
+    scripts/config -d DEBUG_INFO_DWARF4
+    scripts/config -d DEBUG_INFO_DWARF5
+    scripts/config -d GDB_SCRIPTS
+
+    # --- Rust compatibility ---
+    # Disable BTF to allow Rust + LTO to coexist
+    scripts/config -d DEBUG_INFO_BTF
+    scripts/config -d MODVERSIONS
+
+    # --- Preemption model ---
+    # PREEMPT_LAZY: better latency than PREEMPT, better throughput than PREEMPT_RT
+    scripts/config -e CONFIG_ARCH_HAS_PREEMPT_LAZY
+    scripts/config -e CONFIG_PREEMPT_BUILD
+    scripts/config -e CONFIG_PREEMPT_LAZY
+
     # --- Scheduler ---
     # POC Selector: runtime scheduler switching
-#    scripts/config -e CONFIG_SCHED_POC_SELECTOR
+    scripts/config -e CONFIG_SCHED_POC_SELECTOR
 
-    # --- Zenify ---
+    # --- Zenify & Random Trust CPU ---
     scripts/config -e ZENIFY
+    scripts/config -e RANDOM_TRUST_CPU
 
-    # NR_CPUS — set only when _set_nr_cpus = 1; value comes from _nr_cpus
-    # (auto-detected via nproc at parse time, or a literal number if overridden)
-    %if %{_set_nr_cpus}
-    scripts/config -d CPUMASK_OFFSTACK
-    scripts/config -d MAXSMP
-    scripts/config --set-val NR_CPUS %{_nr_cpus}
-    %endif
+    # --- Native compression (LZ4) ---
+    scripts/config -e CRYPTO_LZ4
+    scripts/config -e CRYPTO_LZ4HC
+    scripts/config -e LZ4_COMPRESS
+    scripts/config -e LZ4HC_COMPRESS
+
+    # --- Optimization level ---
+    # Tell Kconfig we want -O3 (complements KCFLAGS=-O3)
+    scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+    scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
+
+    # --- Memory management: MGLRU ---
+    scripts/config -e LRU_GEN
+    scripts/config -e LRU_GEN_ENABLED
+    scripts/config -d LRU_GEN_STATS
+
+    # --- Android Binder (Waydroid) ---
+    scripts/config -e ANDROID
+    scripts/config -e ANDROID_BINDER_IPC
+    scripts/config -e ANDROID_BINDERFS
+    scripts/config -d ANDROID_BINDER_IPC_SELFTEST
+    scripts/config --set-str ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
+
+    # --- Networking: BBR v3 + FQ ---
+    # BBR must be built-in (=y), not a module (=m), to be set as default in Kconfig.
+    # These must come after olddefconfig to prevent being reset.
+    scripts/config --enable  CONFIG_TCP_CONG_BBR
+    scripts/config --enable  CONFIG_TCP_CONG_CUBIC
+    scripts/config --disable CONFIG_DEFAULT_CUBIC
+    scripts/config --enable  CONFIG_DEFAULT_BBR
+    scripts/config --set-str CONFIG_DEFAULT_TCP_CONG bbr
+    scripts/config --enable  CONFIG_NET_SCH_CAKE
+    scripts/config --enable  CONFIG_NET_SCH_DEFAULT
+    scripts/config --enable  CONFIG_NET_SCH_FQ
+    scripts/config --enable  CONFIG_NET_SCH_FQ_CODEL
+    scripts/config --enable  CONFIG_DEFAULT_CAKE
 
 # ------------------------------------------------------------------------------
 # Kconfig — Hardware Specific
 # ------------------------------------------------------------------------------
 
-    # --- Intel ---
-    %if %{_build_intel}
+    # --- Intel Alder Lake (12th gen) ---
+    %if %{_build_alderlake}
     # CPU architecture and power management drivers
     scripts/config -e INTEL_PSTATE
     scripts/config -e INTEL_TCC_COOLING
     scripts/config -e SCHED_MC_PRIO
+    scripts/config -e CONFIG_MALDERLAKE
+    scripts/config -e MALDERLAKE
+
+    # Intel x86 memory and checksum optimizations
+    scripts/config -e X86_INTEL_USERCOPY
+    scripts/config -e X86_USE_PPRO_CHECKSUM
+
+    # NR_CPUS tuned for Core i7-12xxx/i9-12xxx (8P-core + 4E-core = 20 threads)
+    scripts/config -d CPUMASK_OFFSTACK
+    scripts/config -d MAXSMP
+    scripts/config --set-val NR_CPUS 20
 
     # Kernel CMDLINE: Intel P-state passive mode + split-lock disable
     scripts/config -e CMDLINE_BOOL
     scripts/config -d CMDLINE_OVERRIDE
-    scripts/config --set-str CMDLINE "intel_pstate=passive"
+    scripts/config --set-str CMDLINE "intel_pstate=passive split_lock_detect=off"
     %endif
 
     # --- ASUS TUF Gaming ---
@@ -560,10 +532,13 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 # ------------------------------------------------------------------------------
 
     %if %{_interactive_config}
+        # Se houver um DISPLAY, tenta abrir o xconfig (GUI Qt)
+        # Se não houver, cai no menuconfig (Terminal)
         if [ -t 0 ]; then
-            make %{?_clang_args} xconfig
+            make %{?_lto_args} xconfig
         else
-            make %{?_clang_args} nconfig
+            # Força o uso do terminal atual para o menuconfig
+            make %{?_lto_args} nconfig
         fi
     %endif
 
@@ -579,11 +554,24 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 
     # Rust must be configured AFTER the first olddefconfig pass — if set before,
     # olddefconfig silently resets it because rpmbuild does not inherit the rustup PATH.
-    # export PATH="$HOME/.cargo/bin:$HOME/.rustup/toolchains/$(ls $HOME/.rustup/toolchains/ 2>/dev/null | grep -v tmp | head -1)/bin:$PATH"
-    # rustup component add rust-src 2>/dev/null || true
-    # echo "rustc:    $(rustc   --version 2>/dev/null || echo NOT FOUND)"
-    # echo "bindgen:  $(bindgen --version 2>/dev/null || echo NOT FOUND)"
-    # echo "rust-src: $(rustup component list --installed 2>/dev/null | grep rust-src || echo NOT FOUND)"
+    #export PATH="$HOME/.cargo/bin:$HOME/.rustup/toolchains/$(ls $HOME/.rustup/toolchains/ 2>/dev/null | grep -v tmp | head -1)/bin:$PATH"
+    #rustup component add rust-src 2>/dev/null || true
+    #echo "rustc:    $(rustc   --version 2>/dev/null || echo NOT FOUND)"
+    #echo "bindgen:  $(bindgen --version 2>/dev/null || echo NOT FOUND)"
+    #echo "rust-src: $(rustup component list --installed 2>/dev/null | grep rust-src || echo NOT FOUND)"
+    scripts/config -e RUST
+    scripts/config -e RUST_OVERFLOW_CHECKS
+    scripts/config -e RUST_PHYLIB_ABSTRACTIONS
+    scripts/config -e SAMPLES_RUST
+    scripts/config -e CONFIG_RUST_FW_LOADER_ABSTRACTIONS
+
+    # --- P03 Screen of Death ---
+    scripts/config -e CONFIG_DRM_PANIC_SCREEN_QR_CODE
+    scripts/config --set-str CONFIG_DRM_PANIC_SCREEN "qr_code"
+
+    scripts/config --set-val CONFIG_DRM_PANIC_BACKGROUND_COLOR 0x082b3f
+    scripts/config --set-val CONFIG_DRM_PANIC_FOREGROUND_COLOR 0x08e4ff
+
     %make_build olddefconfig
 
     diff -u %{SOURCE1} .config || :
@@ -591,14 +579,18 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 # ==============================================================================
 %build
 # ==============================================================================
-    %make_build EXTRAVERSION=-%{release}.%{_arch} KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
+%if %{_build_lto}
+    %make_build EXTRAVERSION=-%{release}.%{_arch} KCFLAGS="%{_kcflags}" KRUSTFLAGS="%{_krustflags}" all
+%else
+    %make_build EXTRAVERSION=-%{release}.%{_arch} all
+%endif
 
     # Build bpftool vmlinux.h for the devel package
     %make_build -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 || true
 
     %if %{_build_nv}
         cd %{_builddir}/%{_nv_pkg}
-        CFLAGS= CXXFLAGS= LDFLAGS= %make_build %{?_clang_args} %{_module_args} IGNORE_CC_MISMATCH=yes modules
+        CFLAGS= CXXFLAGS= LDFLAGS= %make_build %{?_lto_args} %{_module_args} IGNORE_CC_MISMATCH=yes modules
     %endif
 
 # ==============================================================================
@@ -622,6 +614,7 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     # 3. Secure Boot — MOK key generation, vmlinuz signing, module signing
     %if %{_build_secureboot}
     # 3a. MOK key — persistent across rebuilds
+    # Tries /etc/kernel/certs first; falls back to $HOME if not writable.
     MOK_CN="P03 Kernel Secure Boot"
     if [ -w "/etc/kernel/certs" ] || ( [ ! -e "/etc/kernel/certs" ] && [ -w "/etc/kernel" ] ); then
         MOK_DIR="%{_mok_dir}"
@@ -884,7 +877,7 @@ Provides: v4l2loopback-kmod           = 0.14.0
 
 Requires: kernel-uname-r = %{_kver}
 
-%if %{_build_clang}
+%if %{_build_lto}
 Requires: clang llvm llvm-devel lld
 %endif
 
@@ -933,7 +926,7 @@ Requires:      make
 Requires:      openssl-devel
 Requires:      perl-interpreter
 
-%if %{_build_clang}
+%if %{_build_lto}
 Requires: clang
 Requires: lld
 Requires: llvm
