@@ -62,3 +62,10 @@ For nvidia, install using `sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --
  - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
  - ADIOS patches from [Firelzrd](https://github.com/firelzrd/adios)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
+
+---
+
+<div align="center">
+  <img src=".github/stoat-darkmode.png#gh-dark-mode-only" width="400">
+  <img src=".github/stoat-lightmode.png#gh-light-mode-only" width="400">
+</div>
