@@ -12,16 +12,16 @@
   <p align="center">A zero-misplay kernel with CachyOS, TKG, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
 </div>
 
-This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.
+<p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
 
 <div align="center">
   <h1>⚠️</h1>
   <h4>Thar will be dragons!</h4>
 </div>
 
-This project is a work-in-progress and primarily intended for personal use. While a COPR repository is mentioned in the code, it does not exist yet. It may contain many configurations specifically made for my own setup (-march alderlake, ASUS WMI, etc).
+<p align="center">This project is a work-in-progress and primarily intended for personal use. While a COPR repository is mentioned in the code, it does not exist yet. It may contain many configurations specifically made for my own setup (e.g. ASUS WMI).</p>
 
-If you build the kernel in this WIP state, without removing these specific tweaks, you MIGHT end up on a Misplay screen.
+<p align="center">If you build the kernel in this WIP state, without removing these specific tweaks, you MIGHT end up on a Misplay screen.</p>
 
 ---
 
@@ -30,11 +30,11 @@ If you build the kernel in this WIP state, without removing these specific tweak
   <h4>F E A T U R E S</h4>
 </div>
 
- - Built on top of Fedora Koji Sources
+ - Built on top of Fedora Koji Sources with Fedora's baseconfigs
  - Automatic Secureboot Signing (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
- - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and x86-64v2)
+ - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3)
  - 1000hz tickrate
  - Built with LLVM + O3 + Polly Clang
  - BORE scheduler
@@ -46,12 +46,14 @@ If you build the kernel in this WIP state, without removing these specific tweak
  - Passive intel_pstate
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
 
-For nvidia, install using `sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check`, since kernel modules are already installed.
+<p align="center">For nvidia, install using `sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check`, since kernel modules are already installed.</p>
+
+<p align="center">Tip: build the whole kernel in your RAM to save SSD health with `sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD` (10gb ram required)</p>
 
 ---
 
 <div align="center">
-  <h4>📑</h4>
+  <h1>📑</h1>
   <h4>C R E D I T S</h4>
 </div>
 

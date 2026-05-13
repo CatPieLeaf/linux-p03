@@ -65,6 +65,8 @@
 # The default modprobed.db is intended for CI only, not production.
 %define _build_minimal 0
 
+%define _build_generic 1
+
 # Compiler selection — pick exactly one.
 #
 #   _build_clang 1 : Use Clang/LLVM toolchain (CC=clang, LD=lld, LLVM=1).
@@ -101,7 +103,7 @@
 #   3 : -O3 / -Copt-level=3   → Kconfig: CC_OPTIMIZE_FOR_PERFORMANCE_O3
 #   N : -ON / -Copt-level=N   → Kconfig left at base-config default
 #
-%define _opt_level 0
+%define _opt_level 3
 
 # Sign the kernel image (vmlinuz) and all modules (.ko) with a self-generated
 # MOK key.  Also enables the matching Kconfig options (IMA, MODULE_SIG_FORCE,
@@ -134,7 +136,7 @@
 #   To pin a specific number instead, replace the (nproc) expression with
 #   a literal integer, e.g.:
 #   define _nr_cpus 20
-%define _set_nr_cpus 1
+%define _set_nr_cpus 0
 %define _nr_cpus     %(nproc)
 
 # ==============================================================================
@@ -144,7 +146,7 @@
 # Enable Intel-specific Kconfig options:
 #   - Intel drivers: INTEL_PSTATE, INTEL_TCC_COOLING, SCHED_MC_PRIO
 #   - CMDLINE: intel_pstate=passive
-%define _build_intel 1
+%define _build_intel 0
 
 # ==============================================================================
 # Validation — do not edit below this line
@@ -288,11 +290,12 @@ BuildRequires: python-srpm-macros
 BuildRequires: python3-devel
 BuildRequires: python3-pyyaml
 
+# RUST STUFF
 BuildRequires: bindgen
 BuildRequires: rust-src
 BuildRequires: rust
 BuildRequires: rustfmt
-# Comment if using rustup instead of the system rust package
+# Comment every single one if using rustup instead of the system rust package
 
 %if %{_build_clang}
 BuildRequires: clang
@@ -324,6 +327,9 @@ Source1: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 %if %{_build_minimal}
 Source2: https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-config/%{_basekver}/minimal-modprobed.db
 %endif
+
+# Source3: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/kconfig/cachyifiedtkg.config
+# Used for comparing with fedora's kconfigs.
 
 %if %{_build_nv}
 Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%{_nv_pkg}.tar.gz
@@ -381,6 +387,36 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     tar xf linux-%{_tarkver}.tar.xz
     cd %{_srcdir}
 
+    # cp {SOURCE3} .config
+    # grab config from srpm
+    cp %{_builddir}/kernel-x86_64-fedora.config .config
+
+# ------------------------------------------------------------------------------
+# First config pass
+# ------------------------------------------------------------------------------
+
+    %if %{_build_minimal}
+        %make_build LSMOD=%{SOURCE2} localmodconfig
+    %else
+        %make_build olddefconfig
+    %endif
+
+# ------------------------------------------------------------------------------
+# Interactive config
+# ------------------------------------------------------------------------------
+
+    %if %{_interactive_config}
+        if [ -t 0 ]; then
+            make %{?_clang_args} xconfig
+        else
+            make %{?_clang_args} nconfig
+        fi
+    %endif
+
+# ------------------------------------------------------------------------------
+# Patch!
+# ------------------------------------------------------------------------------
+
 %if %{_build_clang}
 %patch -P 1 -p1
 %patch -P 2 -p1
@@ -408,64 +444,71 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 %patch -P 23 -p1
 %patch -P 24 -p1
 
-    # grab config from srpm
-    cp %{_builddir}/kernel-x86_64-fedora.config .config
-
     # merge with p03 config
+    # ./scripts/kconfig/merge_config.sh -m .config {SOURCE3}
     ./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
 
 # ------------------------------------------------------------------------------
 # Kconfig — General
 # ------------------------------------------------------------------------------
-# I know this is a mess. i'll fix it later, i'm tired.
 
-    # Do not override the system hostname
-    scripts/config -u DEFAULT_HOSTNAME
+    %if %{_build_generic}
+        ./scripts/config --enable GENERIC_CPU
+    %else
+        ./scripts/config -u GENERIC_CPU
+    %endif
 
     # --- Tickrate ---
     case %{_hz_tick} in
-        100|250|300|500|600|750|1000)
-            scripts/config -e HZ_%{_hz_tick} --set-val HZ %{_hz_tick};;
-        *)
-            echo "Invalid tickrate value, using default 1000"
-            scripts/config -e HZ_1000 --set-val HZ 1000;;
+    100|250|300|500|600|750|1000)
+        ./scripts/config --enable HZ_%{_hz_tick}
+        ./scripts/config --set-val HZ %{_hz_tick}
+        ;;
+    *)
+        echo "Invalid tickrate value, using default 1000"
+        ./scripts/config --enable HZ_1000
+        ./scripts/config --set-val HZ 1000
+        ;;
     esac
 
     # --- x86_64 ISA level ---
     %if %{_x86_64_lvl} < 5 && %{_x86_64_lvl} > 0
         scripts/config --set-val X86_64_VERSION %{_x86_64_lvl}
+    %else
+        echo "Invalid x86_64 ISA Level. Using x86_64_v3"
+        scripts/config --set-val X86_64_VERSION 3
     %endif
 
     # --- Secure Boot: IMA, module signing, and kernel lockdown ---
     %if %{_build_secureboot}
-    # IMA (Integrity Measurement Architecture)
-    scripts/config -e  CONFIG_IMA
-    scripts/config -e  CONFIG_IMA_APPRAISE
-    scripts/config -e  CONFIG_IMA_APPRAISE_BOOTPARAM
-    scripts/config -e  CONFIG_IMA_APPRAISE_MODSIG
-    scripts/config -e  CONFIG_IMA_ARCH_POLICY
-    scripts/config -e  CONFIG_IMA_SECURE_AND_OR_TRUSTED_BOOT
-    scripts/config -d  CONFIG_IMA_DEFAULT_HASH_SHA1
-    scripts/config -e  CONFIG_IMA_DEFAULT_HASH_SHA256
-    scripts/config --set-str CONFIG_IMA_DEFAULT_HASH "sha256"
+        # IMA (Integrity Measurement Architecture)
+        scripts/config -e  CONFIG_IMA
+        scripts/config -e  CONFIG_IMA_APPRAISE
+        scripts/config -e  CONFIG_IMA_APPRAISE_BOOTPARAM
+        scripts/config -e  CONFIG_IMA_APPRAISE_MODSIG
+        scripts/config -e  CONFIG_IMA_ARCH_POLICY
+        scripts/config -e  CONFIG_IMA_SECURE_AND_OR_TRUSTED_BOOT
+        scripts/config -d  CONFIG_IMA_DEFAULT_HASH_SHA1
+        scripts/config -e  CONFIG_IMA_DEFAULT_HASH_SHA256
+        scripts/config --set-str CONFIG_IMA_DEFAULT_HASH "sha256"
 
-    # Module signing (SHA-512 enforced)
-    scripts/config -e  MODULE_SIG
-    scripts/config -e  MODULE_SIG_ALL
-    scripts/config -e  MODULE_SIG_FORCE
-    scripts/config -e  MODULE_SIG_SHA512
-    scripts/config --set-str MODULE_SIG_HASH sha512
+        # Module signing (SHA-512 enforced)
+        scripts/config -e  MODULE_SIG
+        scripts/config -e  MODULE_SIG_ALL
+        scripts/config -e  MODULE_SIG_FORCE
+        scripts/config -e  MODULE_SIG_SHA512
+        scripts/config --set-str MODULE_SIG_HASH sha512
 
-    # Kernel lockdown and integrity
-    scripts/config -e  CONFIG_KEXEC_SIG
-    scripts/config -e  INTEGRITY_ASYMMETRIC_KEYS
-    scripts/config -e  INTEGRITY_SIGNATURE
-    scripts/config -e  LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY
-    scripts/config -e  SECURITY_LOCKDOWN_LSM
-    scripts/config -e  SECURITY_LOCKDOWN_LSM_EARLY
-    scripts/config -e  SYSTEM_EXTRA_CERTIFICATE
-    scripts/config --set-val SYSTEM_EXTRA_CERTIFICATE_SIZE 4096
-    scripts/config -e  SYSTEM_TRUSTED_KEYRING
+        # Kernel lockdown and integrity
+        scripts/config -e  CONFIG_KEXEC_SIG
+        scripts/config -e  INTEGRITY_ASYMMETRIC_KEYS
+        scripts/config -e  INTEGRITY_SIGNATURE
+        scripts/config -e  LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY
+        scripts/config -e  SECURITY_LOCKDOWN_LSM
+        scripts/config -e  SECURITY_LOCKDOWN_LSM_EARLY
+        scripts/config -e  SYSTEM_EXTRA_CERTIFICATE
+        scripts/config --set-val SYSTEM_EXTRA_CERTIFICATE_SIZE 4096
+        scripts/config -e  SYSTEM_TRUSTED_KEYRING
     %endif
 
     # --- LTO Kconfig ---
@@ -477,23 +520,20 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
         # Polly loop optimizations (requires clang-polly patch — Patch1)
         scripts/config -e POLLY_CLANG
         %if %{_lto_thin}
-        scripts/config -e  CONFIG_LTO_CLANG_THIN
-        scripts/config -e  LTO_CLANG_THIN
-        scripts/config -d  CONFIG_LTO_CLANG_FULL
-        scripts/config -d  LTO_CLANG_FULL
+            scripts/config -e  CONFIG_LTO_CLANG_THIN
+            scripts/config -e  LTO_CLANG_THIN
+            scripts/config -d  CONFIG_LTO_CLANG_FULL
+            scripts/config -d  LTO_CLANG_FULL
         %endif
         %if %{_lto_full}
-        scripts/config -e  CONFIG_LTO_CLANG_FULL
-        scripts/config -e  LTO_CLANG_FULL
-        scripts/config -d  CONFIG_LTO_CLANG_THIN
-        scripts/config -d  LTO_CLANG_THIN
+            scripts/config -e  CONFIG_LTO_CLANG_FULL
+            scripts/config -e  LTO_CLANG_FULL
+            scripts/config -d  CONFIG_LTO_CLANG_THIN
+            scripts/config -d  LTO_CLANG_THIN
         %endif
     %endif
 
     # --- Optimization level (Kconfig side) ---
-    # Kept in sync with _opt_level so Kconfig and KCFLAGS agree.
-    # Note: Patch17 (optimize_harder_O3) injects -O3 into the top-level Makefile;
-    # it will silently override _opt_level < 3 for C code unless Patch17 is removed.
     %if %{_opt_level} == 3
         scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
         scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
@@ -504,7 +544,13 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
         scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
         scripts/config -d CONFIG_CC_OPTIMIZE_FOR_SIZE
     %else
-        # _opt_level 0 or other — leave Kconfig CC optimization at base-config default
+    %if %{_opt_level} == 0
+        scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+        scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
+        scripts/config -e CONFIG_CC_OPTIMIZE_FOR_SIZE
+    %else
+        # fallback to default
+    %endif
     %endif
     %endif
 
@@ -517,7 +563,7 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 
     # --- Scheduler ---
     # POC Selector: runtime scheduler switching
-#    scripts/config -e CONFIG_SCHED_POC_SELECTOR
+    # scripts/config -e CONFIG_SCHED_POC_SELECTOR
 
     # --- Zenify ---
     scripts/config -e ZENIFY
@@ -525,9 +571,9 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     # NR_CPUS — set only when _set_nr_cpus = 1; value comes from _nr_cpus
     # (auto-detected via nproc at parse time, or a literal number if overridden)
     %if %{_set_nr_cpus}
-    scripts/config -d CPUMASK_OFFSTACK
-    scripts/config -d MAXSMP
-    scripts/config --set-val NR_CPUS %{_nr_cpus}
+        scripts/config -d CPUMASK_OFFSTACK
+        scripts/config -d MAXSMP
+        scripts/config --set-val NR_CPUS %{_nr_cpus}
     %endif
 
 # ------------------------------------------------------------------------------
@@ -536,15 +582,15 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 
     # --- Intel ---
     %if %{_build_intel}
-    # CPU architecture and power management drivers
-    scripts/config -e INTEL_PSTATE
-    scripts/config -e INTEL_TCC_COOLING
-    scripts/config -e SCHED_MC_PRIO
+        # CPU architecture and power management drivers
+        scripts/config -e INTEL_PSTATE
+        scripts/config -e INTEL_TCC_COOLING
+        scripts/config -e SCHED_MC_PRIO
 
-    # Kernel CMDLINE: Intel P-state passive mode + split-lock disable
-    scripts/config -e CMDLINE_BOOL
-    scripts/config -d CMDLINE_OVERRIDE
-    scripts/config --set-str CMDLINE "intel_pstate=passive"
+        # Kernel CMDLINE: Intel P-state passive mode + split-lock disable
+        scripts/config -e CMDLINE_BOOL
+        scripts/config -d CMDLINE_OVERRIDE
+        scripts/config --set-str CMDLINE "intel_pstate=passive"
     %endif
 
     # --- ASUS TUF Gaming ---
@@ -556,20 +602,11 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     scripts/config -m I2C_NCT6775
 
 # ------------------------------------------------------------------------------
-# Interactive config (after all hardware-specific blocks)
+# Final config pass
 # ------------------------------------------------------------------------------
 
-    %if %{_interactive_config}
-        if [ -t 0 ]; then
-            make %{?_clang_args} xconfig
-        else
-            make %{?_clang_args} nconfig
-        fi
-    %endif
 
-# ------------------------------------------------------------------------------
-# First config pass
-# ------------------------------------------------------------------------------
+    %make_build oldconfig
 
     %if %{_build_minimal}
         %make_build LSMOD=%{SOURCE2} localmodconfig
@@ -577,16 +614,16 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
         %make_build olddefconfig
     %endif
 
-    # Rust must be configured AFTER the first olddefconfig pass — if set before,
-    # olddefconfig silently resets it because rpmbuild does not inherit the rustup PATH.
+    diff -u %{SOURCE1} .config || :
+
+
+    # Rustup stuff. Don't touch if you're using rust from system packages
     # export PATH="$HOME/.cargo/bin:$HOME/.rustup/toolchains/$(ls $HOME/.rustup/toolchains/ 2>/dev/null | grep -v tmp | head -1)/bin:$PATH"
     # rustup component add rust-src 2>/dev/null || true
     # echo "rustc:    $(rustc   --version 2>/dev/null || echo NOT FOUND)"
     # echo "bindgen:  $(bindgen --version 2>/dev/null || echo NOT FOUND)"
     # echo "rust-src: $(rustup component list --installed 2>/dev/null | grep rust-src || echo NOT FOUND)"
-    %make_build olddefconfig
 
-    diff -u %{SOURCE1} .config || :
 
 # ==============================================================================
 %build
