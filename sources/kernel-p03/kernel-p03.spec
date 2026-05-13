@@ -39,6 +39,7 @@
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
+%define _buildver   2
 
 # ==============================================================================
 # Koji build identification
@@ -138,15 +139,6 @@
 #   define _nr_cpus 20
 %define _set_nr_cpus 0
 %define _nr_cpus     %(nproc)
-
-# ==============================================================================
-# Feature flags — Hardware Specific
-# ==============================================================================
-
-# Enable Intel-specific Kconfig options:
-#   - Intel drivers: INTEL_PSTATE, INTEL_TCC_COOLING, SCHED_MC_PRIO
-#   - CMDLINE: intel_pstate=passive
-%define _build_intel 0
 
 # ==============================================================================
 # Validation — do not edit below this line
@@ -255,7 +247,7 @@
 Name:    kernel-%{_custom_tag}
 Summary: Linux P03
 Version: %{_basekver}%{_stablekver}
-Release: %{_patchver}_%{_custom_tag}%{?dist}
+Release: %{_patchver}.%{_custom_tag}.%{_buildver}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 
@@ -304,10 +296,6 @@ BuildRequires: llvm
 BuildRequires: polly
 %endif
 
-%if %{_build_secureboot}
-BuildRequires: nss-tools
-BuildRequires: pesign
-%endif
 
 %if %{_build_nv}
 BuildRequires: gcc-c++
@@ -554,17 +542,6 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     %endif
     %endif
 
-    # --- Custom features ---
-    scripts/config -d CONFIG_CFI
-    scripts/config -d CONFIG_CFI_AUTO_DEFAULT
-    scripts/config -d ARCH_USES_CFI_TRAPS
-    scripts/config -d CONFIG_FINEIBT
-    scripts/config -d CONFIG_FINEIBT_BHI
-
-    # --- Scheduler ---
-    # POC Selector: runtime scheduler switching
-    # scripts/config -e CONFIG_SCHED_POC_SELECTOR
-
     # --- Zenify ---
     scripts/config -e ZENIFY
 
@@ -577,34 +554,8 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     %endif
 
 # ------------------------------------------------------------------------------
-# Kconfig — Hardware Specific
-# ------------------------------------------------------------------------------
-
-    # --- Intel ---
-    %if %{_build_intel}
-        # CPU architecture and power management drivers
-        scripts/config -e INTEL_PSTATE
-        scripts/config -e INTEL_TCC_COOLING
-        scripts/config -e SCHED_MC_PRIO
-
-        # Kernel CMDLINE: Intel P-state passive mode + split-lock disable
-        scripts/config -e CMDLINE_BOOL
-        scripts/config -d CMDLINE_OVERRIDE
-        scripts/config --set-str CMDLINE "intel_pstate=passive"
-    %endif
-
-    # --- ASUS TUF Gaming ---
-    scripts/config -e ACPI_WMI
-    scripts/config -e ASUS_NB_WMI
-    scripts/config -e ASUS_WMI
-
-    # I2C NCT6775 (ASUS SuperIO / fan control chip)
-    scripts/config -m I2C_NCT6775
-
-# ------------------------------------------------------------------------------
 # Final config pass
 # ------------------------------------------------------------------------------
-
 
     %make_build oldconfig
 
@@ -616,14 +567,12 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 
     diff -u %{SOURCE1} .config || :
 
-
     # Rustup stuff. Don't touch if you're using rust from system packages
     # export PATH="$HOME/.cargo/bin:$HOME/.rustup/toolchains/$(ls $HOME/.rustup/toolchains/ 2>/dev/null | grep -v tmp | head -1)/bin:$PATH"
     # rustup component add rust-src 2>/dev/null || true
     # echo "rustc:    $(rustc   --version 2>/dev/null || echo NOT FOUND)"
     # echo "bindgen:  $(bindgen --version 2>/dev/null || echo NOT FOUND)"
     # echo "rust-src: $(rustup component list --installed 2>/dev/null | grep rust-src || echo NOT FOUND)"
-
 
 # ==============================================================================
 %build
@@ -656,73 +605,17 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
         cd %{_builddir}/%{_srcdir}
     %endif
 
-    # 3. Secure Boot — MOK key generation, vmlinuz signing, module signing
-    %if %{_build_secureboot}
-    # 3a. MOK key — persistent across rebuilds
-    MOK_CN="P03 Kernel Secure Boot"
-    if [ -w "/etc/kernel/certs" ] || ( [ ! -e "/etc/kernel/certs" ] && [ -w "/etc/kernel" ] ); then
-        MOK_DIR="%{_mok_dir}"
-    elif [ -w "/etc/kernel" ]; then
-        MOK_DIR="%{_mok_dir}"
-    else
-        MOK_DIR="$HOME/.config/kernel-certs/p03-kernel"
-    fi
-    MOK_KEY="${MOK_DIR}/mok.key"
-    MOK_DER="${MOK_DIR}/mok.der"
-    MOK_PEM="${MOK_DIR}/mok.pem"
-
-    if [ ! -f "${MOK_KEY}" ]; then
-        mkdir -p "${MOK_DIR}"
-        chmod 700 "${MOK_DIR}"
-        openssl req -new -x509 -newkey rsa:4096 -keyout "${MOK_KEY}" -outform DER -out "${MOK_DER}" -nodes -days 36500 -subj "/CN=${MOK_CN}/" -addext "extendedKeyUsage=codeSigning"
-        chmod 600 "${MOK_KEY}"
-        openssl x509 -inform DER -in "${MOK_DER}" -out "${MOK_PEM}"
-        echo "MOK key generated at ${MOK_DIR}"
-    else
-        echo "Reusing existing MOK key from ${MOK_DIR}"
-    fi
-
-    # 3b. Install and sign vmlinuz
-    echo "Installing and signing kernel image..."
-    SB_VMLINUZ="%{buildroot}%{_kernel_dir}/vmlinuz"
-    install -Dm644 "$(%make_build -s image_name)" "$SB_VMLINUZ"
-
-    TMP_NSS=$(mktemp -d)
-    trap "rm -rf $TMP_NSS" EXIT
-    certutil -d "$TMP_NSS" -N --empty-password
-    openssl pkcs12 -export -out "$TMP_NSS/sb.p12" -inkey "${MOK_KEY}" -in "${MOK_PEM}" -name "${MOK_CN}" -passout pass:
-    pk12util -i "$TMP_NSS/sb.p12" -d "$TMP_NSS" -W ""
-    pesign -n "$TMP_NSS" -c "${MOK_CN}" --sign -i "$SB_VMLINUZ" -o "$SB_VMLINUZ.signed"
-    mv "$SB_VMLINUZ.signed" "$SB_VMLINUZ"
-    trap - EXIT
-    rm -rf "$TMP_NSS"
-
-    # 3c. Sign all modules (.ko.zst) — kernel + NVIDIA
-    echo "Signing all modules for Secure Boot..."
-    SIGN_SCRIPT="%{_builddir}/%{_srcdir}/scripts/sign-file"
-
-    while IFS= read -r KO; do
-        UNZST="${KO%.zst}"
-        if ! zstd -d --rm "${KO}" -o "${UNZST}"; then
-            echo "ERROR: failed to decompress ${KO}" >&2; exit 1
-        fi
-        if ! "${SIGN_SCRIPT}" sha512 "${MOK_KEY}" "${MOK_PEM}" "${UNZST}"; then
-            echo "ERROR: failed to sign ${UNZST}" >&2; exit 1
-        fi
-        if ! zstd -19 --rm "${UNZST}" -o "${KO}"; then
-            echo "ERROR: failed to recompress ${UNZST}" >&2; exit 1
-        fi
-    done < <(find "%{buildroot}%{_kernel_dir}" -name "*.ko.zst")
-
-    # 3d. Install MOK DER to kernel-specific path and to the fixed permanent path
-    install -Dm644 "${MOK_DER}" "%{buildroot}%{_kernel_dir}/secureboot-p03.der"
-    install -Dm644 "${MOK_DER}" "%{buildroot}/etc/kernel/certs/p03-kernel/mok.der"
-
-    %else
-    # Secure Boot disabled — install unsigned kernel image
-    echo "Installing unsigned kernel image (Secure Boot disabled)..."
+    # 3. Kernel image
+    # Signing is intentionally deferred to %posttrans on the TARGET machine.
+    # The build host must never hold the private MOK key used by the target.
+    echo "Installing kernel image (unsigned; will be signed on target during %posttrans)..."
     install -Dm644 "$(%make_build -s image_name)" "%{buildroot}%{_kernel_dir}/vmlinuz"
-    %endif
+
+%if %{_build_secureboot}
+    # Ship the sign-file helper so %posttrans can sign external modules (NVIDIA)
+    # without requiring the full -devel package to be installed on the target.
+    install -Dm755 scripts/sign-file "%{buildroot}%{_kernel_dir}/sign-file"
+%endif
 
     # 4. Development files
     zstdmt -19 < Module.symvers > %{buildroot}%{_kernel_dir}/symvers.zst
@@ -843,6 +736,13 @@ Requires(preun): systemd >= 200
 
 Recommends: linux-firmware
 
+%if %{_build_secureboot}
+# Signing is performed on the target machine during %posttrans
+Requires(post): openssl
+Requires(post): nss-tools
+Requires(post): pesign
+%endif
+
 %description core
     The kernel package contains the Linux kernel (vmlinuz), the core of any
     Linux operating system. The kernel handles the basic functions of the
@@ -855,6 +755,45 @@ Recommends: linux-firmware
 
 %posttrans core
     rm -f %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{_kver}
+%if %{_build_secureboot}
+    # ── Secure Boot: MOK key generation + vmlinuz signing ────────────────────
+    # This runs on the TARGET machine.  The private key is never present on
+    # the build host; it is generated here, once, and reused across kernel
+    # upgrades that share the same enrolled MOK certificate.
+    MOK_CN="P03 Kernel Secure Boot"
+    MOK_DIR="%{_mok_dir}"
+    MOK_KEY="%{_mok_key}"
+    MOK_DER="%{_mok_der}"
+    MOK_PEM="%{_mok_pem}"
+
+    mkdir -p "${MOK_DIR}"
+    chmod 700 "${MOK_DIR}"
+
+    if [ ! -f "${MOK_KEY}" ]; then
+        echo "Generating MOK key at ${MOK_DIR} ..."
+        openssl req -new -x509 -newkey rsa:4096 -keyout "${MOK_KEY}" -outform DER -out "${MOK_DER}" -nodes -days 36500 -subj "/CN=${MOK_CN}/" -addext "extendedKeyUsage=codeSigning"
+        chmod 600 "${MOK_KEY}"
+        openssl x509 -inform DER -in "${MOK_DER}" -out "${MOK_PEM}"
+        echo "MOK key generated."
+    else
+        echo "Reusing existing MOK key from ${MOK_DIR}."
+    fi
+
+    # Sign vmlinuz in-place BEFORE kernel-install copies it to /boot,
+    # so the file that ends up in /boot is already signed.
+    echo "Signing vmlinuz for Secure Boot..."
+    SB_VMLINUZ="%{_kernel_dir}/vmlinuz"
+    TMP_NSS=$(mktemp -d)
+    trap "rm -rf ${TMP_NSS}" EXIT
+    certutil  -d "${TMP_NSS}" -N --empty-password
+    openssl pkcs12 -export -out "${TMP_NSS}/sb.p12" -inkey "${MOK_KEY}" -in "${MOK_PEM}" -name "${MOK_CN}" -passout pass:
+    pk12util -i "${TMP_NSS}/sb.p12" -d "${TMP_NSS}" -W ""
+    pesign -n "${TMP_NSS}" -c "${MOK_CN}" --sign -i "${SB_VMLINUZ}" -o "${SB_VMLINUZ}.signed"
+    mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
+    trap - EXIT
+    rm -rf "${TMP_NSS}"
+    echo "vmlinuz signed."
+%endif
     if [ ! -e /run/ostree-booted ]; then
         /bin/kernel-install add %{_kver} %{_kernel_dir}/vmlinuz || exit $?
         if [[ ! -e "/boot/symvers-%{_kver}.zst" ]]; then
@@ -865,22 +804,19 @@ Recommends: linux-firmware
         fi
     fi
 %if %{_build_secureboot}
-    # Remind the user to enroll the MOK key if Secure Boot is active
-    if [ -f "%{_kernel_dir}/secureboot-p03.der" ]; then
-        if command -v mokutil &>/dev/null; then
-            SB_STATE=$(mokutil --sb-state 2>/dev/null || true)
-            echo ""
-            echo "======================================================================"
-            echo " Kernel P03: Secure Boot key enrollment"
-            echo "======================================================================"
-            echo " A self-signed MOK key was embedded during build."
-            echo " Current Secure Boot state: ${SB_STATE:-unknown}"
-            echo " To enroll the key, run:"
-            echo "   mokutil --import /etc/kernel/certs/p03-kernel/mok.der"
-            echo " (This key is permanent — you only need to enroll it once)"
-            echo " Then reboot and confirm enrollment in the MOK Manager (shim)."
-            echo "======================================================================"
-        fi
+    # ── Enroll reminder ───────────────────────────────────────────────────────
+    if command -v mokutil &>/dev/null; then
+        SB_STATE=$(mokutil --sb-state 2>/dev/null || true)
+        echo ""
+        echo "======================================================================"
+        echo " Kernel P03: Secure Boot key enrollment"
+        echo "======================================================================"
+        echo " MOK key: %{_mok_der}"
+        echo " Current Secure Boot state: ${SB_STATE:-unknown}"
+        echo " To enroll the key (only needed once per machine), run:"
+        echo "   sudo mokutil --import %{_mok_der}"
+        echo " Then reboot and confirm enrollment in the MOK Manager (shim)."
+        echo "======================================================================"
     fi
 %endif
 
@@ -895,8 +831,14 @@ Recommends: linux-firmware
     %ghost %attr(0600, root, root) /boot/initramfs-%{_kver}.img
     %ghost %attr(0644, root, root) /boot/symvers-%{_kver}.zst
 %if %{_build_secureboot}
-    /etc/kernel/certs/p03-kernel/mok.der
-    %{_kernel_dir}/secureboot-p03.der
+    # mok.der and mok.key are generated on the target machine by %posttrans.
+    # %ghost lets RPM track and remove them on package removal without
+    # expecting them to exist inside the RPM payload itself.
+    %ghost %attr(0700, root, root) %dir %{_mok_dir}
+    %ghost %attr(0600, root, root) %{_mok_key}
+    %ghost %attr(0644, root, root) %{_mok_der}
+    %ghost %attr(0644, root, root) %{_mok_pem}
+    %{_kernel_dir}/sign-file
 %endif
     %{_kernel_dir}/System.map
     %{_kernel_dir}/config
@@ -1036,6 +978,34 @@ Conflicts: akmod-nvidia
     touch %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
 
 %posttrans nvidia-open
+%if %{_build_secureboot}
+    # ── Secure Boot: sign NVIDIA modules on the target machine ────────────────
+    # The MOK key is expected to exist already (generated by %posttrans core).
+    MOK_KEY="%{_mok_key}"
+    MOK_PEM="%{_mok_pem}"
+    SIGN_FILE="%{_kernel_dir}/sign-file"
+
+    if [ -f "${MOK_KEY}" ] && [ -x "${SIGN_FILE}" ]; then
+        echo "Signing NVIDIA modules for Secure Boot..."
+        while IFS= read -r KO; do
+            UNZST="${KO%.zst}"
+            if ! zstd -d --rm "${KO}" -o "${UNZST}"; then
+                echo "ERROR: failed to decompress ${KO}" >&2; exit 1
+            fi
+            if ! "${SIGN_FILE}" sha512 "${MOK_KEY}" "${MOK_PEM}" "${UNZST}"; then
+                echo "ERROR: failed to sign ${UNZST}" >&2; exit 1
+            fi
+            if ! zstd -19 --rm "${UNZST}" -o "${KO}"; then
+                echo "ERROR: failed to recompress ${UNZST}" >&2; exit 1
+            fi
+        done < <(find "%{_kernel_dir}/nvidia" -name "*.ko.zst")
+        echo "NVIDIA modules signed."
+    else
+        echo "WARNING: MOK key not found at ${MOK_KEY}."
+        echo "         Install or reinstall %{name}-core first so the key is"
+        echo "         generated, then reinstall %{name}-nvidia-open."
+    fi
+%endif
     /sbin/depmod -a %{_kver}
     if [ -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver} ]; then
         rm -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}

@@ -19,9 +19,9 @@
   <h4>Thar will be dragons!</h4>
 </div>
 
-<p align="center">This project is a work-in-progress and primarily intended for personal use. While a COPR repository is mentioned in the code, it does not exist yet. It may contain many configurations specifically made for my own setup (e.g. ASUS WMI).</p>
+<p align="center">This project is a work-in-progress and primarily intended for personal use. While a COPR repository is mentioned in the code, it does not exist yet.</p>
 
-<p align="center">If you build the kernel in this WIP state, without removing these specific tweaks, you MIGHT end up on a Misplay screen.</p>
+<p align="center">If you build the kernel in this WIP state, you may end up on a Misplay screen.</p>
 
 ---
 
@@ -46,11 +46,19 @@
  - Passive intel_pstate
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
 
-<p align="center">For nvidia, install using `sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check`, since kernel modules are already installed.</p>
+<p align="center">For nvidia, install using the command below, since kernel modules are already installed.</p>
 
-<p align="center">Tip: build the whole kernel in your RAM to save SSD health with `sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD` (10gb ram required)</p>
+```
+sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check
+```
 
----
+<p align="center">Tip: build the whole kernel in your RAM to save SSD health with the command below (10gb ram required)</p>
+
+```
+sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
+```
+
+
 
 <div align="center">
   <h1>📑</h1>
