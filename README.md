@@ -14,15 +14,6 @@
 
 <p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
 
-<div align="center">
-  <h1>⚠️</h1>
-  <h4>Thar will be dragons!</h4>
-</div>
-
-<p align="center">This project is a work-in-progress and primarily intended for personal use. While a COPR repository is mentioned in the code, it does not exist yet.</p>
-
-<p align="center">If you build the kernel in this WIP state, you may end up on a Misplay screen.</p>
-
 ---
 
 <div align="center">

@@ -43,13 +43,12 @@
 
 # ==============================================================================
 # Koji build identification
-# Set _koji_rel to the Release field from `koji list-builds --package=kernel`
-# e.g.:  koji list-builds --package=kernel --state=COMPLETE
+#
+# The Koji SRPM URL cannot be resolved here: COPR generates the SRPM on the
+# builder host where {dist} is always empty, so any global/(shell) that
+# depends on {dist} fires before mock sets the chroot.  Resolution is
+# deferred to prep, which runs inside mock where {dist} is correct.
 # ==============================================================================
-%define _patchver   200
-%define _koji_rel   %{_patchver}.fc%{?fedora}
-%define _koji_srpm  kernel-%{_tarkver}-%{_koji_rel}.src.rpm
-%define _koji_url   https://kojipkgs.fedoraproject.org/packages/kernel/%{_tarkver}/%{_koji_rel}/src/%{_koji_srpm}
 
 # Source directory name — matches the tarball inside the Fedora SRPM
 %define _srcdir     linux-%{_tarkver}
@@ -170,7 +169,7 @@
 # ==============================================================================
 # NVIDIA open kernel modules
 # ==============================================================================
-%define _build_nv 1
+%define _build_nv 0
 %define _nv_ver   595.71.05
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
@@ -247,7 +246,7 @@
 Name:    kernel-%{_custom_tag}
 Summary: Linux P03
 Version: %{_basekver}%{_stablekver}
-Release: %{_patchver}.%{_custom_tag}.%{_buildver}%{?dist}
+Release: %{_custom_tag}.%{_buildver}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 
@@ -308,8 +307,10 @@ BuildRequires: libXi-devel
 # ==============================================================================
 # Sources
 # Indexes 0-9 are reserved for the kernel; 10-19 for NVIDIA.
+# Note: the Fedora kernel SRPM (formerly Source0) is downloaded dynamically
+# in %%prep so that the Koji query can use %%{dist}, which is only set inside
+# the mock chroot — not at SRPM-generation time on the COPR builder host.
 # ==============================================================================
-Source0: %{_koji_url}
 Source1: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/kconfig/linux-p03.config
 
 %if %{_build_minimal}
@@ -368,9 +369,37 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 %prep
 # ==============================================================================
 %setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
-    # Extract the Fedora kernel SRPM downloaded from Koji
+
+    # ── Resolve and download the Fedora kernel SRPM from Koji ─────────────────
+    # Runs inside mock where {dist} is correctly set.  Cannot live in a
+    # top-level global because COPR runs SRPM generation on the builder host
+    # where {dist} is always empty.
+    _fedoraver=$(echo '%{?dist}' | sed 's/.*\.fc//')
+    if [ -z "${_fedoraver}" ]; then
+        echo "ERROR: %%{dist} is empty — cannot determine target Fedora version." >&2
+        exit 1
+    fi
+
+    # Find the highest-numbered release of kernel-{_tarkver} for this Fedora.
+    _koji_rel=$(curl -sfL "https://kojipkgs.fedoraproject.org/packages/kernel/%{_tarkver}/" \
+        | grep -oE "[0-9]+\\.fc${_fedoraver}/" \
+        | sed 's|/||' \
+        | sort -t. -k1 -n \
+        | tail -1)
+    if [ -z "${_koji_rel}" ]; then
+        echo "ERROR: No kernel-%{_tarkver} build for Fedora ${_fedoraver} found in Koji." >&2
+        echo "       The kernel version may not be packaged for this Fedora release yet." >&2
+        exit 1
+    fi
+
+    echo "==> Koji: kernel-%{_tarkver}-${_koji_rel}"
+    _koji_srpm="kernel-%{_tarkver}-${_koji_rel}.src.rpm"
+    _koji_url="https://kojipkgs.fedoraproject.org/packages/kernel/%{_tarkver}/${_koji_rel}/src/${_koji_srpm}"
+    curl -fL --retry 3 -o "%{_builddir}/${_koji_srpm}" "${_koji_url}"
+
+    # ── Extract the SRPM and its upstream tarball ──────────────────────────────
     cd %{_builddir}
-    rpm2cpio %{SOURCE0} | cpio -idmv
+    rpm2cpio "${_koji_srpm}" | cpio -idmv
     # The SRPM contains the upstream tarball — extract it
     tar xf linux-%{_tarkver}.tar.xz
     cd %{_srcdir}
