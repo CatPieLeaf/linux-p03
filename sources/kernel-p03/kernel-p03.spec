@@ -34,12 +34,12 @@
 # Kernel version
 # ==============================================================================
 %define _basekver   7.0
-%define _stablekver .4
+%define _stablekver .7
 # -rc0 or .0
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
-%define _buildver   2
+%define _buildver   1
 
 # ==============================================================================
 # Koji build identification
