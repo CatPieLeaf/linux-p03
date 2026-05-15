@@ -34,7 +34,7 @@
 # Kernel version
 # ==============================================================================
 %define _basekver   7.0
-%define _stablekver .7
+%define _stablekver .8
 # -rc0 or .0
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
@@ -169,7 +169,7 @@
 # ==============================================================================
 # NVIDIA open kernel modules
 # ==============================================================================
-%define _build_nv 0
+%define _build_nv 1
 %define _nv_ver   595.71.05
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
@@ -250,9 +250,7 @@ Release: %{_custom_tag}.%{_buildver}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 
-Requires: kernel-core-uname-r        = %{_kver}
-Requires: kernel-modules-core-uname-r = %{_kver}
-Requires: kernel-modules-uname-r     = %{_kver}
+Requires: %{name}-devel-matched = %{_rpmver}
 
 Provides: installonlypkg(kernel)
 Provides: kernel-%{_custom_tag} > 6.12.9-cb1.0%{?_clang_args:.lto}.%{_custom_tag}%{?dist}
@@ -971,16 +969,17 @@ Requires: gcc
 # ==============================================================================
 %package devel-matched
 # ==============================================================================
-Summary: Meta package to install matching core and devel packages for %{name}
+Summary: Meta package to install matching core, modules and devel packages for %{name}
 
 Provides: kernel-devel-matched = %{_rpmver}
 
-Requires: %{name}-core  = %{_rpmver}
-Requires: %{name}-devel = %{_rpmver}
+Requires: %{name}-core    = %{_rpmver}
+Requires: %{name}-modules = %{_rpmver}
+Requires: %{name}-devel   = %{_rpmver}
 
 %description devel-matched
-    This meta package is used to install matching core and devel packages
-    for %{name}.
+    This meta package pulls in kernel-p03-core, kernel-p03-modules and
+    kernel-p03-devel together.
 
 %files devel-matched
 
