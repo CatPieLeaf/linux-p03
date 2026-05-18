@@ -34,7 +34,7 @@
 # Kernel version
 # ==============================================================================
 %define _basekver   7.0
-%define _stablekver .8
+%define _stablekver .9
 # -rc0 or .0
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
@@ -352,7 +352,7 @@ Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main
 Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
-# Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.0-rc2-poc-selector-v2.6.1.patch
+Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.0-rc2-poc-selector-v2.6.1r2.patch
 Patch20: %{_tkg_patches}/0003-glitched-cfs.patch
 Patch21: %{_tkg_patches}/0003-glitched-base.patch
 Patch22: %{_tkg_patches}/0002-clear-patches.patch
@@ -452,7 +452,7 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 %patch -P 16 -p1
 %patch -P 17 -p1
 %patch -P 18 -p1
-# patch -P 19 -p1
+%patch -P 19 -p1
 %patch -P 20 -p1
 %patch -P 21 -p1
 %patch -P 22 -p1
