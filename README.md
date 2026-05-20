@@ -33,6 +33,7 @@
  - OpenRGB Support
  - xConfig and nConfig during build
  - ADIOS I/O Scheduler
+ - Piece-Of-Cake (POC) CPU Selector
  - Dynamic PREEMPT (Lazy by default)
  - Passive intel_pstate
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
@@ -62,6 +63,7 @@ sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
  - ADIOS patches from [Firelzrd](https://github.com/firelzrd/adios)
+ - POC patches from [Firelzrd](https://github.com/firelzrd/poc-selector)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
 
 ---
