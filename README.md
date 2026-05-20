@@ -29,7 +29,7 @@
  - 1000hz tickrate
  - Built with LLVM + O3 + Polly Clang
  - BORE scheduler
- - BBRv3 congestion control and CAKE queue management for the sake of bufferbloat
+ - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
  - xConfig and nConfig during build
  - ADIOS I/O Scheduler

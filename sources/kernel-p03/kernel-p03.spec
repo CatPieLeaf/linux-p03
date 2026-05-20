@@ -39,7 +39,7 @@
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
-%define _buildver   2
+%define _buildver   3
 
 # ==============================================================================
 # Koji build identification
