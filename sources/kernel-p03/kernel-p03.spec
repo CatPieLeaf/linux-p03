@@ -971,6 +971,7 @@ Requires: gcc
 # ==============================================================================
 Summary: Meta package to install matching core, modules and devel packages for %{name}
 
+Provides: installonlypkg(kernel)
 Provides: kernel-devel-matched = %{_rpmver}
 
 Requires: %{name}-core    = %{_rpmver}
