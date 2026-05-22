@@ -64,6 +64,8 @@ sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
  - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
  - ADIOS patches from [Firelzrd](https://github.com/firelzrd/adios)
  - POC patches from [Firelzrd](https://github.com/firelzrd/poc-selector)
+ - Kcompress-Unofficial patches from [Firelzrd](https://github.com/firelzrd/kcompressd-unofficial)
+ - Le9uo patches from [Firelzrd](https://github.com/firelzrd/le9uo)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
 
 ---

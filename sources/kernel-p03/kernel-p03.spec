@@ -39,7 +39,7 @@
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
-%define _buildver   4
+%define _buildver   5
 
 # ==============================================================================
 # Koji build identification
@@ -358,6 +358,9 @@ Patch21: %{_tkg_patches}/0003-glitched-base.patch
 Patch22: %{_tkg_patches}/0002-clear-patches.patch
 Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
+Patch25: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/stable/base/0001-linux7.0-rc4-le9uo-1.15.patch
+Patch26: https://raw.githubusercontent.com/CatPieLeaf/kcompressd-unofficial/refs/heads/main/patches/stable/0001-linux7.0-kcompressd-unofficial-0.5.patch
+Patch27: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
 
 # ==============================================================================
 %description
@@ -458,6 +461,9 @@ Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
 %patch -P 22 -p1
 %patch -P 23 -p1
 %patch -P 24 -p1
+%patch -P 25 -p1
+%patch -P 26 -p1
+%patch -P 27 -p1
 
     # merge with p03 config
     # ./scripts/kconfig/merge_config.sh -m .config {SOURCE3}
