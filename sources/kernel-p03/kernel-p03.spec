@@ -33,25 +33,72 @@
 # ==============================================================================
 # Kernel version
 # ==============================================================================
-%define _basekver   7.0
-%define _stablekver .9
+%define _basekver   7.1
+%define _stablekver .0
 # -rc0 or .0
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
-%define _buildver   5
+%define _buildver   1
 
 # ==============================================================================
 # Koji build identification
 #
-# The Koji SRPM URL cannot be resolved here: COPR generates the SRPM on the
-# builder host where {dist} is always empty, so any global/(shell) that
-# depends on {dist} fires before mock sets the chroot.  Resolution is
-# deferred to prep, which runs inside mock where {dist} is correct.
+# _koji_rc:    0 = stable kernel (no rc)
+#              N = release candidate N  (e.g. 4 → picks from rc4.* builds)
+#
+# _koji_patch: 0 = auto-detect the highest available patch for the chosen
+#                  rc (or stable) series
+#              N = pin to that exact patch number
+#                  (e.g. 33 for kernel-7.1.0-0.rc4.*.33.fc45)
+#
+# When _koji_rc > 0 the Koji release has the form:
+#   0.rcN.{date}g{hash}.{patch}.fc{VER}
+# When _koji_rc = 0 (stable) the release has the form:
+#   {patch}.fc{VER}
+#
+# The fc version is always taken from {dist} resolved inside mock at prep
+# time, so it does not need to be set here.
+#
+# The Koji SRPM URL cannot be resolved at SRPM-generation time on the COPR
+# builder host because {dist} is always empty there.  Resolution is deferred
+# to prep, which runs inside the mock chroot where {dist} is correct.
 # ==============================================================================
+%define _koji_rc    0
+%define _koji_patch 0
+%define _koji_fc    45
+# _koji_fc: 0 = auto from {dist}, N = override (e.g. 45 for fc45)
 
-# Source directory name — matches the tarball inside the Fedora SRPM
-%define _srcdir     linux-%{_tarkver}
+# ------------------------------------------------------------------------------
+# Release prefix derived from the Koji build parameters above.
+# Embeds rc and patch into the custom RPM Release field so that the full
+# kernel uname-r string (e.g. 7.1.0-0.rc4.33.p03.5.fc45.x86_64) is unique
+# and traceable back to the exact upstream build.
+#
+# Resulting Release examples:
+#   stable, auto-patch  →  p03.5.fc44
+#   stable, patch=205   →  205.p03.5.fc44
+#   rc4, auto-patch     →  0.rc4.p03.5.fc45
+#   rc4, patch=33       →  0.rc4.33.p03.5.fc45
+# ------------------------------------------------------------------------------
+%if %{_koji_rc} > 0
+  %if %{_koji_patch} > 0
+    %define _koji_rel_tag 0.rc%{_koji_rc}.%{_koji_patch}.
+  %else
+    %define _koji_rel_tag 0.rc%{_koji_rc}.
+  %endif
+%else
+  %if %{_koji_patch} > 0
+    %define _koji_rel_tag %{_koji_patch}.
+  %else
+    %define _koji_rel_tag %{nil}
+  %endif
+%endif
+
+# Source directory name — always linux-{ver}; the actual tarball directory
+# (which may have an unpredictable name like linux-7.1-rc4-100-g8bc67e4db64a)
+# is renamed to this in prep after extraction.
+%define _srcdir linux-%{_tarkver}
 
 # Derived version strings
 %define _rpmver %{version}-%{release}
@@ -246,7 +293,7 @@
 Name:    kernel-%{_custom_tag}
 Summary: Linux P03
 Version: %{_basekver}%{_stablekver}
-Release: %{_custom_tag}.%{_buildver}%{?dist}
+Release: %{_koji_rel_tag}%{_custom_tag}.%{_buildver}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 
@@ -301,6 +348,7 @@ BuildRequires: gcc-c++
 BuildRequires: ncurses-devel
 BuildRequires: qt5-qtbase-devel
 BuildRequires: libXi-devel
+BuildRequires: koji
 
 # ==============================================================================
 # Sources
@@ -337,30 +385,32 @@ Patch2: %{_cachy_patches}/misc/dkms-clang.patch
 %endif
 
 Patch3: %{_cachy_patches}/misc/0001-acpi-call.patch
-Patch4: https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/stable/linux-7.0-bore/0001-linux7.0-rc2-bore-6.6.3.patch
+Patch4: https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/stable/linux-7.1-bore/0001-linux7.1-rc1-bore-6.6.3.patch
 Patch5: https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch
-Patch6: https://raw.githubusercontent.com/whitehara/kernel-patch-fedora/refs/heads/main/6.19/more-ISA-levels-and-uarches-for-kernel-6.16p.patch
-Patch7: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0017-cgroup-vram.patch
-Patch8: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0016-mm-mmput-async.patch
-Patch9: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0015-mm-libs-grow-down.patch
-Patch10: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0014-sched-ratelimit-yield.patch
-Patch11: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0011-sched-better-idle-balance.patch
-Patch12: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0010-posted-msi-enable-by-default.patch
-Patch13: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0007-tcp-bbr3.patch
-Patch14: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0006-disable-split-lock.patch
-Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0004-mm_lazy_rss_stat.patch
+Patch6: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/more-ISA-levels-and-uarches-for-kernel-7.1p.patch
+Patch7: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0017-cgroup-vram.patch
+Patch8: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0016-mm-mmput-async.patch
+Patch9: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0015-mm-libs-grow-down.patch
+Patch10: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0014-sched-ratelimit-yield.patch
+Patch11: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0011-sched-better-idle-balance.patch
+Patch12: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch
+Patch13: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0007-tcp-bbr3.patch
+Patch14: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch
+Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0004-mm_lazy_rss_stat.patch
 Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
-Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.0-rc2-poc-selector-v2.6.1r2.patch
+Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.1-rc1-poc-selector-v2.6.2r2.patch
 Patch20: %{_tkg_patches}/0003-glitched-cfs.patch
 Patch21: %{_tkg_patches}/0003-glitched-base.patch
 Patch22: %{_tkg_patches}/0002-clear-patches.patch
 Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch25: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/stable/base/0001-linux7.0-rc4-le9uo-1.15.patch
-Patch26: https://raw.githubusercontent.com/CatPieLeaf/kcompressd-unofficial/refs/heads/main/patches/stable/0001-linux7.0-kcompressd-unofficial-0.5.patch
+Patch25: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/stable/base/0001-linux7.1-rc1-le9uo-1.15.patch
+Patch26: https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/refs/heads/main/patches/stable/0001-linux7.1-rc1-kcompressd-unofficial-0.5.patch
 Patch27: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
+Patch28: https://raw.githubusercontent.com/firelzrd/re-swappiness/refs/heads/main/patches/0001-linux7.1-rc1-Re-swappiness-v1.3.patch
+Patch29: https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch
 
 # ==============================================================================
 %description
@@ -371,38 +421,42 @@ Patch27: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_
 # ==============================================================================
 %setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
 
-    # ── Resolve and download the Fedora kernel SRPM from Koji ─────────────────
-    # Runs inside mock where {dist} is correctly set.  Cannot live in a
-    # top-level global because COPR runs SRPM generation on the builder host
-    # where {dist} is always empty.
+    # ── Resolve Koji NVR ───────────────────────────────────────────────────────
     _fedoraver=$(echo '%{?dist}' | sed 's/.*\.fc//')
-    if [ -z "${_fedoraver}" ]; then
-        echo "ERROR: %%{dist} is empty — cannot determine target Fedora version." >&2
-        exit 1
+%if %{_koji_fc} > 0
+    _fedoraver="%{_koji_fc}"
+%endif
+    [ -z "${_fedoraver}" ] && { echo "ERROR: %{dist} is empty — cannot determine Fedora version" >&2; exit 1; }
+
+%if %{_koji_rc} > 0
+    _pattern="kernel-%{_tarkver}-0.rc%{_koji_rc}.*.fc${_fedoraver}"
+    _sortkey=4
+%else
+  %if %{_koji_patch} > 0
+    _pattern="kernel-%{_tarkver}-%{_koji_patch}.fc${_fedoraver}"
+  %else
+    _pattern="kernel-%{_tarkver}-*.fc${_fedoraver}"
+  %endif
+    _sortkey=1
+%endif
+    _nvr=$(koji list-builds --package=kernel --state=COMPLETE --pattern="${_pattern}" --quiet \
+           | awk '{print $1}' | sort -t. -k${_sortkey} -n | tail -1)
+    [ -z "${_nvr}" ] && { echo "ERROR: no Koji build matched: ${_pattern}" >&2; exit 1; }
+    _koji_srpm="${_nvr}.src.rpm"
+
+    # ── Download (cached in SOURCES) ──────────────────────────────────────────
+    if [ -f "%{_sourcedir}/${_koji_srpm}" ]; then
+        cp "%{_sourcedir}/${_koji_srpm}" "%{_builddir}/${_koji_srpm}"
+    else
+        cd %{_builddir} && koji download-build --arch=src "${_nvr}"
+        cp "%{_builddir}/${_koji_srpm}" "%{_sourcedir}/${_koji_srpm}"
     fi
 
-    # Find the highest-numbered release of kernel-{_tarkver} for this Fedora.
-    _koji_rel=$(curl -sfL "https://kojipkgs.fedoraproject.org/packages/kernel/%{_tarkver}/" \
-        | grep -oE "[0-9]+\\.fc${_fedoraver}/" \
-        | sed 's|/||' \
-        | sort -t. -k1 -n \
-        | tail -1)
-    if [ -z "${_koji_rel}" ]; then
-        echo "ERROR: No kernel-%{_tarkver} build for Fedora ${_fedoraver} found in Koji." >&2
-        echo "       The kernel version may not be packaged for this Fedora release yet." >&2
-        exit 1
-    fi
-
-    echo "==> Koji: kernel-%{_tarkver}-${_koji_rel}"
-    _koji_srpm="kernel-%{_tarkver}-${_koji_rel}.src.rpm"
-    _koji_url="https://kojipkgs.fedoraproject.org/packages/kernel/%{_tarkver}/${_koji_rel}/src/${_koji_srpm}"
-    curl -fL --retry 3 -o "%{_builddir}/${_koji_srpm}" "${_koji_url}"
-
-    # ── Extract the SRPM and its upstream tarball ──────────────────────────────
+    # ── Extract ────────────────────────────────────────────────────────────────
     cd %{_builddir}
-    rpm2cpio "${_koji_srpm}" | cpio -idmv
-    # The SRPM contains the upstream tarball — extract it
-    tar xf linux-%{_tarkver}.tar.xz
+    rpm2cpio "${_koji_srpm}" | cpio -idm
+    _tarball=$(ls linux-*.tar.xz)
+    tar xf "${_tarball}" --strip-components=1 -C %{_srcdir}
     cd %{_srcdir}
 
     # cp {SOURCE3} .config
@@ -464,6 +518,8 @@ Patch27: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_
 %patch -P 25 -p1
 %patch -P 26 -p1
 %patch -P 27 -p1
+%patch -P 28 -p1
+%patch -P 29 -p1
 
     # merge with p03 config
     # ./scripts/kconfig/merge_config.sh -m .config {SOURCE3}
