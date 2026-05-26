@@ -217,7 +217,7 @@
 # NVIDIA open kernel modules
 # ==============================================================================
 %define _build_nv 1
-%define _nv_ver   595.71.05
+%define _nv_ver   610.43.02
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
 # ==============================================================================
