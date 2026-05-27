@@ -39,7 +39,7 @@
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
-%define _buildver   2
+%define _buildver   3
 
 # ==============================================================================
 # Koji build identification
@@ -57,17 +57,17 @@
 # When _koji_rc = 0 (stable) the release has the form:
 #   {patch}.fc{VER}
 #
-# The fc version is always taken from {dist} resolved inside mock at prep
+# The fc version is always taken from %{dist} resolved inside mock at prep
 # time, so it does not need to be set here.
 #
 # The Koji SRPM URL cannot be resolved at SRPM-generation time on the COPR
 # builder host because {dist} is always empty there.  Resolution is deferred
-# to prep, which runs inside the mock chroot where {dist} is correct.
+# to %prep, which runs inside the mock chroot where {dist} is correct.
 # ==============================================================================
 %define _koji_rc    0
 %define _koji_patch 0
 %define _koji_fc    45
-# _koji_fc: 0 = auto from {dist}, N = override (e.g. 45 for fc45)
+# _koji_fc: 0 = auto from %{dist}, N = override (e.g. 45 for fc45)
 
 # ------------------------------------------------------------------------------
 # Release prefix derived from the Koji build parameters above.
@@ -97,7 +97,7 @@
 
 # Source directory name — always linux-{ver}; the actual tarball directory
 # (which may have an unpredictable name like linux-7.1-rc4-100-g8bc67e4db64a)
-# is renamed to this in prep after extraction.
+# is renamed to this in %prep after extraction.
 %define _srcdir linux-%{_tarkver}
 
 # Derived version strings
@@ -349,6 +349,7 @@ BuildRequires: ncurses-devel
 BuildRequires: qt5-qtbase-devel
 BuildRequires: libXi-devel
 BuildRequires: koji
+BuildRequires: quilt
 
 # ==============================================================================
 # Sources
@@ -401,16 +402,11 @@ Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
 Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.1-rc1-poc-selector-v2.6.2r2.patch
-Patch20: %{_tkg_patches}/0003-glitched-cfs.patch
-Patch21: %{_tkg_patches}/0003-glitched-base.patch
-Patch22: %{_tkg_patches}/0002-clear-patches.patch
-Patch23: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-Patch24: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch25: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/stable/base/0001-linux7.1-rc1-le9uo-1.15.patch
-Patch26: https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/refs/heads/main/patches/stable/0001-linux7.1-rc1-kcompressd-unofficial-0.5.patch
-Patch27: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
-Patch28: https://raw.githubusercontent.com/firelzrd/re-swappiness/refs/heads/main/patches/0001-linux7.1-rc1-Re-swappiness-v1.3.patch
-Patch29: https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch
+Patch20: %{_tkg_patches}/0003-glitched-base.patch
+Patch21: %{_tkg_patches}/0002-clear-patches.patch
+Patch22: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
+Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/stable/0001-linux7.1-rc1-lru_marie-0.2.2.patch
 
 # ==============================================================================
 %description
@@ -486,40 +482,30 @@ Patch29: https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patc
     %endif
 
 # ------------------------------------------------------------------------------
-# Patch!
+# Patch! (via quilt)
+# Patches are symlinked from SOURCES — no copies.  The series file is built
+# here so each PatchN appears exactly once in the spec.
+# To add a patch: declare PatchN above and append %{PATCHN} to the loop below.
 # ------------------------------------------------------------------------------
+    mkdir -p %{_builddir}/patches
+    export QUILT_PATCHES=%{_builddir}/patches
 
 %if %{_build_clang}
-%patch -P 1 -p1
-%patch -P 2 -p1
+    for p in %{PATCH1} %{PATCH2}; do
+        ln -sf "$p" %{_builddir}/patches/
+        echo $(basename "$p") >> %{_builddir}/patches/series
+    done
 %endif
-%patch -P 3 -p1
-%patch -P 4 -p1
-%patch -P 5 -p1
-%patch -P 6 -p1
-%patch -P 7 -p1
-%patch -P 8 -p1
-%patch -P 9 -p1
-%patch -P 10 -p1
-%patch -P 11 -p1
-%patch -P 12 -p1
-%patch -P 13 -p1
-%patch -P 14 -p1
-%patch -P 15 -p1
-%patch -P 16 -p1
-%patch -P 17 -p1
-%patch -P 18 -p1
-%patch -P 19 -p1
-%patch -P 20 -p1
-%patch -P 21 -p1
-%patch -P 22 -p1
-%patch -P 23 -p1
-%patch -P 24 -p1
-%patch -P 25 -p1
-%patch -P 26 -p1
-%patch -P 27 -p1
-%patch -P 28 -p1
-%patch -P 29 -p1
+    for p in \
+        %{PATCH3}  %{PATCH4}  %{PATCH5}  %{PATCH6}  %{PATCH7}  \
+        %{PATCH8}  %{PATCH9}  %{PATCH10} %{PATCH11} %{PATCH12} \
+        %{PATCH13} %{PATCH14} %{PATCH15} %{PATCH16} %{PATCH17} \
+        %{PATCH18} %{PATCH19} %{PATCH20} %{PATCH21} %{PATCH22} \
+        %{PATCH23} %{PATCH24}; do
+        ln -sf "$p" %{_builddir}/patches/
+        echo $(basename "$p") >> %{_builddir}/patches/series
+    done
+    quilt push -a --fuzz=2
 
     # merge with p03 config
     # ./scripts/kconfig/merge_config.sh -m .config {SOURCE3}
