@@ -145,7 +145,7 @@
 
 # Optimization level — integer.
 #
-#   0 : no -O flag; compiler and Kconfig keep their own defaults
+#   0 : no -O flag; sets Kconfig to CC_OPTIMIZE_FOR_SIZE
 #   2 : -O2 / -Copt-level=2   → Kconfig: CC_OPTIMIZE_FOR_PERFORMANCE
 #   3 : -O3 / -Copt-level=3   → Kconfig: CC_OPTIMIZE_FOR_PERFORMANCE_O3
 #   N : -ON / -Copt-level=N   → Kconfig left at base-config default
@@ -952,14 +952,15 @@ Requires: clang llvm llvm-devel lld
     fi
 
 %posttrans modules
-    rm -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
     /sbin/depmod -a %{_kver}
     if [ ! -e /run/ostree-booted ]; then
         if [ -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver} ]; then
+            rm -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
             echo "Running: dracut -f --kver %{_kver}"
             dracut -f --kver "%{_kver}" || exit $?
         fi
     fi
+    rm -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
 
 %files modules
     %dir %{_kernel_dir}
@@ -1037,6 +1038,7 @@ Requires: %{name}-devel   = %{_rpmver}
 %package nvidia-open
 # ==============================================================================
 Summary: nvidia-open %{_nv_ver} kernel modules for %{name}
+License: MIT AND GPL-2.0-only
 
 Provides: installonlypkg(kernel-module)
 Provides: nvidia-kmod >= %{_nv_ver}
