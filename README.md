@@ -25,6 +25,7 @@
  - Automatic Secureboot Signing (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
+ - LRU-Marie
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3)
  - 1000hz tickrate
  - Built with LLVM + O3 + Polly Clang
@@ -50,8 +51,6 @@ sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check
 sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
 ```
 
-
-
 <div align="center">
   <h1>📑</h1>
   <h4>C R E D I T S</h4>
@@ -67,6 +66,8 @@ sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
  - Kcompress-Unofficial patches from [Firelzrd](https://github.com/firelzrd/kcompressd-unofficial)
  - Le9uo patches from [Firelzrd](https://github.com/firelzrd/le9uo)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
+ - ISA Patches from [graysky2](https://github.com/graysky2/kernel_compiler_patch)
+ - LRU-Marie patches from [Firelzrd](https://github.com/firelzrd/lru_marie)
 
 ---
 
