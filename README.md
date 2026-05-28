@@ -18,6 +18,16 @@
 
 <div align="center">
   <img src=".github/floppy.png" width="80"></img>
+  <h4>W H Y ?</h4>
+</div>
+
+<div align="center">
+  <p><i>Why P03? He is a character defined by obsessive optimization — he takes something already functional and tears it apart, rebuilds it piece by piece, and won't stop until it performs exactly the way he envisions. That's precisely what this kernel is: Fedora's solid, well-tested base, stripped down and reassembled with handpicked patches, a custom scheduler, compiler optimizations, and configurations that the stock kernel would never ship. It's not built for everyone. It's built to be exactly what it needs to be.</i></p>
+</div>
+
+
+<div align="center">
+  <h1>✨</h1>
   <h4>F E A T U R E S</h4>
 </div>
 
@@ -39,17 +49,123 @@
  - Passive intel_pstate
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
 
-<p align="center">For nvidia, install using the command below, since kernel modules are already installed.</p>
+<div align="center">
+  <h1>🔨</h1>
+  <h4>B U I L D I N G</h4>
+</div>
 
-```
-sudo sh ./Nvidia.run --no-kernel-modules --no-dkms --no-nouveau-check
+The [specfile](https://github.com/CatPieLeaf/linux-p03/blob/main/sources/kernel-p03/kernel-p03.spec) is packed with toggles — compiler, LTO mode, optimization level, tickrate, ISA level, Secure Boot, NR_CPUS, and more. Feel free to edit it before building. In particular, setting `_interactive_config 1` launches `xconfig` mid-build so you can tweak every single Kconfig option by hand before compilation starts.
+
+
+> [!NOTE]
+> Building the kernel takes **1–2 hours** depending on your hardware. A full build requires ~10 GB of free disk space. See the RAM tip in step 6 to avoid writing to disk entirely.
+
+### 1 - Prerequisites
+
+Install the RPM development tools if you don't have them yet:
+
+```bash
+sudo dnf install rpmdevtools
 ```
 
-<p align="center">Tip: build the whole kernel in your RAM to save SSD health with the command below (10gb ram required)</p>
+### 2 - Initialize the rpmbuild tree
 
+This creates the standard `~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}` folder structure. Only needed once.
+
+```bash
+rpmdev-setuptree
 ```
-sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
+
+### 3 - Download and place the spec file
+
+```bash
+wget https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/kernel-p03/kernel-p03.spec -O ~/rpmbuild/SPECS/kernel-p03.spec
 ```
+
+### 4 - Install all build dependencies
+
+Reads every `BuildRequires` from the spec and installs them automatically:
+
+```bash
+sudo dnf builddep ~/rpmbuild/SPECS/kernel-p03.spec
+```
+
+### 5 - Download sources and patches
+
+Downloads all URLs listed as `Source:` and `Patch:` entries into `~/rpmbuild/SOURCES/`.
+The Fedora kernel SRPM itself is fetched automatically from Koji during the build — no extra step needed.
+
+```bash
+spectool -g -R ~/rpmbuild/SPECS/kernel-p03.spec
+```
+
+### 6 - Build
+
+```bash
+rpmbuild -bb ~/rpmbuild/SPECS/kernel-p03.spec
+```
+
+Output RPMs land in `~/rpmbuild/RPMS/x86_64/`. Install them with:
+
+```bash
+sudo dnf install ~/rpmbuild/RPMS/x86_64/kernel-p03-*.rpm
+```
+
+> [!TIP]
+> Build in RAM to save SSD health (requires ~10 GB of free RAM). Run this **before** step 6:
+> ```bash
+> sudo mount -t tmpfs -o size=10G tmpfs ~/rpmbuild/BUILD
+> ```
+
+<div align="center">
+  <h1>📦</h1>
+  <h4>I N S T A L L A T I O N</h4>
+</div>
+
+Pre-built packages are available on [COPR](https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/) — no need to build from source unless you want a custom configuration.
+
+## 🔵 F E D O R A  -  W O R K S T A T I O N
+
+```bash
+sudo dnf copr enable catpieleaf/kernel-p03
+sudo dnf install kernel-p03
+```
+> [!WARNING]
+> Run immediately after installation if using Secure Boot:
+> ```bash
+> sudo mokutil --import /etc/kernel/certs/p03-kernel/mok.der
+> ```
+
+## ⚪ F E D O R A  -  S I L V E R B L U E
+
+```bash
+sudo wget https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/repo/fedora-$(rpm -E %fedora)/catpieleaf-kernel-p03-$(rpm -E %fedora).repo -O /etc/yum.repos.d/catpieleaf-kernel-p03.repo
+```
+
+```bash
+sudo rpm-ostree override remove kernel kernel-core kernel-modules kernel-modules-core kernel-modules-extra --install kernel-p03
+sudo systemctl reboot
+```
+> [!WARNING]
+> Run immediately after installation if using Secure Boot:
+> ```bash
+> sudo mokutil --import /etc/kernel/certs/p03-kernel/mok.der
+> ```
+
+## 🟢 N V I D I A
+
+```bash
+sudo dnf install kernel-p03-nvidia-open
+dnf info kernel-p03-nvidia-open
+```
+
+After installation, download and install the [NVIDIA driver](https://www.nvidia.com/en-us/drivers/unix/) matching the version shown by `dnf info` above.
+
+> [!WARNING]
+> Always install the NVIDIA driver with the flags below, otherwise it will try to build its own kernel modules and conflict with the ones already installed.
+> ```bash
+> sudo sh ./NVIDIA-Linux-x86_64-*.run --no-kernel-modules --no-dkms --no-nouveau-check
+> ```
 
 <div align="center">
   <h1>📑</h1>
