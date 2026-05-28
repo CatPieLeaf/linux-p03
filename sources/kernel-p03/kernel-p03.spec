@@ -1052,6 +1052,27 @@ Conflicts: akmod-nvidia
     This package provides nvidia-open %{_nv_ver} kernel modules for %{name}.
 
 %post nvidia-open
+    _NV_URL="https://download.nvidia.com/XFree86/Linux-x86_64/%{_nv_ver}/NVIDIA-Linux-x86_64-%{_nv_ver}.run"
+    echo ""
+    echo "======================================================================"
+    echo " !!!   NVIDIA USERSPACE DRIVER REQUIRED   !!!"
+    echo "======================================================================"
+    echo " This package ships ONLY the open kernel modules."
+    echo " You MUST install the matching NVIDIA userspace driver (%{_nv_ver})"
+    echo " separately."
+    echo " "
+    echo " DO NOT use dnf/rpm to install nvidia drivers — they will pull in"
+    echo " conflicting kernel modules."
+    echo " Use the official .run installer with the flags below."
+    echo " "
+    echo " Download:"
+    echo "   wget ${_NV_URL}"
+    echo " "
+    echo " Install:"
+    echo "   sudo sh ./NVIDIA-Linux-x86_64-${_nv_ver}.run --no-kernel-modules --no-dkms --no-nouveau-check"
+    echo " "
+    echo "======================================================================"
+
     /sbin/depmod -a %{_kver}
     mkdir -p %{_localstatedir}/lib/rpm-state/%{name}
     touch %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
