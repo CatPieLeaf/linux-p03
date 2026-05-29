@@ -39,53 +39,52 @@
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _tag        %{_tarkver}
 %define _custom_tag   p03
-%define _buildver   3
+%define _buildver   4
 
 # ==============================================================================
 # Koji build identification
 #
 # _koji_rc:    0 = stable kernel (no rc)
-#              N = release candidate N  (e.g. 4 → picks from rc4.* builds)
+#              N = release candidate N (e.g. 4 → rc4 builds)
 #
-# _koji_patch: 0 = auto-detect the highest available patch for the chosen
-#                  rc (or stable) series
+# _koji_patch: 0 = select the highest available build for the chosen series
 #              N = pin to that exact patch number
 #                  (e.g. 33 for kernel-7.1.0-0.rc4.*.33.fc45)
 #
-# When _koji_rc > 0 the Koji release has the form:
-#   0.rcN.{date}g{hash}.{patch}.fc{VER}
-# When _koji_rc = 0 (stable) the release has the form:
-#   {patch}.fc{VER}
+# Build selection in prep now uses version sort on the full NVR:
+#   sort -V keeps rc5 > rc0, compares date stamps naturally, and lets a
+#   stable build like 201.fc44 win over any rc automatically.
 #
-# The fc version is always taken from %{dist} resolved inside mock at prep
+# The fc version is always taken from {dist} resolved inside mock at prep
 # time, so it does not need to be set here.
 #
 # The Koji SRPM URL cannot be resolved at SRPM-generation time on the COPR
 # builder host because {dist} is always empty there.  Resolution is deferred
-# to %prep, which runs inside the mock chroot where {dist} is correct.
+# to prep, which runs inside the mock chroot where {dist} is correct.
 # ==============================================================================
-%define _koji_rc    0
-%define _koji_patch 0
+%define _koji_rc    5
+%define _koji_patch 38
 %define _koji_fc    45
-# _koji_fc: 0 = auto from %{dist}, N = override (e.g. 45 for fc45)
+# _koji_fc: 0 = auto from {dist}, N = override (e.g. 45 for fc45)
 
 # ------------------------------------------------------------------------------
 # Release prefix derived from the Koji build parameters above.
 # Embeds rc and patch into the custom RPM Release field so that the full
-# kernel uname-r string (e.g. 7.1.0-0.rc4.33.p03.5.fc45.x86_64) is unique
+# kernel uname-r string (e.g. 7.1.0-33.rc4.p03.5.fc45.x86_64) is unique
 # and traceable back to the exact upstream build.
 #
-# Resulting Release examples:
+# Resulting Release — kernel packages:
 #   stable, auto-patch  →  p03.5.fc44
 #   stable, patch=205   →  205.p03.5.fc44
-#   rc4, auto-patch     →  0.rc4.p03.5.fc45
-#   rc4, patch=33       →  0.rc4.33.p03.5.fc45
+#   rc4, auto-patch     →  rc4.p03.5.fc45
+#   rc4, patch=33       →  33.rc4.p03.5.fc45
+#
 # ------------------------------------------------------------------------------
 %if %{_koji_rc} > 0
   %if %{_koji_patch} > 0
-    %define _koji_rel_tag 0.rc%{_koji_rc}.%{_koji_patch}.
+    %define _koji_rel_tag %{_koji_patch}.rc%{_koji_rc}.
   %else
-    %define _koji_rel_tag 0.rc%{_koji_rc}.
+    %define _koji_rel_tag rc%{_koji_rc}.
   %endif
 %else
   %if %{_koji_patch} > 0
@@ -97,7 +96,7 @@
 
 # Source directory name — always linux-{ver}; the actual tarball directory
 # (which may have an unpredictable name like linux-7.1-rc4-100-g8bc67e4db64a)
-# is renamed to this in %prep after extraction.
+# is renamed to this in prep after extraction.
 %define _srcdir linux-%{_tarkver}
 
 # Derived version strings
@@ -406,7 +405,7 @@ Patch20: %{_tkg_patches}/0003-glitched-base.patch
 Patch21: %{_tkg_patches}/0002-clear-patches.patch
 Patch22: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/stable/0001-linux7.1-rc1-lru_marie-0.2.2.patch
+Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.2.7.patch
 
 # ==============================================================================
 %description
@@ -426,17 +425,16 @@ Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/pa
 
 %if %{_koji_rc} > 0
     _pattern="kernel-%{_tarkver}-0.rc%{_koji_rc}.*.fc${_fedoraver}"
-    _sortkey=4
 %else
   %if %{_koji_patch} > 0
     _pattern="kernel-%{_tarkver}-%{_koji_patch}.fc${_fedoraver}"
   %else
     _pattern="kernel-%{_tarkver}-*.fc${_fedoraver}"
   %endif
-    _sortkey=1
 %endif
     _nvr=$(koji list-builds --package=kernel --state=COMPLETE --pattern="${_pattern}" --quiet \
-           | awk '{print $1}' | sort -t. -k${_sortkey} -n | tail -1)
+           | awk '{print $1}' \
+           | sort -V | tail -1)
     [ -z "${_nvr}" ] && { echo "ERROR: no Koji build matched: ${_pattern}" >&2; exit 1; }
     _koji_srpm="${_nvr}.src.rpm"
 
