@@ -124,6 +124,14 @@ sudo dnf install ~/rpmbuild/RPMS/x86_64/kernel-p03-*.rpm
 
 Pre-built packages are available on [COPR](https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/) — no need to build from source unless you want a custom configuration.
 
+> [!WARNING]
+> ## ⚙️ C P U  -  S U P P O R T
+>
+> ```
+> /lib64/ld-linux-x86-64.so.2 --help | grep "(supported, searched)"
+> ```
+> If it does not detect x86_64_v3 support, do not install the default kernel. Otherwise, you will end up with a non-functioning operating system! You should install the gcc x86_64 v2 kernel by running `sudo dnf install kernel-p03-gcc`
+
 ## 🔵 F E D O R A  -  W O R K S T A T I O N
 
 ```bash
