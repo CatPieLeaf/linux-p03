@@ -127,6 +127,11 @@
   %define _static_nvr kernel-%{_tarkver}-%{_static_koji_release}
 %endif
 
+%if %{_build_gcc}
+    %define _gccreltag .gcc
+    %define _gccpacktag -gcc
+%endif
+
 # ==============================================================================
 # Version strings
 # ==============================================================================
@@ -195,10 +200,10 @@
 # ==============================================================================
 # Package metadata
 # ==============================================================================
-Name:    kernel-%{_custom_tag}
+Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
 Version: %{_basekver}%{_stablekver}
-Release: %{_koji_rel_tag}%{_custom_tag}.%{_buildver}%{?dist}
+Release: %{_koji_rel_tag}%{_custom_tag}%{?_gccreltag}.%{_buildver}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 
@@ -206,9 +211,9 @@ Requires: %{name}-core    = %{_rpmver}
 Requires: %{name}-modules = %{_rpmver}
 
 Provides: installonlypkg(kernel)
-Provides: kernel-%{_custom_tag} > 6.12.9-cb1.0%{?_clang_args:.lto}.%{_custom_tag}%{?dist}
+Provides: kernel-%{_custom_tag}%{?_gccpacktag} > 6.12.9-cb1.0%{?_clang_args:.lto}.%{_custom_tag}%{?dist}
 
-Obsoletes: kernel-%{_custom_tag} <= 6.12.9-cb1.0.lto.%{_custom_tag}%{?dist}
+Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} <= 6.12.9-cb1.0.lto.%{_custom_tag}%{?dist}
 
 # ==============================================================================
 # Build dependencies
