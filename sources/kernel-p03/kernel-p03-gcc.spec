@@ -42,12 +42,12 @@
 %endif
 
 # Compiler: set exactly one to 1. Setting both or neither aborts the build.
-%define _build_clang 1
-%define _build_gcc   0
+%define _build_clang 0
+%define _build_gcc   1
 
 # LTO: set at most one to 1.
-%define _build_lto 1
-%define _lto_thin  1
+%define _build_lto 0
+%define _lto_thin  0
 %define _lto_full  0
 
 # Optimization level: 0=size, 2=O2, 3=O3, other=default
@@ -61,16 +61,16 @@
 %define _hz_tick 1000
 
 # x86_64 ISA level: 1-4. Invalid value falls back to x86_64_v3.
-%define _x86_64_lvl 3
+%define _x86_64_lvl 2
 
 # Minimal kernel via modprobed.db (CI only, not for production).
 %define _build_minimal 0
 
-%define _build_generic 0
+%define _build_generic 1
 %define _interactive_config 0
 
 # NR_CPUS: 1 = set from _nr_cpus (defaults to nproc), 0 = use kernel default.
-%define _set_nr_cpus 1
+%define _set_nr_cpus 0
 %define _nr_cpus     %(nproc)
 
 # NVIDIA open kernel modules.
@@ -131,7 +131,7 @@
 # Version strings
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
-%define _custom_tag p03
+%define _custom_tag p03.gcc
 %define _buildver   5
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
