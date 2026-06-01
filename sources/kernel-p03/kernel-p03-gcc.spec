@@ -87,8 +87,8 @@
 
 %define _basekver   7.1
 %define _stablekver .0
-%define _rel        5
-%define _koji_patch 38
+%define _rel        6
+%define _koji_patch 40
 %define _koji_fc    45
 
 # Build mode:
@@ -137,7 +137,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   5
+%define _buildver   1
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -311,7 +311,7 @@ Patch20: %{_tkg_patches}/0003-glitched-base.patch
 Patch21: %{_tkg_patches}/0002-clear-patches.patch
 Patch22: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.2.7.patch
+Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.2.9.patch
 
 # ==============================================================================
 %description
