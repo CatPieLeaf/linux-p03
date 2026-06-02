@@ -137,7 +137,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   1
+%define _buildver   2
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -311,7 +311,10 @@ Patch20: %{_tkg_patches}/0003-glitched-base.patch
 Patch21: %{_tkg_patches}/0002-clear-patches.patch
 Patch22: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.2.9.patch
+Patch24: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/stable/base/0001-linux7.1-rc1-le9uo-1.15.patch
+Patch25: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
+Patch26: https://raw.githubusercontent.com/firelzrd/re-swappiness/refs/heads/main/patches/0001-linux7.1-rc1-Re-swappiness-v1.3.patch
+Patch27: https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/refs/heads/main/patches/stable/0001-linux7.1-rc1-kcompressd-unofficial-0.5.patch
 
 # ==============================================================================
 %description
@@ -395,7 +398,7 @@ Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/pa
         %{PATCH8}  %{PATCH9}  %{PATCH10} %{PATCH11} %{PATCH12} \
         %{PATCH13} %{PATCH14} %{PATCH15} %{PATCH16} %{PATCH17} \
         %{PATCH18} %{PATCH19} %{PATCH20} %{PATCH21} %{PATCH22} \
-        %{PATCH23} %{PATCH24}; do
+        %{PATCH23} %{PATCH24} %{PATCH25} %{PATCH26} %{PATCH27}; do
         ln -sf "$p" %{_builddir}/patches/
         echo $(basename "$p") >> %{_builddir}/patches/series
     done

@@ -35,7 +35,7 @@
  - Automatic Secureboot Signing (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
- - LRU-Marie
+ - Le9uo, Re-swappiness and kcompressd-unofficial
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3)
  - 1000hz tickrate
  - Built with LLVM + O3 + Polly Clang
@@ -191,7 +191,9 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Le9uo patches from [Firelzrd](https://github.com/firelzrd/le9uo)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
  - ISA Patches from [graysky2](https://github.com/graysky2/kernel_compiler_patch)
- - LRU-Marie patches from [Firelzrd](https://github.com/firelzrd/lru_marie)
+ - Kcompressd-unofficial patches from [Firelzrd](https://github.com/firelzrd/kcompressd-unofficial/)
+ - Re-swappiness patches from [Firelzrd](https://github.com/firelzrd/re-swappiness)
+ - Le9uo patches from [Firelzrd](https://github.com/firelzrd/le9uo)
 
 ---
 
