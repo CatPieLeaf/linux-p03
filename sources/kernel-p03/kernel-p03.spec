@@ -66,11 +66,11 @@
 # Minimal kernel via modprobed.db (CI only, not for production).
 %define _build_minimal 0
 
-%define _build_generic 0
+%define _build_generic 1
 %define _interactive_config 0
 
 # NR_CPUS: 1 = set from _nr_cpus (defaults to nproc), 0 = use kernel default.
-%define _set_nr_cpus 1
+%define _set_nr_cpus 0
 %define _nr_cpus     %(nproc)
 
 # NVIDIA open kernel modules.
@@ -137,7 +137,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   2
+%define _buildver   3
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
