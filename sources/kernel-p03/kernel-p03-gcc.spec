@@ -88,7 +88,7 @@
 %define _basekver   7.1
 %define _stablekver .0
 %define _rel        6
-%define _koji_patch 40
+%define _koji_patch 43
 %define _koji_fc    45
 
 # Build mode:
@@ -137,7 +137,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   3
+%define _buildver   1
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -302,7 +302,7 @@ Patch11: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/
 Patch12: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch
 Patch13: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0007-tcp-bbr3.patch
 Patch14: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch
-Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0004-mm_lazy_rss_stat.patch
+Patch15: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/0004-mm_lazy_rss_stat-kernel7.1.0rc6patch42.patch
 Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
@@ -402,7 +402,7 @@ Patch27: https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/refs/h
         ln -sf "$p" %{_builddir}/patches/
         echo $(basename "$p") >> %{_builddir}/patches/series
     done
-    quilt push -a --fuzz=2
+    quilt push -a --fuzz=2 --leave-rejects
 
     ./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
 
