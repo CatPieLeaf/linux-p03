@@ -58,7 +58,7 @@
 %define _build_secureboot 1
 
 # Tickrate: 100, 250, 300, 500, 600, 750, 1000. Invalid value falls back to 1000.
-%define _hz_tick 1000
+%define _hz_tick 750
 
 # x86_64 ISA level: 1-4. Invalid value falls back to x86_64_v3.
 %define _x86_64_lvl 3
@@ -87,8 +87,8 @@
 
 %define _basekver   7.1
 %define _stablekver .0
-%define _rel        6
-%define _koji_patch 43
+%define _rel        7
+%define _koji_patch 47
 %define _koji_fc    45
 
 # Build mode:
@@ -302,7 +302,7 @@ Patch11: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/
 Patch12: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch
 Patch13: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0007-tcp-bbr3.patch
 Patch14: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch
-Patch15: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/0004-mm_lazy_rss_stat-kernel7.1.0rc6patch42.patch
+Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0004-mm_lazy_rss_stat.patch
 Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
@@ -311,10 +311,8 @@ Patch20: %{_tkg_patches}/0003-glitched-base.patch
 Patch21: %{_tkg_patches}/0002-clear-patches.patch
 Patch22: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
 Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch24: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/stable/base/0001-linux7.1-rc1-le9uo-1.15.patch
-Patch25: https://raw.githubusercontent.com/firelzrd/le9uo/refs/heads/main/le9uo_patches/0002-vm.workingset_protection-On-by-default.patch
-Patch26: https://raw.githubusercontent.com/firelzrd/re-swappiness/refs/heads/main/patches/0001-linux7.1-rc1-Re-swappiness-v1.3.patch
-Patch27: https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/refs/heads/main/patches/stable/0001-linux7.1-rc1-kcompressd-unofficial-0.5.patch
+Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.3.1.patch
+Patch25: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/0003-750hz.patch
 
 # ==============================================================================
 %description
@@ -398,7 +396,7 @@ Patch27: https://raw.githubusercontent.com/firelzrd/kcompressd-unofficial/refs/h
         %{PATCH8}  %{PATCH9}  %{PATCH10} %{PATCH11} %{PATCH12} \
         %{PATCH13} %{PATCH14} %{PATCH15} %{PATCH16} %{PATCH17} \
         %{PATCH18} %{PATCH19} %{PATCH20} %{PATCH21} %{PATCH22} \
-        %{PATCH23} %{PATCH24} %{PATCH25} %{PATCH26} %{PATCH27}; do
+        %{PATCH23} %{PATCH24} %{PATCH25}; do
         ln -sf "$p" %{_builddir}/patches/
         echo $(basename "$p") >> %{_builddir}/patches/series
     done
