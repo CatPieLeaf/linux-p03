@@ -35,7 +35,8 @@
  - Automatic Secureboot Signing (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
- - Le9uo, Re-swappiness and kcompressd-unofficial
+ - LRU-Marie
+ - Nap CPUIdle governor
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3)
  - 1000hz tickrate
  - Built with LLVM + O3 + Polly Clang
@@ -185,15 +186,12 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Patches from [Mauri870's Custom Kernel](https://github.com/mauri870/linux-kernel/)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
- - ADIOS patches from [Firelzrd](https://github.com/firelzrd/adios)
- - POC patches from [Firelzrd](https://github.com/firelzrd/poc-selector)
- - Kcompress-Unofficial patches from [Firelzrd](https://github.com/firelzrd/kcompressd-unofficial)
- - Le9uo patches from [Firelzrd](https://github.com/firelzrd/le9uo)
+ - ADIOS patches from [Firelzrd/adios](https://github.com/firelzrd/adios)
+ - POC patches from [Firelzrd/poc-selector](https://github.com/firelzrd/poc-selector)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
- - ISA Patches from [graysky2](https://github.com/graysky2/kernel_compiler_patch)
- - Kcompressd-unofficial patches from [Firelzrd](https://github.com/firelzrd/kcompressd-unofficial/)
- - Re-swappiness patches from [Firelzrd](https://github.com/firelzrd/re-swappiness)
- - Le9uo patches from [Firelzrd](https://github.com/firelzrd/le9uo)
+ - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
+ - LRU-Marie patches from [Firelzrd/lru_marie](https://github.com/firelzrd/lru_marie)
+ - Nap patches from [Firelzrd/nap](https://github.com/firelzrd/nap)
 
 ---
 

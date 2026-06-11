@@ -88,7 +88,7 @@
 %define _basekver   7.1
 %define _stablekver .0
 %define _rel        7
-%define _koji_patch 47
+%define _koji_patch 49
 %define _koji_fc    45
 
 # Build mode:
@@ -307,12 +307,12 @@ Patch16: %{_tkg_patches}/0014-OpenRGB.patch
 Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
 Patch18: %{_tkg_patches}/0012-misc-additions.patch
 Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.1-rc1-poc-selector-v2.6.2r2.patch
-Patch20: %{_tkg_patches}/0003-glitched-base.patch
-Patch21: %{_tkg_patches}/0002-clear-patches.patch
-Patch22: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch24: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.3.1.patch
-Patch25: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/0003-750hz.patch
+Patch20: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
+Patch21: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
+Patch22: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.3.5.patch
+Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/0003-750hz.patch
+Patch24: %{_cachy_patches}/misc/0001-aufs-7.1-merge-v20260518.patch
+Patch25: https://raw.githubusercontent.com/firelzrd/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.0.patch
 
 # ==============================================================================
 %description
@@ -332,7 +332,11 @@ Patch25: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/
     [ -z "${_fedoraver}" ] && { echo "ERROR: %{dist} is empty — cannot determine Fedora version" >&2; exit 1; }
 
   %if %{_rel} > 0
-    _pattern="kernel-%{_tarkver}-0.rc%{_rel}.*.fc${_fedoraver}"
+    %if %{_koji_patch} > 0
+      _pattern="kernel-%{_tarkver}-0.rc%{_rel}*%{_koji_patch}.fc${_fedoraver}"
+    %else
+      _pattern="kernel-%{_tarkver}-0.rc%{_rel}*.fc${_fedoraver}"
+    %endif
   %else
     %if %{_koji_patch} > 0
       _pattern="kernel-%{_tarkver}-%{_koji_patch}.fc${_fedoraver}"
