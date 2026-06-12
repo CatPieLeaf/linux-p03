@@ -22,7 +22,7 @@
 </div>
 
 <div align="center">
-  <p><i>Why P03? He is a character defined by obsessive optimization — he takes something already functional and tears it apart, rebuilds it piece by piece, and won't stop until it performs exactly the way he envisions. That's precisely what this kernel is: Fedora's solid, well-tested base, stripped down and reassembled with handpicked patches, a custom scheduler, compiler optimizations, and configurations that the stock kernel would never ship. It's not built for everyone. It's built to be exactly what it needs to be.</i></p>
+  <p><i>Why P03? He is a character defined by obsessive optimization — he takes something already functional and tears it apart, rebuilds it piece by piece, and won't stop until it performs exactly the way he envisions. That's precisely what this kernel is: Fedora's solid, well-tested base, stripped down and reassembled with handpicked patches, a custom scheduler, compiler optimizations, and configurations that aren't present on the stock kernel. It's built to be exactly what it needs to be.</i></p>
 </div>
 
 
@@ -32,13 +32,13 @@
 </div>
 
  - Built on top of Fedora Koji Sources with Fedora's baseconfigs
- - Automatic Secureboot Signing (For nvidia drivers too!)
+ - Local Automatic Secureboot Signing and Key generation (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
  - LRU-Marie
  - Nap CPUIdle governor
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3)
- - 1000hz tickrate
+ - 750hz tickrate
  - Built with LLVM + O3 + Polly Clang
  - BORE scheduler
  - BBRv3 congestion control and FQ qdisk
@@ -184,6 +184,7 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - P03 and Inscryption are property of Daniel Mullins Games and Devolver Digital. This kernel is a non-commercial fan project and not affiliated with or endorsed by the original creators.
  - Patches and configuration files from [Linux-TKG](https://github.com/Frogging-Family/linux-tkg)
  - Patches from [Mauri870's Custom Kernel](https://github.com/mauri870/linux-kernel/)
+ - Patches from [babiulep's Custom Kernel](https://github.com/babiulep/my-kernel-patches)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
  - ADIOS patches from [Firelzrd/adios](https://github.com/firelzrd/adios)
