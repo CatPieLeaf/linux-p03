@@ -88,7 +88,7 @@
 %define _basekver   7.1
 %define _stablekver .0
 %define _rel        7
-%define _koji_patch 49
+%define _koji_patch 50
 %define _koji_fc    45
 
 # Build mode:
@@ -300,7 +300,7 @@ Patch9:  https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/
 Patch10: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0014-sched-ratelimit-yield.patch
 Patch11: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0011-sched-better-idle-balance.patch
 Patch12: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch
-Patch13: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0007-tcp-bbr3.patch
+Patch13: https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/12-bbr3.patch
 Patch14: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch
 Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0004-mm_lazy_rss_stat.patch
 Patch16: %{_tkg_patches}/0014-OpenRGB.patch
@@ -315,6 +315,17 @@ Patch24: %{_cachy_patches}/misc/0001-aufs-7.1-merge-v20260518.patch
 Patch25: https://raw.githubusercontent.com/firelzrd/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.0.patch
 
 # ==============================================================================
+# NVIDIA open kernel module patches
+# ==============================================================================
+%if %{_build_nv}
+
+Patch100: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0001-Add-IBT-support.patch
+Patch101: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0002-fix-dsc-correct-RC-parameter-tables-to-match-VESA-DS.patch
+Patch102: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0004-fix-dp-add-Bigscreen-Beyond-VR-headset-to-WAR-databa.patch
+
+%endif
+
+# ==============================================================================
 %description
     The meta package for %{name}.
 
@@ -322,6 +333,23 @@ Patch25: https://raw.githubusercontent.com/firelzrd/nap/refs/heads/main/patches/
 %prep
 # ==============================================================================
 %setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
+
+%if %{_build_nv}
+    # ---- Apply NVIDIA patches ------------------------------------------------
+    # Patches are applied here, before the driver is compiled in %build.
+    # To add a patch: declare PatchNNN above and append %%{PATCHNNN} to the loop.
+    mkdir -p %{_builddir}/nv-patches
+    export QUILT_PATCHES=%{_builddir}/nv-patches
+    for nvp in \
+        %{PATCH100} %{PATCH101} %{PATCH102} \
+        ; do
+        ln -sf "$nvp" %{_builddir}/nv-patches/
+        echo $(basename "$nvp") >> %{_builddir}/nv-patches/series
+    done
+    cd %{_builddir}/%{_nv_pkg}
+    quilt push -a --fuzz=2 --leave-rejects
+    cd %{_builddir}/%{_srcdir}
+%endif
 
 %if %{_koji_dynamic}
     # Dynamic mode: resolve and fetch Fedora kernel SRPM from Koji
