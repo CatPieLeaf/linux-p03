@@ -1,0 +1,14 @@
+Place libraries right below the binary for PIE binaries, this helps code locality
+(and thus performance).
+
+--- linux-5.18.2/fs/binfmt_elf.c~	2022-06-06 06:49:00.000000000 +0000
++++ linux-5.18.2/fs/binfmt_elf.c	2022-08-10 13:53:04.878633166 +0000
+@@ -1297,6 +1297,8 @@
+ 	mm = current->mm;
+ 	mm->end_code = end_code;
+ 	mm->start_code = start_code;
++	if (start_code >= ELF_ET_DYN_BASE)
++		mm->mmap_base = start_code;
+ 	mm->start_data = start_data;
+ 	mm->end_data = end_data;
+ 	mm->start_stack = bprm->p;

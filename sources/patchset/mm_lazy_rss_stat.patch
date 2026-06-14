@@ -1,0 +1,832 @@
+diff --git a/fs/exec.c b/fs/exec.c
+index ba12b4c466f6..9163a7d7b2cd 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -137,7 +137,7 @@ static void acct_arg_size(struct linux_binprm *bprm, unsigned long pages)
+ 		return;
+ 
+ 	bprm->vma_pages = pages;
+-	add_mm_counter(mm, MM_ANONPAGES, diff);
++	add_mm_counter_local(mm, MM_ANONPAGES, diff);
+ }
+ 
+ static struct page *get_arg_page(struct linux_binprm *bprm, unsigned long pos,
+diff --git a/include/linux/lazy_percpu_counter.h b/include/linux/lazy_percpu_counter.h
+new file mode 100644
+index 000000000000..7300b8c33507
+--- /dev/null
++++ b/include/linux/lazy_percpu_counter.h
+@@ -0,0 +1,145 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#include <linux/percpu_counter.h>
++#ifndef _LAZY_PERCPU_COUNTER
++#define _LAZY_PERCPU_COUNTER
++
++/* Lazy percpu counter is a bi-modal distributed counter structure that
++ * starts off as a simple counter and can be upgraded to a full per-cpu
++ * counter when the user considers more non-local updates are likely to
++ * happen more frequently in the future.  It is useful when non-local
++ * updates are rare, but might become more frequent after other
++ * operations.
++ *
++ * - Lazy-mode:
++ *
++ * Local updates are handled with a simple variable write, while
++ * non-local updates are handled through an atomic operation.  Once
++ * non-local updates become more likely to happen in the future, the
++ * user can upgrade the counter, turning it into a normal
++ * per-cpu counter.
++ *
++ * Concurrency safety of 'local' accesses must be guaranteed by the
++ * caller API, either through task-local accesses or by external locks.
++ *
++ * In the initial lazy-mode, read is guaranteed to be exact only when
++ * reading from the local context with lazy_percpu_counter_sum_local.
++ *
++ * - Non-lazy-mode:
++ *   Behaves as a per-cpu counter.
++ */
++
++struct lazy_percpu_counter {
++	struct percpu_counter c;
++};
++
++#define LAZY_INIT_BIAS (1<<0)
++
++static inline s64 add_bias(long val)
++{
++	return (val << 1) | LAZY_INIT_BIAS;
++}
++static inline s64 remove_bias(long val)
++{
++	return val >> 1;
++}
++
++static inline bool lazy_percpu_counter_initialized(struct lazy_percpu_counter *lpc)
++{
++	return !(atomic_long_read(&lpc->c.remote) & LAZY_INIT_BIAS);
++}
++
++static inline void lazy_percpu_counter_init_many(struct lazy_percpu_counter *lpc, int amount,
++					       int nr_counters)
++{
++	for (int i = 0; i < nr_counters; i++) {
++		lpc[i].c.count = amount;
++		atomic_long_set(&lpc[i].c.remote, LAZY_INIT_BIAS);
++		raw_spin_lock_init(&lpc[i].c.lock);
++	}
++}
++
++static inline void lazy_percpu_counter_add_atomic(struct lazy_percpu_counter *lpc, s64 amount)
++{
++	long x = amount << 1;
++	long counter;
++
++	do {
++		counter = atomic_long_read(&lpc->c.remote);
++		if (!(counter & LAZY_INIT_BIAS)) {
++			percpu_counter_add(&lpc->c, amount);
++			return;
++		}
++	} while (atomic_long_cmpxchg_relaxed(&lpc->c.remote, counter, (counter+x)) != counter);
++}
++
++static inline void lazy_percpu_counter_add_fast(struct lazy_percpu_counter *lpc, s64 amount)
++{
++	if (lazy_percpu_counter_initialized(lpc))
++		percpu_counter_add(&lpc->c, amount);
++	else
++		lpc->c.count += amount;
++}
++
++/*
++ * lazy_percpu_counter_sync needs to be protected against concurrent
++ * local updates.
++ */
++static inline s64 lazy_percpu_counter_sum_local(struct lazy_percpu_counter *lpc)
++{
++	if (lazy_percpu_counter_initialized(lpc))
++		return percpu_counter_sum(&lpc->c);
++
++	lazy_percpu_counter_add_atomic(lpc, lpc->c.count);
++	lpc->c.count = 0;
++	return remove_bias(atomic_long_read(&lpc->c.remote));
++}
++
++static inline s64 lazy_percpu_counter_sum(struct lazy_percpu_counter *lpc)
++{
++	if (lazy_percpu_counter_initialized(lpc))
++		return percpu_counter_sum(&lpc->c);
++	return remove_bias(atomic_long_read(&lpc->c.remote)) + lpc->c.count;
++}
++
++static inline s64 lazy_percpu_counter_sum_positive(struct lazy_percpu_counter *lpc)
++{
++	s64 val = lazy_percpu_counter_sum(lpc);
++
++	return (val > 0) ? val : 0;
++}
++
++static inline s64 lazy_percpu_counter_read(struct lazy_percpu_counter *lpc)
++{
++	if (lazy_percpu_counter_initialized(lpc))
++		return percpu_counter_read(&lpc->c);
++	return remove_bias(atomic_long_read(&lpc->c.remote)) + lpc->c.count;
++}
++
++static inline s64 lazy_percpu_counter_read_positive(struct lazy_percpu_counter *lpc)
++{
++	s64 val = lazy_percpu_counter_read(lpc);
++
++	return (val > 0) ? val : 0;
++}
++
++int __lazy_percpu_counter_upgrade_many(struct lazy_percpu_counter *c,
++				       int nr_counters, gfp_t gfp);
++static inline int lazy_percpu_counter_upgrade_many(struct lazy_percpu_counter *c,
++						   int nr_counters, gfp_t gfp)
++{
++	/* Only check the first element, as batches are expected to be
++	 * upgraded together.
++	 */
++	if (!lazy_percpu_counter_initialized(c))
++		return __lazy_percpu_counter_upgrade_many(c, nr_counters, gfp);
++	return 0;
++}
++
++static inline void lazy_percpu_counter_destroy_many(struct lazy_percpu_counter *lpc,
++						    u32 nr_counters)
++{
++	/* Only check the first element, as they must have been initialized together. */
++	if (lazy_percpu_counter_initialized(lpc))
++		percpu_counter_destroy_many((struct percpu_counter *)lpc, nr_counters);
++}
++#endif
+diff --git a/include/linux/mm.h b/include/linux/mm.h
+index fc2acedf0b76..92aef5241576 100644
+--- a/include/linux/mm.h
++++ b/include/linux/mm.h
+@@ -3309,36 +3309,36 @@ static inline bool get_user_page_fast_only(unsigned long addr,
+  */
+ static inline unsigned long get_mm_counter(struct mm_struct *mm, int member)
+ {
+-	return percpu_counter_read_positive(&mm->rss_stat[member]);
++	return lazy_percpu_counter_read_positive(&mm->rss_stat[member]);
+ }
+ 
+ static inline unsigned long get_mm_counter_sum(struct mm_struct *mm, int member)
+ {
+-	return percpu_counter_sum_positive(&mm->rss_stat[member]);
++	return lazy_percpu_counter_sum_positive(&mm->rss_stat[member]);
+ }
+ 
+ void mm_trace_rss_stat(struct mm_struct *mm, int member);
+ 
+-static inline void add_mm_counter(struct mm_struct *mm, int member, long value)
++static inline void add_mm_counter_local(struct mm_struct *mm, int member, long value)
+ {
+-	percpu_counter_add(&mm->rss_stat[member], value);
++	if (READ_ONCE(current->mm) == mm)
++		lazy_percpu_counter_add_fast(&mm->rss_stat[member], value);
++	else
++		lazy_percpu_counter_add_atomic(&mm->rss_stat[member], value);
+ 
+ 	mm_trace_rss_stat(mm, member);
+ }
+-
+-static inline void inc_mm_counter(struct mm_struct *mm, int member)
++static inline void add_mm_counter_other(struct mm_struct *mm, int member, long value)
+ {
+-	percpu_counter_inc(&mm->rss_stat[member]);
++	lazy_percpu_counter_add_atomic(&mm->rss_stat[member], value);
+ 
+ 	mm_trace_rss_stat(mm, member);
+ }
+ 
+-static inline void dec_mm_counter(struct mm_struct *mm, int member)
+-{
+-	percpu_counter_dec(&mm->rss_stat[member]);
+-
+-	mm_trace_rss_stat(mm, member);
+-}
++#define inc_mm_counter_local(mm, member) add_mm_counter_local(mm, member, 1)
++#define dec_mm_counter_local(mm, member) add_mm_counter_local(mm, member, -1)
++#define inc_mm_counter_other(mm, member) add_mm_counter_other(mm, member, 1)
++#define dec_mm_counter_other(mm, member) add_mm_counter_other(mm, member, -1)
+ 
+ /* Optimized variant when folio is already known not to be anon */
+ static inline int mm_counter_file(struct folio *folio)
+diff --git a/include/linux/mm_types.h b/include/linux/mm_types.h
+index a308e2c23b82..a67091029685 100644
+--- a/include/linux/mm_types.h
++++ b/include/linux/mm_types.h
+@@ -18,7 +18,7 @@
+ #include <linux/page-flags-layout.h>
+ #include <linux/workqueue.h>
+ #include <linux/seqlock.h>
+-#include <linux/percpu_counter.h>
++#include <linux/lazy_percpu_counter.h>
+ #include <linux/types.h>
+ #include <linux/rseq_types.h>
+ #include <linux/bitmap.h>
+@@ -1316,7 +1316,7 @@ struct mm_struct {
+ 		unsigned long saved_e_flags;
+ #endif
+ 
+-		struct percpu_counter rss_stat[NR_MM_COUNTERS];
++		struct lazy_percpu_counter rss_stat[NR_MM_COUNTERS];
+ 
+ 		struct linux_binfmt *binfmt;
+ 
+diff --git a/include/linux/percpu_counter.h b/include/linux/percpu_counter.h
+index 3a44dd1e33d2..e6fada9cba44 100644
+--- a/include/linux/percpu_counter.h
++++ b/include/linux/percpu_counter.h
+@@ -25,7 +25,10 @@ struct percpu_counter {
+ #ifdef CONFIG_HOTPLUG_CPU
+ 	struct list_head list;	/* All percpu_counters are on a list */
+ #endif
+-	s32 __percpu *counters;
++	union {
++		s32 __percpu *counters;
++		atomic_long_t remote;
++	};
+ };
+ 
+ extern int percpu_counter_batch;
+diff --git a/include/trace/events/kmem.h b/include/trace/events/kmem.h
+index cd7920c81f85..a784110e1e88 100644
+--- a/include/trace/events/kmem.h
++++ b/include/trace/events/kmem.h
+@@ -448,8 +448,8 @@ TRACE_EVENT(rss_stat,
+ 		 */
+ 		__entry->curr = current->mm == mm && !(current->flags & PF_KTHREAD);
+ 		__entry->member = member;
+-		__entry->size = (percpu_counter_sum_positive(&mm->rss_stat[member])
+-							    << PAGE_SHIFT);
++		__entry->size = (lazy_percpu_counter_sum_positive(&mm->rss_stat[member])
++				 << PAGE_SHIFT);
+ 	),
+ 
+ 	TP_printk("mm_id=%u curr=%d type=%s size=%ldB",
+diff --git a/kernel/events/uprobes.c b/kernel/events/uprobes.c
+index 4084e926e284..4d7f5db65afd 100644
+--- a/kernel/events/uprobes.c
++++ b/kernel/events/uprobes.c
+@@ -447,7 +447,7 @@ static int __uprobe_write(struct vm_area_struct *vma,
+ 	if (!orig_page_is_identical(vma, vaddr, fw->page, &pmd_mappable))
+ 		goto remap;
+ 
+-	dec_mm_counter(vma->vm_mm, MM_ANONPAGES);
++	dec_mm_counter_other(vma->vm_mm, MM_ANONPAGES);
+ 	folio_remove_rmap_pte(folio, fw->page, vma);
+ 	if (!folio_mapped(folio) && folio_test_swapcache(folio) &&
+ 	     folio_trylock(folio)) {
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 7064ffa388d8..1239410d40fb 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -633,7 +633,7 @@ static void check_mm(struct mm_struct *mm)
+ 			 "Please make sure 'struct resident_page_types[]' is updated as well");
+ 
+ 	for (i = 0; i < NR_MM_COUNTERS; i++) {
+-		long x = percpu_counter_sum(&mm->rss_stat[i]);
++		long x = lazy_percpu_counter_sum_local(&mm->rss_stat[i]);
+ 
+ 		if (unlikely(x)) {
+ 			pr_alert("BUG: Bad rss-counter state mm:%p type:%s val:%ld Comm:%s Pid:%d\n",
+@@ -738,7 +738,7 @@ void __mmdrop(struct mm_struct *mm)
+ 	put_user_ns(mm->user_ns);
+ 	mm_pasid_drop(mm);
+ 	mm_destroy_cid(mm);
+-	percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
++	lazy_percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
+ 
+ 	free_mm(mm);
+ }
+@@ -1132,16 +1132,11 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
+ 	if (mm_alloc_cid(mm, p))
+ 		goto fail_cid;
+ 
+-	if (percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
+-				     NR_MM_COUNTERS))
+-		goto fail_pcpu;
+-
++	lazy_percpu_counter_init_many(mm->rss_stat, 0, NR_MM_COUNTERS);
+ 	mm->user_ns = get_user_ns(user_ns);
+ 	lru_gen_init_mm(mm);
+ 	return mm;
+ 
+-fail_pcpu:
+-	mm_destroy_cid(mm);
+ fail_cid:
+ 	destroy_context(mm);
+ fail_nocontext:
+@@ -1584,6 +1579,9 @@ static int copy_mm(u64 clone_flags, struct task_struct *tsk)
+ 		return 0;
+ 
+ 	if (clone_flags & CLONE_VM) {
++		if (lazy_percpu_counter_upgrade_many(oldmm->rss_stat,
++						     NR_MM_COUNTERS, GFP_KERNEL_ACCOUNT))
++			return -ENOMEM;
+ 		mmget(oldmm);
+ 		mm = oldmm;
+ 	} else {
+diff --git a/lib/percpu_counter.c b/lib/percpu_counter.c
+index 2891f94a11c6..0a210496f219 100644
+--- a/lib/percpu_counter.c
++++ b/lib/percpu_counter.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <linux/percpu_counter.h>
++#include <linux/lazy_percpu_counter.h>
+ #include <linux/mutex.h>
+ #include <linux/init.h>
+ #include <linux/cpu.h>
+@@ -185,11 +186,26 @@ s64 __percpu_counter_sum(struct percpu_counter *fbc)
+ }
+ EXPORT_SYMBOL(__percpu_counter_sum);
+ 
++static int cpu_hotplug_add_watchlist(struct percpu_counter *fbc, int nr_counters)
++{
++#ifdef CONFIG_HOTPLUG_CPU
++	unsigned long flags;
++	int i;
++
++	spin_lock_irqsave(&percpu_counters_lock, flags);
++	for (i = 0; i < nr_counters; i++) {
++		INIT_LIST_HEAD(&fbc[i].list);
++		list_add(&fbc[i].list, &percpu_counters);
++	}
++	spin_unlock_irqrestore(&percpu_counters_lock, flags);
++#endif
++	return 0;
++}
++
+ int __percpu_counter_init_many(struct percpu_counter *fbc, s64 amount,
+ 			       gfp_t gfp, u32 nr_counters,
+ 			       struct lock_class_key *key)
+ {
+-	unsigned long flags __maybe_unused;
+ 	size_t counter_size;
+ 	s32 __percpu *counters;
+ 	u32 i;
+@@ -205,21 +221,12 @@ int __percpu_counter_init_many(struct percpu_counter *fbc, s64 amount,
+ 	for (i = 0; i < nr_counters; i++) {
+ 		raw_spin_lock_init(&fbc[i].lock);
+ 		lockdep_set_class(&fbc[i].lock, key);
+-#ifdef CONFIG_HOTPLUG_CPU
+-		INIT_LIST_HEAD(&fbc[i].list);
+-#endif
+ 		fbc[i].count = amount;
+ 		fbc[i].counters = (void __percpu *)counters + i * counter_size;
+ 
+ 		debug_percpu_counter_activate(&fbc[i]);
+ 	}
+-
+-#ifdef CONFIG_HOTPLUG_CPU
+-	spin_lock_irqsave(&percpu_counters_lock, flags);
+-	for (i = 0; i < nr_counters; i++)
+-		list_add(&fbc[i].list, &percpu_counters);
+-	spin_unlock_irqrestore(&percpu_counters_lock, flags);
+-#endif
++	cpu_hotplug_add_watchlist(fbc, nr_counters);
+ 	return 0;
+ }
+ EXPORT_SYMBOL(__percpu_counter_init_many);
+@@ -391,6 +398,45 @@ bool __percpu_counter_limited_add(struct percpu_counter *fbc,
+ 	return good;
+ }
+ 
++int __lazy_percpu_counter_upgrade_many(struct lazy_percpu_counter *counters,
++				       int nr_counters, gfp_t gfp)
++{
++	s32 __percpu *pcpu_mem;
++	size_t counter_size;
++
++	counter_size = ALIGN(sizeof(*pcpu_mem), __alignof__(*pcpu_mem));
++	pcpu_mem = __alloc_percpu_gfp(nr_counters * counter_size,
++				      __alignof__(*pcpu_mem), gfp);
++	if (!pcpu_mem)
++		return -ENOMEM;
++
++	for (int i = 0; i < nr_counters; i++) {
++		struct lazy_percpu_counter *lpc = &(counters[i]);
++		s32 __percpu *n_counter;
++		s64 remote = 0;
++
++		WARN_ON(lazy_percpu_counter_initialized(lpc));
++
++		/*
++		 * After the xchg, lazy_percpu_counter behaves as a
++		 * regular percpu counter.
++		 */
++		n_counter = (void __percpu *)pcpu_mem + i * counter_size;
++		remote = (s64) atomic_long_xchg(&lpc->c.remote, (s64)(uintptr_t) n_counter);
++
++		BUG_ON(!(remote & LAZY_INIT_BIAS));
++
++		percpu_counter_add_local(&lpc->c, remove_bias(remote));
++	}
++
++	for (int i = 0; i < nr_counters; i++)
++		debug_percpu_counter_activate(&counters[i].c);
++
++	cpu_hotplug_add_watchlist((struct percpu_counter *) counters, nr_counters);
++
++	return 0;
++}
++
+ static int __init percpu_counter_startup(void)
+ {
+ 	int ret;
+diff --git a/mm/filemap.c b/mm/filemap.c
+index 4e636647100c..5240d51b0b03 100644
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -3938,7 +3938,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
+ 
+ 		folio_unlock(folio);
+ 	} while ((folio = next_uptodate_folio(&xas, mapping, end_pgoff)) != NULL);
+-	add_mm_counter(vma->vm_mm, folio_type, rss);
++	add_mm_counter_other(vma->vm_mm, folio_type, rss);
+ 	pte_unmap_unlock(vmf->pte, vmf->ptl);
+ 	trace_mm_filemap_map_pages(mapping, start_pgoff, end_pgoff);
+ out:
+diff --git a/mm/huge_memory.c b/mm/huge_memory.c
+index 653f2dc03403..5050df8acb12 100644
+--- a/mm/huge_memory.c
++++ b/mm/huge_memory.c
+@@ -1391,7 +1391,7 @@ static void map_anon_folio_pmd_pf(struct folio *folio, pmd_t *pmd,
+ 		struct vm_area_struct *vma, unsigned long haddr)
+ {
+ 	map_anon_folio_pmd_nopf(folio, pmd, vma, haddr);
+-	add_mm_counter(vma->vm_mm, MM_ANONPAGES, HPAGE_PMD_NR);
++	add_mm_counter_local(vma->vm_mm, MM_ANONPAGES, HPAGE_PMD_NR);
+ 	count_vm_event(THP_FAULT_ALLOC);
+ 	count_mthp_stat(HPAGE_PMD_ORDER, MTHP_STAT_ANON_FAULT_ALLOC);
+ 	count_memcg_event_mm(vma->vm_mm, THP_FAULT_ALLOC);
+@@ -1644,7 +1644,7 @@ static vm_fault_t insert_pmd(struct vm_area_struct *vma, unsigned long addr,
+ 		} else {
+ 			folio_get(fop.folio);
+ 			folio_add_file_rmap_pmd(fop.folio, &fop.folio->page, vma);
+-			add_mm_counter(mm, mm_counter_file(fop.folio), HPAGE_PMD_NR);
++			add_mm_counter_local(mm, mm_counter_file(fop.folio), HPAGE_PMD_NR);
+ 		}
+ 	} else {
+ 		entry = pmd_mkhuge(pfn_pmd(fop.pfn, prot));
+@@ -1763,7 +1763,7 @@ static vm_fault_t insert_pud(struct vm_area_struct *vma, unsigned long addr,
+ 
+ 		folio_get(fop.folio);
+ 		folio_add_file_rmap_pud(fop.folio, &fop.folio->page, vma);
+-		add_mm_counter(mm, mm_counter_file(fop.folio), HPAGE_PUD_NR);
++		add_mm_counter_local(mm, mm_counter_file(fop.folio), HPAGE_PUD_NR);
+ 	} else {
+ 		entry = pud_mkhuge(pfn_pud(fop.pfn, prot));
+ 		entry = pud_mkspecial(entry);
+@@ -1915,7 +1915,7 @@ static void copy_huge_non_present_pmd(
+ 					    dst_vma, src_vma);
+ 	}
+ 
+-	add_mm_counter(dst_mm, MM_ANONPAGES, HPAGE_PMD_NR);
++	add_mm_counter_local(dst_mm, MM_ANONPAGES, HPAGE_PMD_NR);
+ 	mm_inc_nr_ptes(dst_mm);
+ 	pgtable_trans_huge_deposit(dst_mm, dst_pmd, pgtable);
+ 	if (!userfaultfd_wp(dst_vma))
+@@ -2009,7 +2009,7 @@ int copy_huge_pmd(struct mm_struct *dst_mm, struct mm_struct *src_mm,
+ 		__split_huge_pmd(src_vma, src_pmd, addr, false);
+ 		return -EAGAIN;
+ 	}
+-	add_mm_counter(dst_mm, MM_ANONPAGES, HPAGE_PMD_NR);
++	add_mm_counter_local(dst_mm, MM_ANONPAGES, HPAGE_PMD_NR);
+ out_zero_page:
+ 	mm_inc_nr_ptes(dst_mm);
+ 	pgtable_trans_huge_deposit(dst_mm, dst_pmd, pgtable);
+@@ -2428,9 +2428,9 @@ static void zap_huge_pmd_folio(struct mm_struct *mm, struct vm_area_struct *vma,
+ 		folio_remove_rmap_pmd(folio, &folio->page, vma);
+ 
+ 	if (folio_test_anon(folio)) {
+-		add_mm_counter(mm, MM_ANONPAGES, -HPAGE_PMD_NR);
++		add_mm_counter_other(mm, MM_ANONPAGES, -HPAGE_PMD_NR);
+ 	} else {
+-		add_mm_counter(mm, mm_counter_file(folio),
++		add_mm_counter_other(mm, mm_counter_file(folio),
+ 			       -HPAGE_PMD_NR);
+ 
+ 		if (is_present && pmd_young(pmdval) &&
+@@ -2980,7 +2980,7 @@ int zap_huge_pud(struct mmu_gather *tlb, struct vm_area_struct *vma,
+ 		page = pud_page(orig_pud);
+ 		folio = page_folio(page);
+ 		folio_remove_rmap_pud(folio, page, vma);
+-		add_mm_counter(tlb->mm, mm_counter_file(folio), -HPAGE_PUD_NR);
++		add_mm_counter_other(tlb->mm, mm_counter_file(folio), -HPAGE_PUD_NR);
+ 
+ 		spin_unlock(ptl);
+ 		tlb_remove_page_size(tlb, page, HPAGE_PUD_SIZE);
+@@ -3015,7 +3015,7 @@ static void __split_huge_pud_locked(struct vm_area_struct *vma, pud_t *pud,
+ 	if (!folio_test_referenced(folio) && pud_young(old_pud))
+ 		folio_set_referenced(folio);
+ 	folio_remove_rmap_pud(folio, page, vma);
+-	add_mm_counter(vma->vm_mm, mm_counter_file(folio),
++	add_mm_counter_local(vma->vm_mm, mm_counter_file(folio),
+ 		-HPAGE_PUD_NR);
+ 	folio_put(folio);
+ }
+@@ -3133,11 +3133,11 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
+ 			if (!folio_test_referenced(folio) && pmd_young(old_pmd))
+ 				folio_set_referenced(folio);
+ 			folio_remove_rmap_pmd(folio, page, vma);
+-			add_mm_counter(mm, mm_counter_file(folio), -HPAGE_PMD_NR);
++			add_mm_counter_local(mm, mm_counter_file(folio), -HPAGE_PMD_NR);
+ 			folio_put(folio);
+ 			return;
+ 		}
+-		add_mm_counter(mm, mm_counter_file(folio), -HPAGE_PMD_NR);
++		add_mm_counter_local(mm, mm_counter_file(folio), -HPAGE_PMD_NR);
+ 		return;
+ 	}
+ 
+@@ -3511,7 +3511,7 @@ static bool __discard_anon_folio_pmd_locked(struct vm_area_struct *vma,
+ 
+ 	folio_remove_rmap_pmd(folio, pmd_page(orig_pmd), vma);
+ 	zap_deposited_table(mm, pmdp);
+-	add_mm_counter(mm, MM_ANONPAGES, -HPAGE_PMD_NR);
++	add_mm_counter_local(mm, MM_ANONPAGES, -HPAGE_PMD_NR);
+ 	if (vma->vm_flags & VM_LOCKED)
+ 		mlock_drain_local();
+ 	folio_put(folio);
+diff --git a/mm/khugepaged.c b/mm/khugepaged.c
+index b8452dbdb043..e12ef7721b62 100644
+--- a/mm/khugepaged.c
++++ b/mm/khugepaged.c
+@@ -702,7 +702,7 @@ static void __collapse_huge_page_copy_succeeded(pte_t *pte,
+ 		nr_ptes = 1;
+ 		pteval = ptep_get(_pte);
+ 		if (pte_none_or_zero(pteval)) {
+-			add_mm_counter(vma->vm_mm, MM_ANONPAGES, 1);
++			add_mm_counter_other(vma->vm_mm, MM_ANONPAGES, 1);
+ 			if (pte_none(pteval))
+ 				continue;
+ 			/*
+@@ -1665,7 +1665,7 @@ static enum scan_result try_collapse_pte_mapped_thp(struct mm_struct *mm, unsign
+ 	/* step 3: set proper refcount and mm_counters. */
+ 	if (nr_mapped_ptes) {
+ 		folio_ref_sub(folio, nr_mapped_ptes);
+-		add_mm_counter(mm, mm_counter_file(folio), -nr_mapped_ptes);
++		add_mm_counter_other(mm, mm_counter_file(folio), -nr_mapped_ptes);
+ 	}
+ 
+ 	/* step 4: remove empty page table */
+@@ -1701,7 +1701,7 @@ static enum scan_result try_collapse_pte_mapped_thp(struct mm_struct *mm, unsign
+ 	if (nr_mapped_ptes) {
+ 		flush_tlb_mm(mm);
+ 		folio_ref_sub(folio, nr_mapped_ptes);
+-		add_mm_counter(mm, mm_counter_file(folio), -nr_mapped_ptes);
++		add_mm_counter_other(mm, mm_counter_file(folio), -nr_mapped_ptes);
+ 	}
+ unlock:
+ 	if (start_pte)
+diff --git a/mm/ksm.c b/mm/ksm.c
+index 7d5b76478f0b..9e6c3abb7fc0 100644
+--- a/mm/ksm.c
++++ b/mm/ksm.c
+@@ -1440,7 +1440,7 @@ static int replace_page(struct vm_area_struct *vma, struct page *page,
+ 		 * will get wrong values in /proc, and a BUG message in dmesg
+ 		 * when tearing down the mm.
+ 		 */
+-		dec_mm_counter(mm, MM_ANONPAGES);
++		dec_mm_counter_other(mm, MM_ANONPAGES);
+ 	}
+ 
+ 	flush_cache_page(vma, addr, pte_pfn(ptep_get(ptep)));
+diff --git a/mm/madvise.c b/mm/madvise.c
+index 69708e953cf5..9467bf42da43 100644
+--- a/mm/madvise.c
++++ b/mm/madvise.c
+@@ -773,7 +773,7 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
+ 	}
+ 
+ 	if (nr_swap)
+-		add_mm_counter(mm, MM_SWAPENTS, nr_swap);
++		add_mm_counter_local(mm, MM_SWAPENTS, nr_swap);
+ 	if (start_pte) {
+ 		lazy_mmu_mode_disable();
+ 		pte_unmap_unlock(start_pte, ptl);
+diff --git a/mm/memory.c b/mm/memory.c
+index 86a973119bd4..1662f27e88ba 100644
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -489,7 +489,7 @@ static inline void add_mm_rss_vec(struct mm_struct *mm, int *rss)
+ 
+ 	for (i = 0; i < NR_MM_COUNTERS; i++)
+ 		if (rss[i])
+-			add_mm_counter(mm, i, rss[i]);
++			add_mm_counter_other(mm, i, rss[i]);
+ }
+ 
+ static bool is_bad_page_map_ratelimited(void)
+@@ -2382,7 +2382,7 @@ static int insert_page_into_pte_locked(struct vm_area_struct *vma, pte_t *pte,
+ 			pteval = pte_mkyoung(pteval);
+ 			pteval = maybe_mkwrite(pte_mkdirty(pteval), vma);
+ 		}
+-		inc_mm_counter(vma->vm_mm, mm_counter_file(folio));
++		inc_mm_counter_local(vma->vm_mm, mm_counter_file(folio));
+ 		folio_add_file_rmap_pte(folio, page, vma);
+ 	}
+ 	set_pte_at(vma->vm_mm, addr, pte, pteval);
+@@ -3912,12 +3912,12 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
+ 	if (likely(vmf->pte && pte_same(ptep_get(vmf->pte), vmf->orig_pte))) {
+ 		if (old_folio) {
+ 			if (!folio_test_anon(old_folio)) {
+-				dec_mm_counter(mm, mm_counter_file(old_folio));
+-				inc_mm_counter(mm, MM_ANONPAGES);
++				dec_mm_counter_other(mm, mm_counter_file(old_folio));
++				inc_mm_counter_other(mm, MM_ANONPAGES);
+ 			}
+ 		} else {
+ 			ksm_might_unmap_zero_page(mm, vmf->orig_pte);
+-			inc_mm_counter(mm, MM_ANONPAGES);
++			inc_mm_counter_other(mm, MM_ANONPAGES);
+ 		}
+ 		flush_cache_page(vma, vmf->address, pte_pfn(vmf->orig_pte));
+ 		entry = folio_mk_pte(new_folio, vma->vm_page_prot);
+@@ -5088,8 +5088,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
+ 	 */
+ 	arch_swap_restore(folio_swap(entry, folio), folio);
+ 
+-	add_mm_counter(vma->vm_mm, MM_ANONPAGES, nr_pages);
+-	add_mm_counter(vma->vm_mm, MM_SWAPENTS, -nr_pages);
++	add_mm_counter_other(vma->vm_mm, MM_ANONPAGES, nr_pages);
++	add_mm_counter_other(vma->vm_mm, MM_SWAPENTS, -nr_pages);
+ 	pte = mk_pte(page, vma->vm_page_prot);
+ 	if (pte_swp_soft_dirty(vmf->orig_pte))
+ 		pte = pte_mksoft_dirty(pte);
+@@ -5325,7 +5325,7 @@ static void map_anon_folio_pte_pf(struct folio *folio, pte_t *pte,
+ 	const unsigned int order = folio_order(folio);
+ 
+ 	map_anon_folio_pte_nopf(folio, pte, vma, addr, uffd_wp);
+-	add_mm_counter(vma->vm_mm, MM_ANONPAGES, 1L << order);
++	add_mm_counter_other(vma->vm_mm, MM_ANONPAGES, 1L << order);
+ 	count_mthp_stat(order, MTHP_STAT_ANON_FAULT_ALLOC);
+ }
+ 
+@@ -5569,7 +5569,7 @@ vm_fault_t do_set_pmd(struct vm_fault *vmf, struct folio *folio, struct page *pa
+ 	if (write)
+ 		entry = maybe_pmd_mkwrite(pmd_mkdirty(entry), vma);
+ 
+-	add_mm_counter(vma->vm_mm, mm_counter_file(folio), HPAGE_PMD_NR);
++	add_mm_counter_other(vma->vm_mm, mm_counter_file(folio), HPAGE_PMD_NR);
+ 	folio_add_file_rmap_pmd(folio, page, vma);
+ 
+ 	/*
+@@ -5772,7 +5772,7 @@ vm_fault_t finish_fault(struct vm_fault *vmf)
+ 	folio_ref_add(folio, nr_pages - 1);
+ 	set_pte_range(vmf, folio, page, nr_pages, addr);
+ 	type = is_cow ? MM_ANONPAGES : mm_counter_file(folio);
+-	add_mm_counter(vma->vm_mm, type, nr_pages);
++	add_mm_counter_other(vma->vm_mm, type, nr_pages);
+ 	ret = 0;
+ 
+ unlock:
+diff --git a/mm/migrate.c b/mm/migrate.c
+index 8a64291ab5b4..ceaf48a04cf6 100644
+--- a/mm/migrate.c
++++ b/mm/migrate.c
+@@ -331,7 +331,7 @@ static bool try_to_map_unused_to_zeropage(struct page_vma_mapped_walk *pvmw,
+ 
+ 	set_pte_at(pvmw->vma->vm_mm, pvmw->address, pvmw->pte, newpte);
+ 
+-	dec_mm_counter(pvmw->vma->vm_mm, mm_counter(folio));
++	dec_mm_counter_other(pvmw->vma->vm_mm, mm_counter(folio));
+ 	return true;
+ }
+ 
+diff --git a/mm/migrate_device.c b/mm/migrate_device.c
+index 19cd14b34114..4821d692bcbc 100644
+--- a/mm/migrate_device.c
++++ b/mm/migrate_device.c
+@@ -866,7 +866,7 @@ static int migrate_vma_insert_huge_pmd_page(struct migrate_vma *migrate,
+ 	} else if (!pmd_none(*pmdp))
+ 		goto unlock_abort;
+ 
+-	add_mm_counter(vma->vm_mm, MM_ANONPAGES, HPAGE_PMD_NR);
++	add_mm_counter_other(vma->vm_mm, MM_ANONPAGES, HPAGE_PMD_NR);
+ 	folio_add_new_anon_rmap(folio, vma, addr, RMAP_EXCLUSIVE);
+ 	if (!folio_is_zone_device(folio))
+ 		folio_add_lru_vma(folio, vma);
+@@ -1075,7 +1075,7 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
+ 	if (userfaultfd_missing(vma))
+ 		goto unlock_abort;
+ 
+-	inc_mm_counter(mm, MM_ANONPAGES);
++	inc_mm_counter_other(mm, MM_ANONPAGES);
+ 	folio_add_new_anon_rmap(folio, vma, addr, RMAP_EXCLUSIVE);
+ 	if (!folio_is_zone_device(folio))
+ 		folio_add_lru_vma(folio, vma);
+diff --git a/mm/rmap.c b/mm/rmap.c
+index 99e1b3dc390b..d7de67fb9fc5 100644
+--- a/mm/rmap.c
++++ b/mm/rmap.c
+@@ -2207,7 +2207,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
+ 				set_huge_pte_at(mm, address, pvmw.pte, pteval,
+ 						hsz);
+ 			} else {
+-				dec_mm_counter(mm, mm_counter(folio));
++				dec_mm_counter_other(mm, mm_counter(folio));
+ 				set_pte_at(mm, address, pvmw.pte, pteval);
+ 			}
+ 		} else if (likely(pte_present(pteval)) && pte_unused(pteval) &&
+@@ -2222,7 +2222,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
+ 			 * migration) will not expect userfaults on already
+ 			 * copied pages.
+ 			 */
+-			dec_mm_counter(mm, mm_counter(folio));
++			dec_mm_counter_other(mm, mm_counter(folio));
+ 		} else if (folio_test_anon(folio)) {
+ 			swp_entry_t entry = page_swap_entry(subpage);
+ 			pte_t swp_pte;
+@@ -2277,7 +2277,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
+ 					set_ptes(mm, address, pvmw.pte, pteval, nr_pages);
+ 					goto walk_abort;
+ 				}
+-				add_mm_counter(mm, MM_ANONPAGES, -nr_pages);
++				add_mm_counter_other(mm, MM_ANONPAGES, -nr_pages);
+ 				goto discard;
+ 			}
+ 
+@@ -2310,8 +2310,8 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
+ 					list_add(&mm->mmlist, &init_mm.mmlist);
+ 				spin_unlock(&mmlist_lock);
+ 			}
+-			dec_mm_counter(mm, MM_ANONPAGES);
+-			inc_mm_counter(mm, MM_SWAPENTS);
++			dec_mm_counter_other(mm, MM_ANONPAGES);
++			inc_mm_counter_other(mm, MM_SWAPENTS);
+ 			swp_pte = swp_entry_to_pte(entry);
+ 			if (anon_exclusive)
+ 				swp_pte = pte_swp_mkexclusive(swp_pte);
+@@ -2339,7 +2339,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
+ 			 *
+ 			 * See Documentation/mm/mmu_notifier.rst
+ 			 */
+-			add_mm_counter(mm, mm_counter_file(folio), -nr_pages);
++			add_mm_counter_other(mm, mm_counter_file(folio), -nr_pages);
+ 		}
+ discard:
+ 		if (unlikely(folio_test_hugetlb(folio))) {
+@@ -2616,7 +2616,7 @@ static bool try_to_migrate_one(struct folio *folio, struct vm_area_struct *vma,
+ 				set_huge_pte_at(mm, address, pvmw.pte, pteval,
+ 						hsz);
+ 			} else {
+-				dec_mm_counter(mm, mm_counter(folio));
++				dec_mm_counter_other(mm, mm_counter(folio));
+ 				set_pte_at(mm, address, pvmw.pte, pteval);
+ 			}
+ 		} else if (likely(pte_present(pteval)) && pte_unused(pteval) &&
+@@ -2631,7 +2631,7 @@ static bool try_to_migrate_one(struct folio *folio, struct vm_area_struct *vma,
+ 			 * migration) will not expect userfaults on already
+ 			 * copied pages.
+ 			 */
+-			dec_mm_counter(mm, mm_counter(folio));
++			dec_mm_counter_other(mm, mm_counter(folio));
+ 		} else {
+ 			swp_entry_t entry;
+ 			pte_t swp_pte;
+diff --git a/mm/swapfile.c b/mm/swapfile.c
+index 9174f1eeffb0..b4774259c591 100644
+--- a/mm/swapfile.c
++++ b/mm/swapfile.c
+@@ -2285,7 +2285,7 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
+ 	if (unlikely(hwpoisoned || !folio_test_uptodate(folio))) {
+ 		swp_entry_t swp_entry;
+ 
+-		dec_mm_counter(vma->vm_mm, MM_SWAPENTS);
++		dec_mm_counter_other(vma->vm_mm, MM_SWAPENTS);
+ 		if (hwpoisoned) {
+ 			swp_entry = make_hwpoison_entry(page);
+ 		} else {
+@@ -2303,8 +2303,8 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
+ 	 */
+ 	arch_swap_restore(folio_swap(entry, folio), folio);
+ 
+-	dec_mm_counter(vma->vm_mm, MM_SWAPENTS);
+-	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
++	dec_mm_counter_other(vma->vm_mm, MM_SWAPENTS);
++	inc_mm_counter_other(vma->vm_mm, MM_ANONPAGES);
+ 	folio_get(folio);
+ 	if (folio == swapcache) {
+ 		rmap_t rmap_flags = RMAP_NONE;
+diff --git a/mm/userfaultfd.c b/mm/userfaultfd.c
+index 80cc8be5725f..ef4eff38c486 100644
+--- a/mm/userfaultfd.c
++++ b/mm/userfaultfd.c
+@@ -395,7 +395,7 @@ static int mfill_atomic_install_pte(pmd_t *dst_pmd,
+ 	 * Must happen after rmap, as mm_counter() checks mapping (via
+ 	 * PageAnon()), which is set by __page_set_anon_rmap().
+ 	 */
+-	inc_mm_counter(dst_mm, mm_counter(folio));
++	inc_mm_counter_other(dst_mm, mm_counter(folio));
+ 
+ 	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
+ 
