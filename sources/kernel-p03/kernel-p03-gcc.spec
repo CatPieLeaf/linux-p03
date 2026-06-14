@@ -265,11 +265,15 @@ BuildRequires: quilt
 # ==============================================================================
 # Sources
 # ==============================================================================
+
+%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
+%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
+
 %if !%{_koji_dynamic}
 Source0: https://koji.fedoraproject.org/packages/kernel/%{_tarkver}/%{_static_koji_release}/src/%{_static_nvr}.src.rpm
 %endif
 
-Source1: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/kconfig/linux-p03.config
+Source1: %{_baseurl}/kconfig/linux-p03.config
 
 %if %{_build_minimal}
 Source2: https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-config/%{_basekver}/minimal-modprobed.db
@@ -279,51 +283,10 @@ Source2: https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linu
 Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%{_nv_pkg}.tar.gz
 %endif
 
-# ==============================================================================
-# Patches
-# ==============================================================================
-%define _cachy_patches https://raw.githubusercontent.com/CachyOS/kernel-patches/master/%{_basekver}
-%define _tkg_patches   https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/%{_basekver}
-
-%if %{_build_clang}
-Patch1: %{_cachy_patches}/misc/0001-clang-polly.patch
-Patch2: %{_cachy_patches}/misc/dkms-clang.patch
-%endif
-
-Patch3:  %{_cachy_patches}/misc/0001-acpi-call.patch
-Patch4:  https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/stable/linux-7.1-bore/0001-linux7.1-rc1-bore-6.6.3.patch
-Patch5:  https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch
-Patch6:  https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/more-ISA-levels-and-uarches-for-kernel-7.1p.patch
-Patch7:  https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0017-cgroup-vram.patch
-Patch8:  https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0016-mm-mmput-async.patch
-Patch9:  https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0015-mm-libs-grow-down.patch
-Patch10: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0014-sched-ratelimit-yield.patch
-Patch11: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0011-sched-better-idle-balance.patch
-Patch12: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch
-Patch13: https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/12-bbr3.patch
-Patch14: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch
-Patch15: https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0004-mm_lazy_rss_stat.patch
-Patch16: %{_tkg_patches}/0014-OpenRGB.patch
-Patch17: %{_tkg_patches}/0013-optimize_harder_O3.patch
-Patch18: %{_tkg_patches}/0012-misc-additions.patch
-Patch19: https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.1-rc1-poc-selector-v2.6.2r2.patch
-Patch20: %{_tkg_patches}/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch
-Patch21: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/total-misplay.patch
-Patch22: https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.3.5.patch
-Patch23: https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources/patches/0003-750hz.patch
-Patch24: %{_cachy_patches}/misc/0001-aufs-7.1-merge-v20260518.patch
-Patch25: https://raw.githubusercontent.com/firelzrd/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.0.patch
-
-# ==============================================================================
-# NVIDIA open kernel module patches
-# ==============================================================================
-%if %{_build_nv}
-
-Patch100: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0001-Add-IBT-support.patch
-Patch101: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0002-fix-dsc-correct-RC-parameter-tables-to-match-VESA-DS.patch
-Patch102: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0004-fix-dp-add-Bigscreen-Beyond-VR-headset-to-WAR-databa.patch
-
-%endif
+# Patches are NOT declared here individually.
+# Everything inside sources/patchset/, sources/patches-p03/, and
+# sources/patchset-nvidia/ in the GitHub repo is applied automatically
+# in %prep. Drop a .patch into SOURCES/local-patches/ for local testing.
 
 # ==============================================================================
 %description
@@ -334,21 +297,31 @@ Patch102: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/ma
 # ==============================================================================
 %setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
 
+    # Download the GitHub repo archive once; used by all patch directories below.
+    _gh_tmp="%{_builddir}/_gh_repo"
+    mkdir -p "${_gh_tmp}"
+    curl -fsSL "%{_gh_archive}" | tar xz -C "${_gh_tmp}" --strip-components=1
+
 %if %{_build_nv}
-    # ---- Apply NVIDIA patches ------------------------------------------------
-    # Patches are applied here, before the driver is compiled in %build.
-    # To add a patch: declare PatchNNN above and append %%{PATCHNNN} to the loop.
+    # ---- Apply NVIDIA patches from sources/patchset-nvidia/ ------------------
     mkdir -p %{_builddir}/nv-patches
     export QUILT_PATCHES=%{_builddir}/nv-patches
-    for nvp in \
-        %{PATCH100} %{PATCH101} %{PATCH102} \
-        ; do
-        ln -sf "$nvp" %{_builddir}/nv-patches/
-        echo $(basename "$nvp") >> %{_builddir}/nv-patches/series
-    done
-    cd %{_builddir}/%{_nv_pkg}
-    quilt push -a --fuzz=2 --leave-rejects
-    cd %{_builddir}/%{_srcdir}
+    while IFS= read -r p; do
+        cp "$p" "%{_builddir}/nv-patches/"
+        echo "$(basename "$p")" >> "%{_builddir}/nv-patches/series"
+    done < <(find "${_gh_tmp}/sources/patchset-nvidia" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+
+    # SOURCES/local-patches-nvidia/* — for local test builds, applied last
+    while IFS= read -r p; do
+        cp "$p" "%{_builddir}/nv-patches/"
+        echo "$(basename "$p")" >> "%{_builddir}/nv-patches/series"
+    done < <(find "%{_sourcedir}/local-patches-nvidia" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+
+    if [ -s "%{_builddir}/nv-patches/series" ]; then
+        cd %{_builddir}/%{_nv_pkg}
+        quilt push -a --fuzz=2 --leave-rejects
+        cd %{_builddir}/%{_srcdir}
+    fi
 %endif
 
 %if %{_koji_dynamic}
@@ -412,27 +385,30 @@ Patch102: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/ma
     fi
 %endif
 
-    # Apply patches via quilt. To add a patch: declare PatchN above and
-    # append {PATCHN} to the loop below.
     mkdir -p %{_builddir}/patches
     export QUILT_PATCHES=%{_builddir}/patches
 
-%if %{_build_clang}
-    for p in %{PATCH1} %{PATCH2}; do
-        ln -sf "$p" %{_builddir}/patches/
-        echo $(basename "$p") >> %{_builddir}/patches/series
-    done
-%endif
-    for p in \
-        %{PATCH3}  %{PATCH4}  %{PATCH5}  %{PATCH6}  %{PATCH7}  \
-        %{PATCH8}  %{PATCH9}  %{PATCH10} %{PATCH11} %{PATCH12} \
-        %{PATCH13} %{PATCH14} %{PATCH15} %{PATCH16} %{PATCH17} \
-        %{PATCH18} %{PATCH19} %{PATCH20} %{PATCH21} %{PATCH22} \
-        %{PATCH23} %{PATCH24} %{PATCH25}; do
-        ln -sf "$p" %{_builddir}/patches/
-        echo $(basename "$p") >> %{_builddir}/patches/series
-    done
-    quilt push -a --fuzz=2 --leave-rejects
+    # sources/patchset/* — every .patch, alphanumeric order
+    while IFS= read -r p; do
+        cp "$p" "%{_builddir}/patches/"
+        echo "$(basename "$p")" >> "%{_builddir}/patches/series"
+    done < <(find "${_gh_tmp}/sources/patchset" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+
+    # sources/patches-p03/* — same, applied after patchset
+    while IFS= read -r p; do
+        cp "$p" "%{_builddir}/patches/"
+        echo "$(basename "$p")" >> "%{_builddir}/patches/series"
+    done < <(find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+
+    # SOURCES/local-patches/* — for local test builds, applied last
+    while IFS= read -r p; do
+        cp "$p" "%{_builddir}/patches/"
+        echo "$(basename "$p")" >> "%{_builddir}/patches/series"
+    done < <(find "%{_sourcedir}/local-patches" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+
+    if [ -s "%{_builddir}/patches/series" ]; then
+        quilt push -a --fuzz=2 --leave-rejects
+    fi
 
     ./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
 
@@ -495,7 +471,7 @@ Patch102: https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/ma
     # Clang LTO
 %if %{_build_clang} && %{_build_lto}
     scripts/config -d CONFIG_LTO_NONE
-    scripts/config -e POLLY_CLANG  # requires clang-polly patch (Patch1)
+    scripts/config -e POLLY_CLANG  # requires clang-polly patch from patchset/
   %if %{_lto_thin}
     scripts/config -e  CONFIG_LTO_CLANG_THIN
     scripts/config -e  LTO_CLANG_THIN
