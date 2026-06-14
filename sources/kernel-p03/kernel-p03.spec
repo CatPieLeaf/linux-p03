@@ -297,6 +297,10 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 # ==============================================================================
 %setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
 
+    # Create local patch drop directories so the user knows they exist.
+    mkdir -p "%{_sourcedir}/local-patches"
+    mkdir -p "%{_sourcedir}/local-patches-nvidia"
+
     # Download the GitHub repo archive once; used by all patch directories below.
     _gh_tmp="%{_builddir}/_gh_repo"
     mkdir -p "${_gh_tmp}"
