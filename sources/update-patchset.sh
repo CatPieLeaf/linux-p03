@@ -86,7 +86,7 @@ p "lru_marie.patch" \
   "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.3.5.patch"
 
 p "aufs.patch" \
-  "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-aufs-7.1-merge-v20260518.patch"
+  "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-aufs-7.1-merge-v20260525.patch"
 
 p "nap.patch" \
   "https://raw.githubusercontent.com/firelzrd/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.0.patch"
@@ -113,6 +113,7 @@ pnv "fix-dp.patch" \
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)"
+SCRIPT_RELPATH="$(realpath --relative-to="${REPO_ROOT}" "${BASH_SOURCE[0]}")"
 
 changed=()
 identical=()
@@ -180,7 +181,7 @@ for f in "${changed[@]}"; do
     commit_body+="$(printf '  %s\n' "${f}")"
 done
 
-git -C "${REPO_ROOT}" add "${changed[@]}"
+git -C "${REPO_ROOT}" add "${changed[@]}" "${SCRIPT_RELPATH}"
 git -C "${REPO_ROOT}" commit -m "chore: update patchset" -m "${commit_body}"
 
 printf '\nCommitted.\n'
