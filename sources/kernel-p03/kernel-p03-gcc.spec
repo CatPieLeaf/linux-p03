@@ -24,7 +24,7 @@
 %define _build_id_links       none
 %define _default_patch_fuzz   2
 %define _disable_source_fetch 0
-%define make_build            make %{?_clang_args} %{?_smp_mflags}
+%define make_build            make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
 %undefine __brp_mangle_shebangs
 %undefine _auto_set_build_flags
 
@@ -137,7 +137,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   1
+%define _buildver   3
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -181,6 +181,7 @@
     %define _krustflags  %{nil}
   %endif
 %else
+  %define _gcc_ld_args LD=ld.bfd
   %if %{_opt_level}
     %define _krustflags  -Copt-level=%{_opt_level}
   %else
