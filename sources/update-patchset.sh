@@ -83,7 +83,7 @@ p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.1/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
 
 p "lru_marie.patch" \
-  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.3.5.patch"
+  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.1-rc5-lru_marie-0.4.0.patch"
 
 p "aufs.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-aufs-7.1-merge-v20260525.patch"
