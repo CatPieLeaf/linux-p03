@@ -24,7 +24,7 @@
 %define _build_id_links       none
 %define _default_patch_fuzz   2
 %define _disable_source_fetch 0
-%define make_build            make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
+%define make_build            LD_PRELOAD=libmimalloc.so.2 make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
 %undefine __brp_mangle_shebangs
 %undefine _auto_set_build_flags
 
@@ -238,6 +238,7 @@ BuildRequires: perl-interpreter
 BuildRequires: python3-devel
 BuildRequires: python3-pyyaml
 BuildRequires: zstd
+BuildRequires: mimalloc
 BuildRequires: bindgen
 BuildRequires: rust
 BuildRequires: rust-src
