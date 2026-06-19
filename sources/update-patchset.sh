@@ -94,6 +94,15 @@ p "nap.patch" \
 p "vhba.patch" \
   "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/04-vhba.patch"
 
+p "mm-filemap-retry.patch" \
+  "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/15-mm-filemap-retry.patch"
+
+p "bfq-mqdeadline-locks.patch" \
+  "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/03-block.patch"
+
+p "zstd.patch" \
+  "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/07-zstd.patch"
+
 # ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
