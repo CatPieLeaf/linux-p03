@@ -37,18 +37,21 @@
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
  - LRU-Marie
  - Nap CPUIdle governor
- - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3)
+ - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and v2)
  - 750hz tickrate
- - Built with LLVM + O3 + Polly Clang
+ - Built with LLVM + O3 + Polly Clang + Mimalloc
  - BORE scheduler
  - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
  - xConfig and nConfig during build
  - ADIOS I/O Scheduler
+ - Handheld support (ROG Ally, Steam Deck, etc)
+ - VHBA and AUFS support
  - Piece-Of-Cake (POC) CPU Selector
  - Dynamic PREEMPT (Lazy by default)
- - Passive intel_pstate
+ - Passive intel_pstate and amd_pstate
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
+ - And many more!
 
 <div align="center">
   <h1>🔨</h1>
