@@ -1,10 +1,10 @@
-From afcdccb9274a7ae97ec2d1f6f966fe17f7e94fd3 Mon Sep 17 00:00:00 2001
+From fbbeb106dcdd904ab218afee402f043667dad302 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Sun, 21 Jun 2026 08:49:37 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.0r3
+Date: Sun, 21 Jun 2026 10:57:24 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.1
 
 ---
- include/linux/lru_marie.h      |  441 ++++++
+ include/linux/lru_marie.h      |  442 ++++++
  include/linux/memcontrol.h     |   26 +-
  include/linux/mm_inline.h      |  103 +-
  include/linux/mmzone.h         |   15 +
@@ -18,19 +18,19 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.0r3
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  205 +++
  mm/lru_marie/compat.h          |  126 ++
- mm/lru_marie/core.c            | 1044 ++++++++++++
+ mm/lru_marie/core.c            | 1144 ++++++++++++++
  mm/lru_marie/pfn_install.h     |   91 ++
  mm/lru_marie/prefetch.h        |  111 ++
- mm/lru_marie/simd.h            |   99 ++
+ mm/lru_marie/simd.h            |  109 ++
  mm/lru_marie/simd_generic.c    |   46 +
- mm/lru_marie/simd_x86.c        |  167 ++
- mm/lru_marie/simd_x86_avx2.S   |  214 +++
+ mm/lru_marie/simd_x86.c        |  271 ++++
+ mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
- mm/lru_marie/simd_x86_sse2.S   |  215 +++
- mm/lru_marie/state.c           | 2710 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  911 +++++++++++
+ mm/lru_marie/simd_x86_sse2.S   |  158 ++
+ mm/lru_marie/state.c           | 2715 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  893 +++++++++++
  mm/lru_marie/version.h         |   22 +
- mm/lru_marie/walker.c          |  917 +++++++++++
+ mm/lru_marie/walker.c          |  947 +++++++++++
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
  mm/mm_init.c                   |    3 +
@@ -40,7 +40,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.0r3
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  347 +++-
- 36 files changed, 8915 insertions(+), 23 deletions(-)
+ 36 files changed, 9028 insertions(+), 23 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -63,10 +63,10 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.0r3
 
 diff --git a/include/linux/lru_marie.h b/include/linux/lru_marie.h
 new file mode 100644
-index 0000000000..10c3deedab
+index 0000000000..58ca95b861
 --- /dev/null
 +++ b/include/linux/lru_marie.h
-@@ -0,0 +1,441 @@
+@@ -0,0 +1,442 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _LINUX_LRU_MARIE_H
 +#define _LINUX_LRU_MARIE_H
@@ -440,6 +440,7 @@ index 0000000000..10c3deedab
 +extern unsigned long marie_walker_interval_low;		/* jiffies */
 +extern unsigned long marie_walker_interval_normal;	/* jiffies */
 +extern unsigned long marie_walker_interval_idle;	/* jiffies */
++extern unsigned int  marie_fpu_batch;			/* PMDs per FPU bracket */
 +
 +#ifdef CONFIG_SWAP
 +/*
@@ -1584,10 +1585,10 @@ index 0000000000..d57fba4742
 +#endif /* _MM_LRU_MARIE_COMPAT_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..c589376bb6
+index 0000000000..2e9b110ec2
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1044 @@
+@@ -0,0 +1,1144 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -2385,6 +2386,7 @@ index 0000000000..c589376bb6
 + * Default 1: walker uses the boot-detected SIMD wrapper (AVX-512F /
 + * AVX2 / SSE2). Writing 0 flips marie_simd_enabled_key so the walker
 + * falls through to a scalar pte_young loop in mm/lru_marie/simd_x86.c.
++ * Also settable at boot via `lru_marie.simd=0|1`.
 + */
 +static ssize_t simd_show(struct kobject *kobj,
 +			 struct kobj_attribute *attr, char *buf)
@@ -2410,6 +2412,33 @@ index 0000000000..c589376bb6
 +}
 +
 +static struct kobj_attribute marie_simd_attr = __ATTR_RW(simd);
++
++/*
++ * SIMD ISA cap: /sys/kernel/mm/lru_marie/simd_max
++ *
++ * Caps how wide a SIMD kernel the walker uses -- "avx512" (default, no cap),
++ * "avx2", or "sse2" -- even on a CPU that supports wider. Writing "avx2"
++ * avoids AVX-512 (e.g. for Intel license-based downclocking; harmless on AMD
++ * Zen 4/5) while keeping AVX2. Orthogonal to the `simd` 0/1 switch, which
++ * still forces the pure-scalar fallback. Also settable at boot via
++ * `lru_marie.simd_max=`.
++ */
++static ssize_t simd_max_show(struct kobject *kobj,
++			     struct kobj_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%s\n", marie_simd_max_name());
++}
++
++static ssize_t simd_max_store(struct kobject *kobj,
++			      struct kobj_attribute *attr,
++			      const char *buf, size_t count)
++{
++	int err = marie_simd_max_store(buf);
++
++	return err ? err : count;
++}
++
++static struct kobj_attribute marie_simd_max_attr = __ATTR_RW(simd_max);
 +#endif /* CONFIG_X86 */
 +
 +/*
@@ -2470,6 +2499,46 @@ index 0000000000..c589376bb6
 +unsigned long marie_walker_interval_normal   = HZ / 4;
 +unsigned long marie_walker_interval_idle     = HZ;
 +
++/*
++ * marie_fpu_batch — consecutive bloom-hit PMDs scanned under a single FPU
++ * bracket (kernel_fpu_begin/end) in the walker before flushing. Default 4
++ * (was 16, the former MARIE_FPU_BATCH compile-time constant; lowered to
++ * keep the preempt-disabled window short on few-core machines, the FPU
++ * amortisation difference being only tens of ps per PTE). Read with
++ * READ_ONCE in marie_fpu_batch_step (walker.c).
++ *
++ * On x86 the FPU bracket disables preemption, so a large batch lengthens
++ * the preempt-disabled window; under sustained reclaim that starves
++ * few-core machines (observed as stutter then freeze on a 2-core part).
++ * Lower it toward 1 to shrink the window — batch=1 keeps the heavy
++ * per-PMD bitmap iteration outside the bracket entirely. The sysfs knob
++ * is x86-only: on other arches the SIMD batch begin/end are no-ops, so
++ * the value has no effect and the variable just stays at its default.
++ */
++unsigned int marie_fpu_batch = 4;
++
++#ifdef CONFIG_X86
++/*
++ * Boot-time seed: "lru_marie.fpu_batch=N" on the kernel command line sets
++ * the initial value before the first walker pass, so a machine can pick its
++ * default without a userspace sysfs write (e.g. a low-core part that wants
++ * a short preempt window can boot with lru_marie.fpu_batch=1). The runtime
++ * /sys/kernel/mm/lru_marie/fpu_batch knob remains the live interface and
++ * overrides this afterwards. Out-of-range values are ignored, keeping the
++ * compiled-in default of 4. x86-only: the FPU bracket is a no-op on other
++ * arches (see the variable comment above).
++ */
++static int __init marie_fpu_batch_setup(char *str)
++{
++	unsigned int v;
++
++	if (str && !kstrtouint(str, 10, &v) && v >= 1 && v <= 1024)
++		marie_fpu_batch = v;
++	return 1;	/* handled (even on bad input — keeps the default) */
++}
++__setup("lru_marie.fpu_batch=", marie_fpu_batch_setup);
++#endif /* CONFIG_X86 */
++
 +static ssize_t gen_growth_threshold_show(struct kobject *kobj,
 +					 struct kobj_attribute *attr,
 +					 char *buf)
@@ -2496,6 +2565,36 @@ index 0000000000..c589376bb6
 +
 +static struct kobj_attribute marie_gen_growth_threshold_attr =
 +	__ATTR_RW(gen_growth_threshold);
++
++#ifdef CONFIG_X86
++static ssize_t fpu_batch_show(struct kobject *kobj,
++			      struct kobj_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%u\n", READ_ONCE(marie_fpu_batch));
++}
++
++static ssize_t fpu_batch_store(struct kobject *kobj,
++			       struct kobj_attribute *attr,
++			       const char *buf, size_t count)
++{
++	unsigned int v;
++	int err = kstrtouint(buf, 10, &v);
++
++	if (err)
++		return err;
++	/*
++	 * 1 = heavy bitmap iteration never runs under the FPU bracket. The
++	 * upper bound is a preempt-window sanity cap, not a correctness
++	 * limit (the walker flushes the bracket per-mm regardless).
++	 */
++	if (v < 1 || v > 1024)
++		return -EINVAL;
++	WRITE_ONCE(marie_fpu_batch, v);
++	return count;
++}
++
++static struct kobj_attribute marie_fpu_batch_attr = __ATTR_RW(fpu_batch);
++#endif /* CONFIG_X86 */
 +
 +/*
 + * Walker-interval knob factory: every stage uses the same show/store
@@ -2550,6 +2649,8 @@ index 0000000000..c589376bb6
 +#endif
 +#ifdef CONFIG_X86
 +	&marie_simd_attr.attr,
++	&marie_simd_max_attr.attr,
++	&marie_fpu_batch_attr.attr,
 +#endif
 +	&marie_gen_growth_threshold_attr.attr,
 +	&marie_walker_interval_critical_ms_attr.attr,
@@ -2848,10 +2949,10 @@ index 0000000000..7f9a2eeb3d
 +#endif /* _MM_LRU_MARIE_PREFETCH_H */
 diff --git a/mm/lru_marie/simd.h b/mm/lru_marie/simd.h
 new file mode 100644
-index 0000000000..146fe5fd3d
+index 0000000000..667b9f3b04
 --- /dev/null
 +++ b/mm/lru_marie/simd.h
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,109 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_SIMD_H
 +#define _MM_LRU_MARIE_SIMD_H
@@ -2898,6 +2999,16 @@ index 0000000000..146fe5fd3d
 +{
 +	return static_branch_likely(&marie_simd_enabled_key);
 +}
++
++/*
++ * SIMD ISA cap (simd_max) accessors. Implemented in simd_x86.c, consumed by
++ * the /sys/kernel/mm/lru_marie/simd_max knob in core.c. marie_simd_max_name()
++ * returns the current cap ("avx512"/"avx2"/"sse2"); marie_simd_max_store()
++ * parses a name, applies it (re-patching the scan static call), and returns 0
++ * or -EINVAL.
++ */
++const char *marie_simd_max_name(void);
++int marie_simd_max_store(const char *buf);
 +#else
 +static inline bool marie_simd_enabled(void) { return false; }
 +#endif
@@ -3005,10 +3116,10 @@ index 0000000000..0045098bfa
 +EXPORT_SYMBOL_GPL(lru_marie_simd_young_pte_mask);
 diff --git a/mm/lru_marie/simd_x86.c b/mm/lru_marie/simd_x86.c
 new file mode 100644
-index 0000000000..b119b6c265
+index 0000000000..44ab48fa0b
 --- /dev/null
 +++ b/mm/lru_marie/simd_x86.c
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,271 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/simd_x86.c -- x86-64 PTE young-bit scan dispatch.
@@ -3030,7 +3141,7 @@ index 0000000000..b119b6c265
 + *   lru_marie_simd_batch_end()     -> kernel_fpu_end()
 + *
 + * FPU is batched across N consecutive PMD scans (the walker picks N --
-+ * see MARIE_FPU_BATCH in mm/lru_marie/walker.c) so the ~100 ns
++ * see marie_fpu_batch in mm/lru_marie/walker.c) so the ~100 ns
 + * kernel_fpu_begin/end overhead is amortised across the batch. Widening
 + * the bracket to whole-pass scope is avoided: the bitmap iteration
 + * (folio_marie_inc_tier per young bit) runs inside the bracket, so a
@@ -3046,8 +3157,11 @@ index 0000000000..b119b6c265
 +
 +#include <linux/init.h>
 +#include <linux/jump_label.h>
++#include <linux/minmax.h>
 +#include <linux/printk.h>
 +#include <linux/static_call.h>
++#include <linux/string.h>
++#include <linux/kstrtox.h>
 +#include <linux/bitmap.h>
 +#include <asm/cpufeature.h>
 +#include <asm/fpu/api.h>
@@ -3115,25 +3229,95 @@ index 0000000000..b119b6c265
 + */
 +DEFINE_STATIC_CALL(marie_simd_scan, lru_marie_simd_scan_sse2);
 +
-+static int __init marie_simd_x86_init(void)
++/*
++ * ISA cap for the SIMD PTE scan. marie_simd_pick() never selects a kernel
++ * wider than this, even on a CPU that supports wider. Default AVX-512 = no cap
++ * (use the widest available). Capping at AVX2 lets a user avoid AVX-512 where
++ * they prefer not to -- e.g. Intel Skylake-X..Cascade-Lake license-based
++ * downclocking (NOT an issue on AMD Zen 4/5, which run AVX-512 at full clock).
++ * Orthogonal to the `simd` 0/1 master switch, which still forces pure scalar.
++ *
++ * Set at boot via `lru_marie.simd_max=avx512|avx2|sse2`, or at runtime via
++ * /sys/kernel/mm/lru_marie/simd_max (re-patches the static call).
++ */
++enum marie_simd_isa {
++	MARIE_SIMD_SSE2 = 0,
++	MARIE_SIMD_AVX2,
++	MARIE_SIMD_AVX512,
++};
++static enum marie_simd_isa marie_simd_max = MARIE_SIMD_AVX512;
++
++/* Widest ISA the CPU supports, clamped to the marie_simd_max cap. */
++static enum marie_simd_isa marie_simd_pick(void)
 +{
-+	/*
-+	 * Pick the widest SIMD impl available at boot. Order matters:
-+	 * AVX-512F first (8 PTEs/iter, simplest .S via VPTESTMQ kmask),
-+	 * then AVX2 (4 PTEs/iter via VPCMPEQQ), then SSE2 (4 PTEs/iter
-+	 * via PSHUFD packing trick -- already the default before this
-+	 * runs, so we do nothing for the SSE2 case).
-+	 */
-+	if (boot_cpu_has(X86_FEATURE_AVX512F)) {
++	enum marie_simd_isa isa = MARIE_SIMD_SSE2;
++
++	if (boot_cpu_has(X86_FEATURE_AVX512F))
++		isa = MARIE_SIMD_AVX512;
++	else if (boot_cpu_has(X86_FEATURE_AVX2))
++		isa = MARIE_SIMD_AVX2;
++
++	return (isa < marie_simd_max) ? isa : marie_simd_max;
++}
++
++/* (Re)patch the static call to the picked kernel and log the choice. */
++static void marie_simd_apply(void)
++{
++	switch (marie_simd_pick()) {
++	case MARIE_SIMD_AVX512:
 +		static_call_update(marie_simd_scan, lru_marie_simd_scan_avx512);
 +		pr_info("SIMD PTE scan: AVX-512F (8 PTEs/iter)\n");
-+	} else if (boot_cpu_has(X86_FEATURE_AVX2)) {
++		break;
++	case MARIE_SIMD_AVX2:
 +		static_call_update(marie_simd_scan, lru_marie_simd_scan_avx2);
 +		pr_info("SIMD PTE scan: AVX2 (4 PTEs/iter)\n");
-+	} else {
-+		/* default already = lru_marie_simd_scan_sse2 */
++		break;
++	default:
++		static_call_update(marie_simd_scan, lru_marie_simd_scan_sse2);
 +		pr_info("SIMD PTE scan: SSE2 (4 PTEs/iter, x86-64 baseline)\n");
++		break;
 +	}
++}
++
++/* Boot param: lru_marie.simd_max=avx512|avx2|sse2 (read before arch_initcall). */
++static int __init marie_simd_max_setup(char *str)
++{
++	if (str && !strcmp(str, "avx512"))
++		marie_simd_max = MARIE_SIMD_AVX512;
++	else if (str && !strcmp(str, "avx2"))
++		marie_simd_max = MARIE_SIMD_AVX2;
++	else if (str && !strcmp(str, "sse2"))
++		marie_simd_max = MARIE_SIMD_SSE2;
++	return 1;
++}
++__setup("lru_marie.simd_max=", marie_simd_max_setup);
++
++/*
++ * Boot param: lru_marie.simd=0|1 -- master SIMD switch. Seeds the
++ * marie_simd_enabled_key state applied in arch_initcall below; 0 forces the
++ * scalar pte_young loop from the very first walker pass, default (key TRUE)
++ * uses the boot-detected SIMD kernel. Orthogonal to simd_max, which only
++ * caps the ISA width. The runtime /sys/kernel/mm/lru_marie/simd knob
++ * overrides this afterwards. Accepts the usual kstrtobool forms (0/1/on/off).
++ */
++static int marie_simd_boot __initdata = -1;	/* -1 unset, 0 off, 1 on */
++static int __init marie_simd_setup(char *str)
++{
++	bool v;
++
++	if (str && !kstrtobool(str, &v))
++		marie_simd_boot = v;
++	return 1;
++}
++__setup("lru_marie.simd=", marie_simd_setup);
++
++static int __init marie_simd_x86_init(void)
++{
++	marie_simd_apply();
++	if (marie_simd_boot == 0)
++		static_branch_disable(&marie_simd_enabled_key);
++	else if (marie_simd_boot == 1)
++		static_branch_enable(&marie_simd_enabled_key);
 +	return 0;
 +}
 +/*
@@ -3141,6 +3325,37 @@ index 0000000000..b119b6c265
 + * static call is patched well before the walker first runs.
 + */
 +arch_initcall(marie_simd_x86_init);
++
++/* ---- simd_max sysfs accessors (used by mm/lru_marie/core.c) ---- */
++
++static const char * const marie_simd_isa_names[] = {
++	[MARIE_SIMD_SSE2]   = "sse2",
++	[MARIE_SIMD_AVX2]   = "avx2",
++	[MARIE_SIMD_AVX512] = "avx512",
++};
++
++const char *marie_simd_max_name(void)
++{
++	return marie_simd_isa_names[marie_simd_max];
++}
++
++int marie_simd_max_store(const char *buf)
++{
++	enum marie_simd_isa v;
++
++	if (sysfs_streq(buf, "avx512"))
++		v = MARIE_SIMD_AVX512;
++	else if (sysfs_streq(buf, "avx2"))
++		v = MARIE_SIMD_AVX2;
++	else if (sysfs_streq(buf, "sse2"))
++		v = MARIE_SIMD_SSE2;
++	else
++		return -EINVAL;
++
++	marie_simd_max = v;
++	marie_simd_apply();
++	return 0;
++}
 +
 +/* ------------------------------------------------------------------ */
 +/* Public API                                                         */
@@ -3178,10 +3393,10 @@ index 0000000000..b119b6c265
 +EXPORT_SYMBOL_GPL(lru_marie_simd_young_pte_mask);
 diff --git a/mm/lru_marie/simd_x86_avx2.S b/mm/lru_marie/simd_x86_avx2.S
 new file mode 100644
-index 0000000000..95242d53b0
+index 0000000000..23c28d3996
 --- /dev/null
 +++ b/mm/lru_marie/simd_x86_avx2.S
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,152 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * mm/lru_marie/simd_x86_avx2.S -- AVX2 PTE young-bit scan for Marie walker.
@@ -3198,19 +3413,19 @@ index 0000000000..95242d53b0
 + * overhead is < 1% of SIMD work).
 + *
 + * Why AVX2 is cleaner than SSE2 here:
-+ *   AVX2 has VPCMPEQQ (256-bit, 64-bit lane equality).  SSE2 only has
-+ *   PCMPEQD (32-bit lanes), which required the PSHUFD low-dword packing
-+ *   trick to avoid false positives from PFN bits landing in the high 32
-+ *   bits of a PTE.  With VPCMPEQQ we compare the full 64-bit PTE against
-+ *   the broadcast mask (1ULL << _PAGE_ACCESSED) directly -- no packing.
++ *   AVX2 has 64-bit-lane ops (VPSLLQ shifts whole 64-bit PTEs), so the
++ *   young bit (bit 5) can be shifted straight into the sign bit (bit 63)
++ *   and read out -- no SSE2-style PSHUFD/SHUFPS low-dword packing to
++ *   dodge the PFN false positive in the high 32 bits, and no broadcast
++ *   mask constant at all.
 + *
-+ *   After VPMOVMSKB, eax holds 32 bits: one 8-bit octet per 64-bit PTE
-+ *   lane (uniformly 0xFF or 0x00 because VPCMPEQQ produces all-1s or
-+ *   all-0s per 64-bit lane).  Extracting bits:
-+ *     testl $0x000000FF, eax  -> PTE 0 young
-+ *     testl $0x0000FF00, eax  -> PTE 1 young
-+ *     testl $0x00FF0000, eax  -> PTE 2 young
-+ *     testl $0xFF000000, eax  -> PTE 3 young
++ *   VPSLLQ $58 moves bit 5 to bit 63; VMOVMSKPD then extracts the sign
++ *   bit of each of the 4 64-bit lanes into eax[3:0] -- one bit per PTE,
++ *   no per-PTE scalar work.  That 4-bit young mask is the GPR-side
++ *   analogue of the AVX-512 kernel's kmovw(k1) and drops straight into
++ *   the accumulator via a single variable shift, replacing both the
++ *   VPAND + VPCMPEQQ compare and the byte-granular VPMOVMSKB + four
++ *   per-PTE test/setnz/shift sequences of earlier revisions.
 + *
 + * Caller (marie_simd_scan_avx2_wrapper in mm/lru_marie/simd_x86.c, added in
 + * Task 5) holds kernel_fpu_begin/end around this.  Do NOT call directly
@@ -3224,20 +3439,18 @@ index 0000000000..95242d53b0
 + *   rsi = unsigned long *bitmap   (8 ulongs = 64 bytes, caller pre-cleared)
 + *
 + * Register usage:
-+ *   ymm0  = young-bit mask broadcast (0x20 x4, 64-bit lanes), constant
-+ *   ymm1  = 4-PTE scratch register
++ *   ymm1  = 4-PTE scratch register (no mask-constant register needed)
 + *   rdi   = current PTE pointer (walks forward by 32 bytes per inner iter)
 + *   rsi   = bitmap base (constant)
 + *   rdx   = outer loop counter (8 -> 0)
 + *   rcx   = inner loop counter (16 -> 0)
-+ *   rax   = vpmovmskb result / bit-extraction scratch
++ *   rax   = vmovmskpd result (4-bit young mask) / shift scratch
 + *   r8    = per-ulong accumulator
-+ *   r9    = bit-position counter within current ulong (0..63)
-+ *   r10   = single-bit scratch for OR-into-accumulator
++ *   r9    = bit-position counter within current ulong (steps of 4, 0..60)
 + *   r11   = bitmap write pointer (rsi + outer*8, updated each outer iter)
 + *
 + * AVX2 only (no AVX-512 zmm/kmask/opmask):
-+ *   vmovdqa, vpand, vpcmpeqq, vpmovmskb, vzeroupper -- all AVX2.
++ *   vmovdqu, vpsllq, vmovmskpd, vzeroupper -- all AVX2.
 + *   All VEX-encoded to avoid SSE/AVX transition penalties.
 + *   VZEROUPPER before RET to clear upper YMM halves for subsequent
 + *   legacy SSE code.
@@ -3247,19 +3460,8 @@ index 0000000000..95242d53b0
 +#include <linux/cfi_types.h>
 +
 +	/* -------------------------------------------------------------- */
-+	/* Read-only data: young-bit mask broadcast                        */
-+	/* -------------------------------------------------------------- */
-+	.section .rodata
-+	.align 32
-+marie_avx2_young_mask:
-+	/* _PAGE_ACCESSED = bit 5 = 0x20, broadcast to 4x 64-bit lanes */
-+	.quad 0x0000000000000020
-+	.quad 0x0000000000000020
-+	.quad 0x0000000000000020
-+	.quad 0x0000000000000020
-+
-+	/* -------------------------------------------------------------- */
-+	/* Text                                                            */
++	/* Text  (no rodata: the young bit is shifted into the sign bit,  */
++	/*        so there is no broadcast mask constant)                  */
 +	/* -------------------------------------------------------------- */
 +	.text
 +
@@ -3270,9 +3472,6 @@ index 0000000000..95242d53b0
 + * bitmap:    rsi -- 8 ulongs (64 bytes), caller pre-cleared
 + */
 +SYM_TYPED_FUNC_START(lru_marie_simd_scan_avx2)
-+
-+	/* Load young-bit mask once; ymm0 is constant for the whole call. */
-+	vmovdqa	marie_avx2_young_mask(%rip), %ymm0
 +
 +	movq	%rsi, %r11		/* r11 = current bitmap word ptr    */
 +	movl	$8, %edx		/* outer counter: 8 ulongs          */
@@ -3297,90 +3496,44 @@ index 0000000000..95242d53b0
 +	addq	$32, %rdi
 +
 +	/*
-+	 * Isolate the young bit (bit 5 = 0x20) in each 64-bit PTE lane.
-+	 * VPAND operates on the full 256-bit register.
++	 * Shift each 64-bit PTE lane left by 58 so the young bit (bit 5 =
++	 * _PAGE_ACCESSED) lands in the sign bit (bit 63).  VMOVMSKPD reads
++	 * only bit 63 of each lane, so this single op replaces VPAND +
++	 * VPCMPEQQ and the broadcast mask entirely.  No PFN false positive
++	 * is possible: only the original bit 5 can reach bit 63 (every other
++	 * bit shifts past it or stays below it).
 +	 */
-+	vpand	%ymm0, %ymm1, %ymm1	/* ymm1 &= 0x20 per 64-bit lane    */
++	vpsllq	$58, %ymm1, %ymm1	/* bit5 -> bit63 (sign) per lane   */
 +
 +	/*
-+	 * VPCMPEQQ: compare each 64-bit lane against ymm0 (the mask 0x20).
-+	 * If the masked PTE equals 0x20 the young bit was set; that lane
-+	 * becomes all-ones (0xFFFFFFFFFFFFFFFF), otherwise all-zeros.
-+	 * No PSHUFD trick needed: 64-bit lanes sidestep the PFN false-
-+	 * positive that afflicts 32-bit PCMPEQD-based comparisons.
-+	 */
-+	vpcmpeqq %ymm0, %ymm1, %ymm1	/* ymm1[i] = young_i ? ~0 : 0      */
-+
-+	/*
-+	 * VPMOVMSKB: extracts the MSB of each byte from the 256-bit ymm1
-+	 * into a 32-bit integer.  Because VPCMPEQQ produces uniform
-+	 * all-ones or all-zeros per 64-bit lane, each 8-byte group in ymm1
-+	 * is either 0xFFFFFFFFFFFFFFFF or 0x0000000000000000.  The
-+	 * resulting eax octet layout:
-+	 *   eax[7:0]   = 0xFF (young) or 0x00  -- PTE 0
-+	 *   eax[15:8]  = 0xFF (young) or 0x00  -- PTE 1
-+	 *   eax[23:16] = 0xFF (young) or 0x00  -- PTE 2
-+	 *   eax[31:24] = 0xFF (young) or 0x00  -- PTE 3
-+	 */
-+	vpmovmskb %ymm1, %eax
-+
-+	/*
-+	 * Extract one result bit per PTE and shift into the accumulator.
++	 * VMOVMSKPD: extract the sign bit (bit 63) of each of the 4 packed
++	 * doubles (64-bit lanes) into eax[3:0] -- exactly one result bit per
++	 * PTE.  VPCMPEQQ set each young lane to all-ones (sign bit 1) and
++	 * each non-young lane to all-zeros (sign bit 0), so eax[3:0] is the
++	 * 4-bit young bitmap directly (bit i = PTE i young).  Writing eax
++	 * (32-bit form) zero-extends, so rax = 0..0 | 4 bits.
 +	 *
-+	 * We use the CL-shift idiom (baseline x86-64): save rcx (inner
-+	 * loop counter) temporarily, use cl for the variable shift, then
-+	 * restore.  For each of the 4 PTEs:
-+	 *   1. test eax against the octet mask
-+	 *   2. setnz -> 1-byte 0 or 1
-+	 *   3. zero-extend to 64 bits
-+	 *   4. shift left by current bit-position (r9) using CL
-+	 *   5. OR into accumulator
-+	 *   6. increment bit-position
++	 * This mirrors the AVX-512 kernel's vptestmq -> kmovw(k1) -> eax: one
++	 * mask extract per SIMD step then a single variable shift.  The old
++	 * byte-granular vpmovmskb forced four per-PTE test/setnz/push-pop/
++	 * shift sequences (512 per call); that scalar tail dominated runtime
++	 * and left this kernel slower than the narrower SSE2 path even though
++	 * its vector compare is cheaper.
 +	 */
++	vmovmskpd %ymm1, %eax		/* eax[3:0] = 4 young bits, one/PTE  */
 +
-+	/* PTE 0: octet [7:0] */
++	/*
++	 * Place the 4-bit group at bit-position r9 (0, 4, 8, ..., 60) in the
++	 * 64-bit accumulator.  CL-shift idiom: borrow rcx (inner counter)
++	 * around the single variable shift, then advance r9 by the 4 PTEs
++	 * consumed this iteration.
++	 */
 +	pushq	%rcx
 +	movq	%r9, %rcx
-+	testl	$0x000000FF, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
++	shlq	%cl, %rax		/* rax <<= bit-position (0..60)      */
++	orq	%rax, %r8		/* accumulate into output ulong      */
 +	popq	%rcx
-+	incq	%r9
-+
-+	/* PTE 1: octet [15:8] */
-+	pushq	%rcx
-+	movq	%r9, %rcx
-+	testl	$0x0000FF00, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
-+	popq	%rcx
-+	incq	%r9
-+
-+	/* PTE 2: octet [23:16] */
-+	pushq	%rcx
-+	movq	%r9, %rcx
-+	testl	$0x00FF0000, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
-+	popq	%rcx
-+	incq	%r9
-+
-+	/* PTE 3: octet [31:24] */
-+	pushq	%rcx
-+	movq	%r9, %rcx
-+	testl	$0xFF000000, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
-+	popq	%rcx
-+	incq	%r9
++	addq	$4, %r9
 +
 +	decl	%ecx
 +	jnz	.Linner_avx2
@@ -3603,10 +3756,10 @@ index 0000000000..18d73dbd8b
 +SYM_FUNC_END(lru_marie_simd_scan_avx512)
 diff --git a/mm/lru_marie/simd_x86_sse2.S b/mm/lru_marie/simd_x86_sse2.S
 new file mode 100644
-index 0000000000..4646ca1b9c
+index 0000000000..71f8eff7e5
 --- /dev/null
 +++ b/mm/lru_marie/simd_x86_sse2.S
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,158 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * mm/lru_marie/simd_x86_sse2.S -- SSE2 PTE young-bit scan for the Marie walker.
@@ -3633,48 +3786,38 @@ index 0000000000..4646ca1b9c
 + *   rsi = unsigned long *bitmap   (8 ulongs = 64 bytes, caller pre-cleared)
 + *
 + * Register usage:
-+ *   xmm0  = young-bit mask broadcast (0x00000020 x4), constant
-+ *   xmm1  = PTE pair 0-1 scratch
++ *   xmm1  = PTE pair 0-1 scratch (no mask-constant register needed)
 + *   xmm2  = PTE pair 2-3 scratch
 + *   rdi   = current PTE pointer (walks forward)
 + *   rsi   = bitmap base (constant)
 + *   rdx   = outer loop counter (8 -> 0)
 + *   rcx   = inner loop counter (16 -> 0)
-+ *   rax   = pmovmskb result / bit-extraction scratch
++ *   rax   = movmskps result (4-bit young mask) / shift scratch
 + *   r8    = per-ulong accumulator
-+ *   r9    = bit-position counter within current ulong (0..63)
-+ *   r10   = single-bit scratch for OR-into-accumulator
++ *   r9    = bit-position counter within current ulong (steps of 4, 0..60)
 + *   r11   = bitmap write pointer (rsi + outer*8, updated each outer iter)
 + *
 + * SSE2 only (x86-64 ABI baseline since AMD Opteron 2003):
-+ *   movdqa, pshufd, punpcklqdq, pand, pcmpeqd, pmovmskb -- all SSE2.
-+ *   No SSE3, SSSE3, SSE4.x, AVX, BMI1/BMI2 instructions used.
++ *   movdqu, pslld -- all SSE2; shufps and movmskps are SSE1 (also
++ *   x86-64 baseline).  No SSE3, SSSE3, SSE4.x, AVX, BMI1/BMI2
++ *   instructions used.
 + *
-+ * PSHUFD low-dword packing: the high 32 bits of an x86-64 PTE carry
-+ * PFN bits 32-51, pkey, and NX.  If a PFN has bit 25 set (PA >= 128 GiB)
-+ * with all other high PFN bits clear, the high dword would equal 0x20
-+ * and produce a false positive against the young-bit mask.  PSHUFD with
-+ * imm8=0x88 extracts only the low dword of each 64-bit PTE lane before
-+ * the comparison, sidestepping this entirely.
++ * SHUFPS low-dword packing: the high 32 bits of an x86-64 PTE carry
++ * PFN bits 32-51, pkey, and NX.  Working the young bit at dword
++ * granularity, SHUFPS with imm8=0x88 gathers only the low dword of all
++ * four 64-bit PTE lanes into one register (a single instruction, vs the
++ * former pshufd x2 + punpcklqdq) so the high-dword PFN bits cannot reach
++ * the young-bit position.  The packing is required because the SSE2 path
++ * shifts at dword granularity (pslld); the AVX2 kernel shifts whole
++ * 64-bit lanes (vpsllq) and needs no packing.
 + */
 +
 +#include <linux/linkage.h>
 +#include <linux/cfi_types.h>
 +
 +	/* -------------------------------------------------------------- */
-+	/* Read-only data: young-bit mask broadcast                        */
-+	/* -------------------------------------------------------------- */
-+	.section .rodata
-+	.align 16
-+marie_sse2_young_mask:
-+	/* _PAGE_ACCESSED = bit 5 = 0x20, broadcast to all four dwords */
-+	.long 0x00000020
-+	.long 0x00000020
-+	.long 0x00000020
-+	.long 0x00000020
-+
-+	/* -------------------------------------------------------------- */
-+	/* Text                                                            */
++	/* Text  (no rodata: the young bit is shifted into the sign bit,  */
++	/*        so there is no broadcast mask constant)                  */
 +	/* -------------------------------------------------------------- */
 +	.text
 +
@@ -3685,9 +3828,6 @@ index 0000000000..4646ca1b9c
 + * bitmap:    rsi -- 8 ulongs (64 bytes), caller pre-cleared
 + */
 +SYM_TYPED_FUNC_START(lru_marie_simd_scan_sse2)
-+
-+	/* Load young-bit mask once; xmm0 is constant for the whole call. */
-+	movdqa	marie_sse2_young_mask(%rip), %xmm0
 +
 +	movq	%rsi, %r11		/* r11 = current bitmap word ptr    */
 +	movl	$8, %edx		/* outer counter: 8 ulongs          */
@@ -3713,102 +3853,58 @@ index 0000000000..4646ca1b9c
 +	addq	$32, %rdi
 +
 +	/*
-+	 * Pack the low 32-bit dword of each PTE into one XMM register.
++	 * Pack the low 32-bit dword of each PTE into one XMM register with a
++	 * single SHUFPS (SSE1).  shufps imm8=0x88 = 0b_10_00_10_00 takes the
++	 * result's low two dwords from the destination (xmm1) and the high
++	 * two from the source (xmm2):
++	 *   dst[0] = xmm1[0] = lo0    (imm[1:0] = 0)
++	 *   dst[1] = xmm1[2] = lo1    (imm[3:2] = 2)
++	 *   dst[2] = xmm2[0] = lo2    (imm[5:4] = 0)
++	 *   dst[3] = xmm2[2] = lo3    (imm[7:6] = 2)
++	 * => xmm1 = { lo3 | lo2 | lo1 | lo0 }
 +	 *
-+	 * pshufd imm8=0x88 = 0b_10_00_10_00:
-+	 *   dst[0] = src[0]  (dword 0 = PTE low bits)
-+	 *   dst[1] = src[2]  (dword 2 = next PTE low bits)
-+	 *   dst[2] = src[0]  (repeated -- don't care)
-+	 *   dst[3] = src[2]  (repeated -- don't care)
-+	 * => xmm1 = { lo1_dup | lo0_dup | lo1 | lo0 }
-+	 *    xmm2 = { lo3_dup | lo2_dup | lo3 | lo2 }
-+	 *
-+	 * punpcklqdq merges the low 64 bits of each:
-+	 *   dst = { xmm2[63:0] | xmm1[63:0] }
-+	 *       = { lo3 | lo2 | lo1 | lo0 }
++	 * Identical dword layout to the former pshufd x2 + punpcklqdq (3
++	 * instructions), folded into one.
 +	 */
-+	pshufd	$0x88, %xmm1, %xmm1
-+	pshufd	$0x88, %xmm2, %xmm2
-+	punpcklqdq %xmm2, %xmm1	/* xmm1 = { lo3, lo2, lo1, lo0 }   */
-+
-+	/* Isolate young bit (bit 5 = 0x20) in each dword. */
-+	pand	%xmm0, %xmm1		/* xmm1 &= 0x20                     */
-+
-+	/* Compare: dword == 0x20 => all-ones (-1), else 0. */
-+	pcmpeqd	%xmm0, %xmm1		/* xmm1[i] = (lo_i & 0x20 == 0x20) ? 0xFFFFFFFF : 0 */
++	shufps	$0x88, %xmm2, %xmm1	/* xmm1 = { lo3, lo2, lo1, lo0 }   */
 +
 +	/*
-+	 * pmovmskb: takes the MSB of each byte => 16-bit result in eax.
-+	 * Since each dword is either 0x00000000 or 0xFFFFFFFF, the four
-+	 * nibbles of eax are uniformly 0x0 or 0xF:
-+	 *   eax[3:0]   = PTE0 young (0xF) or not (0x0)
-+	 *   eax[7:4]   = PTE1
-+	 *   eax[11:8]  = PTE2
-+	 *   eax[15:12] = PTE3
++	 * Shift each dword left by 26 so the young bit (bit 5) lands in the
++	 * sign bit (bit 31).  MOVMSKPS reads only bit 31 of each dword, so
++	 * this single op replaces PAND + PCMPEQD and the broadcast mask.
++	 * The packed lanes are PTE low dwords, so only the original bit 5
++	 * reaches bit 31.
 +	 */
-+	pmovmskb %xmm1, %eax
++	pslld	$26, %xmm1		/* bit5 -> bit31 (sign) per dword   */
 +
 +	/*
-+	 * Extract one result bit per PTE and shift into the accumulator.
++	 * MOVMSKPS: extract the sign bit (bit 31) of each of the 4 packed
++	 * singles (32-bit lanes) into eax[3:0] -- exactly one result bit per
++	 * PTE.  PSLLD put PTE i's young bit in dword i's sign bit, so eax[3:0]
++	 * is the 4-bit young bitmap directly (bit i = PTE i young).  Writing
++	 * eax (32-bit form) zero-extends, so rax = 0..0 | 4 bits.
 +	 *
-+	 * We use the CL-shift idiom (SSE2/baseline x86):
-+	 *   save rcx (inner loop counter) -> r10 temporarily, then restore.
-+	 *
-+	 * For each of the 4 PTEs:
-+	 *   1. test eax against the nibble mask (0x000F, 0x00F0, 0x0F00, 0xF000)
-+	 *   2. setnz -> 1-byte 0 or 1
-+	 *   3. zero-extend to 64 bits
-+	 *   4. shift left by current bit-position (r9) using CL
-+	 *   5. OR into accumulator
-+	 *   6. increment bit-position
-+	 *
-+	 * We push/pop rcx around each variable-CL shift to preserve the
-+	 * inner loop counter.
++	 * MOVMSKPS is SSE1 (x86-64 baseline) -- even more basic than the
++	 * SSE2 PMOVMSKB it replaces.  Mirrors the AVX2 kernel's vmovmskpd:
++	 * one mask extract per SIMD step then a single variable shift,
++	 * instead of the byte-granular PMOVMSKB + four per-PTE
++	 * test/setnz/push-pop/shift sequences (512 per call) whose scalar
++	 * tail dominated this kernel's runtime.
 +	 */
++	movmskps %xmm1, %eax		/* eax[3:0] = 4 young bits, one/PTE  */
 +
-+	/* PTE 0: nibble [3:0] */
++	/*
++	 * Place the 4-bit group at bit-position r9 (0, 4, 8, ..., 60) in the
++	 * 64-bit accumulator.  CL-shift idiom: borrow rcx (inner counter)
++	 * around the single variable shift, then advance r9 by the 4 PTEs
++	 * consumed this iteration.
++	 */
 +	pushq	%rcx
 +	movq	%r9, %rcx
-+	testl	$0x000F, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
++	shlq	%cl, %rax		/* rax <<= bit-position (0..60)      */
++	orq	%rax, %r8		/* accumulate into output ulong      */
 +	popq	%rcx
-+	incq	%r9
-+
-+	/* PTE 1: nibble [7:4] */
-+	pushq	%rcx
-+	movq	%r9, %rcx
-+	testl	$0x00F0, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
-+	popq	%rcx
-+	incq	%r9
-+
-+	/* PTE 2: nibble [11:8] */
-+	pushq	%rcx
-+	movq	%r9, %rcx
-+	testl	$0x0F00, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
-+	popq	%rcx
-+	incq	%r9
-+
-+	/* PTE 3: nibble [15:12] */
-+	pushq	%rcx
-+	movq	%r9, %rcx
-+	testl	$0xF000, %eax
-+	setnz	%r10b
-+	movzbq	%r10b, %r10
-+	shlq	%cl, %r10
-+	orq	%r10, %r8
-+	popq	%rcx
-+	incq	%r9
++	addq	$4, %r9
 +
 +	decl	%ecx
 +	jnz	.Linner
@@ -3824,10 +3920,10 @@ index 0000000000..4646ca1b9c
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..87c3dee10d
+index 0000000000..b02239c792
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2710 @@
+@@ -0,0 +1,2715 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -4910,24 +5006,25 @@ index 0000000000..87c3dee10d
 + * early exit avoids the CAS round-trip when the folio cannot be
 + * promoted further.
 + */
-+void marie_state_inc_tier(unsigned long pfn)
++/*
++ * __marie_state_inc_tier - tier bump on the per-PFN byte from an
++ * already-read state byte @cur. The caller guarantees pfn <
++ * marie_state_size.
++ *
++ * folio_mark_accessed() reaches the wrappers below from the fault /
++ * pagecache-hit path WITHOUT lru_lock, racing the lock-free reclaim
++ * isolate (marie_state_drop_pfn) and the lru_lock-held install publish.
++ * All three RMW the same non-atomic state byte, so a plain READ/WRITE_ONCE
++ * loses updates -- e.g. resurrecting a TRACKED bit drop_pfn just cleared.
++ * Commit with try_cmpxchg; a concurrent writer forces a reload + recheck
++ * (so a stale @cur seed only costs one extra loop iteration), and if
++ * drop_pfn cleared TRACKED we bail.
++ */
++static void __marie_state_inc_tier(unsigned long pfn, u8 cur)
 +{
-+	u8 cur, new, t, type, gen, head = 0, old_gen, new_tier = 0;
++	u8 new, t, type, gen, head = 0, old_gen, new_tier = 0;
 +	bool roll;
 +
-+	if (pfn >= marie_state_size)
-+		return;
-+
-+	/*
-+	 * folio_mark_accessed() runs this from the fault / pagecache-hit path
-+	 * WITHOUT lru_lock, racing the lock-free reclaim isolate
-+	 * (marie_state_drop_pfn) and the lru_lock-held install publish. All
-+	 * three RMW the same non-atomic state byte, so a plain READ/WRITE_ONCE
-+	 * loses updates -- e.g. resurrecting a TRACKED bit drop_pfn just
-+	 * cleared. Commit the byte with try_cmpxchg; a concurrent writer forces
-+	 * a reload + recheck, and if drop_pfn cleared TRACKED we bail.
-+	 */
-+	cur = READ_ONCE(marie_state[pfn]);
 +	do {
 +		if (!(cur & MARIE_PFN_TRACKED))
 +			return;
@@ -4966,7 +5063,26 @@ index 0000000000..87c3dee10d
 +		marie_gen_occ_inc(head, type);
 +	}
 +}
++
++void marie_state_inc_tier(unsigned long pfn)
++{
++	if (pfn >= marie_state_size)
++		return;
++	__marie_state_inc_tier(pfn, READ_ONCE(marie_state[pfn]));
++}
 +EXPORT_SYMBOL_GPL(marie_state_inc_tier);
++
++/*
++ * marie_state_inc_tier_seeded - tier bump when the caller already holds the
++ * state byte and has bounds-checked @pfn (the walker, which gated on the
++ * TRACKED bit just before clearing the young bit). Skips the redundant
++ * reload + bound check; the cmpxchg loop still self-corrects @cur.
++ */
++void marie_state_inc_tier_seeded(unsigned long pfn, u8 cur)
++{
++	__marie_state_inc_tier(pfn, cur);
++}
++EXPORT_SYMBOL_GPL(marie_state_inc_tier_seeded);
 +
 +/*
 + * --------------------------------------------------------------------
@@ -6457,21 +6573,6 @@ index 0000000000..87c3dee10d
 +}
 +EXPORT_SYMBOL_GPL(lru_marie_free_page_hook);
 +
-+enum marie_tier_inc_result marie_tier_inc(struct folio *folio)
-+{
-+	/*
-+	 * The saturated promote is folded into marie_state_inc_tier
-+	 * itself: when current tier == MAX, the helper invokes
-+	 * marie_state_move_to_gen(pfn, head, 0). The walker tier path
-+	 * is a single per-PFN write here.
-+	 *
-+	 * Return value is preserved for ABI symmetry but the single
-+	 * caller (walker.c marie_walk_pmd_range) discards it.
-+	 */
-+	marie_state_inc_tier(folio_pfn(folio));
-+	return MARIE_TIER_INC_OK;
-+}
-+
 +/*
 + * marie_del_folio_locked - lru_marie_del_folio body.
 + *
@@ -6540,10 +6641,10 @@ index 0000000000..87c3dee10d
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..2362677d1c
+index 0000000000..b2e9c9c754
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,911 @@
+@@ -0,0 +1,893 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -6939,6 +7040,13 @@ index 0000000000..2362677d1c
 +void marie_state_inc_tier(unsigned long pfn);
 +
 +/*
++ * marie_state_inc_tier_seeded - tier bump from an already-read state byte.
++ * Walker-only fast path: the caller has bounds-checked @pfn and read the
++ * byte for the TRACKED gate, so this skips the reload. See state.c.
++ */
++void marie_state_inc_tier_seeded(unsigned long pfn, u8 cur);
++
++/*
 + * marie_state_move_to_gen - relocate a tracked PFN to (@target_gen,
 + * @target_tier) in the per-PFN byte, with matched bitmap / occupied
 + * counter updates on both source and destination (gen, type) planes.
@@ -7249,31 +7357,6 @@ index 0000000000..2362677d1c
 +bool marie_del_folio_locked(struct folio *folio);
 +
 +/*
-+ * Walker hot-path tier promotion result codes. Kept for ABI; the
-+ * current implementation always returns MARIE_TIER_INC_OK because
-+ * marie_state_inc_tier handles saturation in-place (synchronous
-+ * move-to-head_gen). The walker discards the return value.
-+ */
-+enum marie_tier_inc_result {
-+	MARIE_TIER_INC_OK = 0,
-+	MARIE_TIER_INC_SATURATED,	/* reserved, no longer produced */
-+	MARIE_TIER_INC_FAILED,		/* reserved, no longer produced */
-+};
-+
-+/**
-+ * marie_tier_inc - walker-side hot path: bump @folio's tier.
-+ * @folio: subject folio (must be Marie-tracked or the call is a no-op)
-+ *
-+ * Thin wrapper around marie_state_inc_tier(folio_pfn(folio)). The
-+ * per-PFN saturate path is synchronous -- when tier == MAX the helper
-+ * calls marie_state_move_to_gen(pfn, head, 0) directly, so there is no
-+ * deferred promote queue and no enqueue allocation that could fail.
-+ * The single caller (walker.c marie_walk_pmd_range) discards the
-+ * return value.
-+ */
-+enum marie_tier_inc_result marie_tier_inc(struct folio *folio);
-+
-+/*
 + * Tier count: alias to the per-PFN state byte's tier field width.
 + * Tier lives entirely in marie_state[pfn]'s MARIE_PFN_TIER field
 + * (see state.h: MARIE_PFN_NR_TIERS / MARIE_PFN_TIER_MAX). The
@@ -7457,7 +7540,7 @@ index 0000000000..2362677d1c
 +#endif /* _MM_LRU_MARIE_STATE_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..97c5242742
+index 0000000000..a530dfac52
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -7480,15 +7563,15 @@ index 0000000000..97c5242742
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.5.0"
++#define MARIE_VERSION	"0.5.1"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
 new file mode 100644
-index 0000000000..67868a9ef2
+index 0000000000..c7da842330
 --- /dev/null
 +++ b/mm/lru_marie/walker.c
-@@ -0,0 +1,917 @@
+@@ -0,0 +1,947 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/walker.c — Marie's SIMD-accelerated PTE walker.
@@ -7502,15 +7585,15 @@ index 0000000000..67868a9ef2
 + * on x86; scalar fallback on arm64 and other arches via the generic
 + * variant -- NEON acceleration is a future optimisation, see
 + * mm/lru_marie/simd_generic.c).
-+ * The FPU bracket around the SIMD call is held across MARIE_FPU_BATCH
++ * The FPU bracket around the SIMD call is held across marie_fpu_batch
 + * consecutive bloom-hit PMDs and flushed by a scoped_guard around the
 + * per-mm walk_page_range, amortising kernel_fpu_begin/end overhead.
 + * For each PTE flagged young, the walker bumps the corresponding
-+ * folio's tier via marie_tier_inc() (thin wrapper around
-+ * marie_state_inc_tier on the per-PFN byte). Folios that saturate to
-+ * MARIE_TIER_MAX trigger an in-place synchronous promote
-+ * (marie_state_move_to_gen to head_gen at tier 0) inside the same
-+ * helper -- the walker bumps the tier on the per-PFN byte directly,
++ * folio's tier via marie_state_inc_tier_seeded() on the per-PFN byte
++ * (seeded with the byte it already read for the TRACKED gate). Folios
++ * that saturate to MARIE_TIER_MAX trigger an in-place synchronous
++ * promote (marie_state_move_to_gen to head_gen at tier 0) inside the
++ * same helper -- the walker bumps the tier on the per-PFN byte directly,
 + * no promote queue, no pass-end drain.
 + *
 + * A per-pgdat bloom filter (marie_bloom_*) feeds back from
@@ -7543,6 +7626,7 @@ index 0000000000..67868a9ef2
 +#include <linux/mmzone.h>
 +#include <linux/pagewalk.h>
 +#include <linux/percpu.h>
++#include <linux/prefetch.h>
 +#include <linux/printk.h>
 +#include <linux/rcupdate.h>
 +#include <linux/rmap.h>
@@ -7979,15 +8063,14 @@ index 0000000000..67868a9ef2
 + * Per pgdat, rate-limited via marie_walker_interval (HZ/30 .. HZ).
 + * Each PMD scans young bits in batch via lru_marie_simd_young_pte_mask_raw
 + * (AVX-512F / AVX2 / SSE2 on x86; scalar fallback on arm64 and other
-+ * arches), with an enclosing FPU bracket batched across MARIE_FPU_BATCH
++ * arches), with an enclosing FPU bracket batched across marie_fpu_batch
 + * scans. Cross-node folios are filtered out so each pgdat owns its
 + * work cleanly.
 + *
-+ * Walker tier promotion is synchronous: marie_tier_inc
-+ * (a thin wrapper around marie_state_inc_tier on the per-PFN byte)
-+ * handles both the non-saturated bump and the saturate -> in-place
-+ * promote inside the same call, so there is no promote queue and no
-+ * pass-end promote drain.
++ * Walker tier promotion is synchronous: marie_state_inc_tier (on the
++ * per-PFN byte) handles both the non-saturated bump and the saturate ->
++ * in-place promote inside the same call, so there is no promote queue
++ * and no pass-end promote drain.
 + *
 + * Lock contract:
 + *   per-PMD:         holds the existing pte_offset_map_lock ptl
@@ -8017,22 +8100,31 @@ index 0000000000..67868a9ef2
 +static atomic_long_t marie_walker_next[MAX_NUMNODES];
 +
 +/*
-+ * MARIE_FPU_BATCH — number of consecutive bloom-hit PMDs scanned under
++ * marie_fpu_batch — number of consecutive bloom-hit PMDs scanned under
 + * a single FPU bracket before flushing.
 + *
 + * Trade-off: larger batch amortises kernel_fpu_begin/end (~100 ns each
 + * on x86 xsave/xrstor) across more scans, but extends the preempt-
 + * disabled window proportionally because the bitmap iteration runs
 + * inside the same PTL window with FPU still held. With per-PMD total
-+ * cost ~1-25 µs (dominated by marie_state_inc_tier on set bits), a
-+ * batch of 16 gives a worst-case preempt window of ~400 µs -- well
-+ * within tolerance and acceptable for desktop-grade preemption.
++ * cost ~1-25 µs (dominated by marie_state_inc_tier on set bits), the
++ * default batch of 4 gives a worst-case preempt window of ~100 µs;
++ * the FPU amortisation it gives up vs a larger batch is only tens of
++ * ps per PTE, so the short window is the better desktop trade-off.
 + *
 + * Bloom misses do NOT advance the counter (the FPU bracket has not been
 + * opened on those PMDs), so the batch is purely "PMDs we actually
 + * scanned in a row".
++ *
++ * Runtime-tunable via /sys/kernel/mm/lru_marie/fpu_batch (default 4);
++ * the live value lives in core.c as marie_fpu_batch and is read with
++ * READ_ONCE per scanned PMD (marie_fpu_batch_step). Smaller values
++ * shrink the preempt-disabled window -- better latency on few-core
++ * machines under sustained reclaim -- at the cost of more frequent
++ * kernel_fpu_begin/end. batch=1 is special: marie_fpu_batch_step closes
++ * the bracket before the for_each_set_bit body, so the heavy bitmap
++ * iteration (tier_inc/promote) never runs preempt-disabled.
 + */
-+#define MARIE_FPU_BATCH		16
 +
 +/*
 + * Per-walk FPU batch state.  Lives inside marie_walk_arg so it is reset
@@ -8056,7 +8148,7 @@ index 0000000000..67868a9ef2
 +
 +static inline void marie_fpu_batch_step(struct marie_fpu_batch *b)
 +{
-+	if (++b->count >= MARIE_FPU_BATCH) {
++	if (++b->count >= READ_ONCE(marie_fpu_batch)) {
 +		lru_marie_simd_batch_end();
 +		b->held = false;
 +		b->count = 0;
@@ -8098,7 +8190,7 @@ index 0000000000..67868a9ef2
 +	spinlock_t *ptl;
 +	unsigned long pmd_addr;
 +	unsigned long bitmap[MARIE_SIMD_PTE_BITMAP_LONGS] = { 0 };
-+	int bit;
++	unsigned int bit, next_bit;
 +
 +	if (!vma)
 +		return 0;
@@ -8135,7 +8227,7 @@ index 0000000000..67868a9ef2
 +	/*
 +	 * Open the FPU bracket lazily on the first bloom-hit PMD of this
 +	 * batch and run the raw scan inside it.  marie_fpu_batch_step()
-+	 * closes the bracket once we've accumulated MARIE_FPU_BATCH
++	 * closes the bracket once we've accumulated marie_fpu_batch
 +	 * scans; subsequent bloom hits reopen for the next batch.  The
 +	 * scoped_guard around walk_page_range() in marie_walk_one_mm()
 +	 * flushes any partial batch on walker exit.
@@ -8144,28 +8236,40 @@ index 0000000000..67868a9ef2
 +	lru_marie_simd_young_pte_mask_raw(pte_table - pte_index(start), bitmap);
 +	marie_fpu_batch_step(&arg->fpu);
 +
-+	for_each_set_bit(bit, bitmap, 512) {
++	for (bit = find_first_bit(bitmap, 512); bit < 512; bit = next_bit) {
 +		unsigned long addr = pmd_addr + bit * PAGE_SIZE;
 +		pte_t *pte = orig_pte - pte_index(start) + bit;
 +		pte_t ptent;
-+		unsigned long pfn;
++		unsigned long pfn, fpfn;
 +		struct folio *folio;
-+		int next_bit;
++		u8 s;
 +
-+		/* Peek ahead at the next set bit and prefetch its
-+		 * struct page into L1. The body chain below does multiple
-+		 * folio-struct accesses (folio_pgdat, marie_test_tracked,
-+		 * folio_is_file_lru, folio_lruvec, marie_state_inc_tier).
-+		 * Sparse bitmap iteration defeats the hardware prefetcher,
-+		 * so an explicit lookahead hides struct page L2/L3 latency. */
++		/* Next set bit, computed once: it drives both the lookahead
++		 * prefetch below and the loop advance (the for-increment), so
++		 * we pay one find_next_bit per young bit instead of the two
++		 * for_each_set_bit would cost (its internal scan plus ours). */
 +		next_bit = find_next_bit(bitmap, 512, bit + 1);
++
++		/* Prefetch the hot line for the next young folio. The
++		 * scattered access on this path is the per-PFN state byte
++		 * marie_state[pfn]: it gates the TRACKED check and is then
++		 * RMW'd by the tier bump, so prefetch it write-intent. struct
++		 * page (page->flags) is touched only by the cross-node
++		 * folio_pgdat() check below, elided on single-node systems --
++		 * prefetch it just there. Sparse bitmap iteration defeats the
++		 * HW prefetcher, so the explicit lookahead hides the L2/L3
++		 * miss. */
 +		if (next_bit < 512) {
 +			pte_t next_ptent = ptep_get(orig_pte - pte_index(start)
 +						    + next_bit);
 +			unsigned long next_pfn = pte_pfn(next_ptent);
 +
-+			if (pte_present(next_ptent) && pfn_valid(next_pfn))
-+				__builtin_prefetch(pfn_to_page(next_pfn), 0, 3);
++			if (pte_present(next_ptent) && pfn_valid(next_pfn)) {
++				if (next_pfn < marie_state_size)
++					prefetchw(&marie_state[next_pfn]);
++				if (nr_online_nodes > 1)
++					__builtin_prefetch(pfn_to_page(next_pfn), 0, 3);
++			}
 +		}
 +
 +		/* Only process PTEs within the [start, end) walk range. */
@@ -8182,33 +8286,42 @@ index 0000000000..67868a9ef2
 +
 +		folio = pfn_folio(pfn);
 +
-+		/* Skip cross-node folios -- this pass is per pgdat. */
-+		if (folio_pgdat(folio) != arg->pgdat)
++		/* Skip cross-node folios -- this pass is per pgdat. The
++		 * folio_pgdat() read of page->flags is the only struct-page
++		 * access on this path, so gate it on nr_online_nodes: on a
++		 * single-node system every folio is on arg->pgdat, so the
++		 * check (and the struct-page prefetch above) is pure overhead.
++		 * On UMA builds nr_online_nodes is the constant 1, so the
++		 * compiler drops this entirely. */
++		if (nr_online_nodes > 1 && folio_pgdat(folio) != arg->pgdat)
 +			continue;
 +
-+		/* Lock-free pre-filter: act only on folios Marie is currently
-+		 * tracking. folio->lru is no longer a Marie-state signal --
-+		 * tracked folios sit on a self-loop (post install/flush) or
-+		 * on legacy lruvec->lists[lru] (post drain); only the per-PFN
-+		 * TRACKED bit identifies "Marie has a live tier value for
-+		 * this folio." */
-+		if (!folio_marie_test_tracked(folio))
++		/* Read the per-PFN state byte once. It gates the lock-free
++		 * TRACKED pre-filter here (only TRACKED folios carry a live
++		 * Marie tier; folio->lru is no longer a Marie-state signal),
++		 * and on a hit it seeds the tier bump below so that skips a
++		 * second load of the same now-cache-hot byte. folio_pfn() is
++		 * pointer arithmetic; compute it once too. */
++		fpfn = folio_pfn(folio);
++		if (!marie_state || fpfn >= marie_state_size)
++			continue;
++		s = READ_ONCE(marie_state[fpfn]);
++		if (!(s & MARIE_PFN_TRACKED))
 +			continue;
 +
 +		if (!ptep_test_and_clear_young(vma, addr, pte))
 +			continue;
 +
 +		/*
-+		 * Walker tier++: marie_tier_inc is a thin wrapper over
-+		 * marie_state_inc_tier on the per-PFN byte; non-saturated
-+		 * bumps are a lock-free WRITE_ONCE and the saturate path
-+		 * triggers a synchronous in-place promote (to the global
-+		 * head_gen at tier 0). Desktop/global-only: no per-lruvec
-+		 * carrier to look up -- tier lives entirely in
-+		 * marie_state[pfn] and the per-(type, gen, tier) bitmap is
-+		 * moved alongside the byte by the helper itself.
++		 * Walker tier++ seeded with the byte already read above:
++		 * non-saturated bumps are a lock-free cmpxchg, and the
++		 * saturate path triggers a synchronous in-place promote (to
++		 * the global head_gen at tier 0). Desktop/global-only: no
++		 * per-lruvec carrier -- tier lives entirely in marie_state[pfn]
++		 * and the per-(type, gen, tier) bitmap is moved alongside the
++		 * byte by the helper itself.
 +		 */
-+		(void)marie_tier_inc(folio);
++		marie_state_inc_tier_seeded(fpfn, s);
 +	}
 +
 +	pte_unmap_unlock(orig_pte, ptl);
@@ -8313,7 +8426,7 @@ index 0000000000..67868a9ef2
 +	rcu_read_unlock();
 +
 +	/*
-+	 * Walk preemptibly.  FPU bracket is held across MARIE_FPU_BATCH
++	 * Walk preemptibly.  FPU bracket is held across marie_fpu_batch
 +	 * consecutive bloom-hit PMDs (see marie_fpu_batch_* helpers above)
 +	 * and flushed by the scoped_guard around walk_page_range() inside
 +	 * marie_walk_one_mm(), so the per-mm walk always exits with FPU
@@ -8321,7 +8434,7 @@ index 0000000000..67868a9ef2
 +	 * iteration runs inside the bracket and would extend the
 +	 * preempt-disabled window by the full iteration (~100 ms on memhog);
 +	 * the batched-per-PMD scope keeps preempt windows bounded at
-+	 * MARIE_FPU_BATCH x per-PMD time.
++	 * marie_fpu_batch x per-PMD time.
 +	 */
 +	for (i = 0; i < ctx->n_mms; i++) {
 +		marie_walk_one_mm(ctx->mms[i], &arg);
@@ -8353,8 +8466,8 @@ index 0000000000..67868a9ef2
 +	 * the "has the walker swept since this slot recycled?" question that the
 +	 * visit counter used to answer. Walker tier saturate is materialised
 +	 * inline by marie_state_inc_tier during the per-PMD walk (via
-+	 * marie_tier_inc, which takes just the folio), so no promote-queue drain
-+	 * accumulates here.
++	 * marie_state_inc_tier_seeded, the walker's pfn+byte fast path), so no
++	 * promote-queue drain accumulates here.
 +	 */
 +	{
 +		int t;
