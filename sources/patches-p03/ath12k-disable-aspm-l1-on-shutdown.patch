@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mauri de Souza Meneguzzo <mauri870@gmail.com>
+Date: Fri, 20 Jun 2026 00:00:00 -0300
+Subject: [PATCH] wifi: ath12k: disable PCIe ASPM L1 states on shutdown
+
+The WCN7850 (Qualcomm FastConnect 7800) enters a PCIe ASPM L1 power
+state after ath12k_pci_power_down() restores ASPM and issues a soft
+reset during shutdown. On subsequent warm reboots the BIOS cannot
+enumerate the device because the PCIe link remains in L1, requiring a
+full power drain (PSU disconnect) to recover.
+
+Disable all L1 ASPM states in the shutdown handler after the device is
+powered down so the link stays active through the reboot cycle and the
+BIOS can enumerate the device on the next boot.
+
+---
+ drivers/net/wireless/ath/ath12k/pci.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/net/wireless/ath/ath12k/pci.c b/drivers/net/wireless/ath/ath12k/pci.c
+--- a/drivers/net/wireless/ath/ath12k/pci.c
++++ b/drivers/net/wireless/ath/ath12k/pci.c
+@@ -1744,6 +1744,11 @@ static void ath12k_pci_shutdown(struct pci_dev *pdev)
+ 
+ 	ath12k_pci_set_irq_affinity_hint(ab_pci, NULL);
+ 	ath12k_pci_hw_group_power_down(ab->ag);
++	pci_disable_link_state(pdev, PCIE_LINK_STATE_L1 |
++			       PCIE_LINK_STATE_L1_1 |
++			       PCIE_LINK_STATE_L1_2 |
++			       PCIE_LINK_STATE_L1_1_PCIPM |
++			       PCIE_LINK_STATE_L1_2_PCIPM);
+ }
+ 
+ static __maybe_unused int ath12k_pci_pm_suspend(struct device *dev)
+--
+2.49.0

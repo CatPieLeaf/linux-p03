@@ -137,7 +137,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   6
+%define _buildver   7
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -947,7 +947,7 @@ Conflicts: akmod-nvidia
     echo "   wget ${_NV_URL}"
     echo " "
     echo " Install:"
-    echo "   sudo sh ./NVIDIA-Linux-x86_64-${_nv_ver}.run --no-kernel-modules --no-dkms --no-nouveau-check"
+    echo "   sudo sh ./NVIDIA-Linux-x86_64-%{_nv_ver}.run --no-kernel-modules --no-dkms --no-nouveau-check"
     echo " "
     echo "======================================================================"
 
