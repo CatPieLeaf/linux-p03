@@ -1,7 +1,7 @@
-From fbbeb106dcdd904ab218afee402f043667dad302 Mon Sep 17 00:00:00 2001
+From 6473b82d37397c0e3529880e0c181a8d37e1fa0a Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Sun, 21 Jun 2026 10:57:24 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.1
+Date: Mon, 22 Jun 2026 08:00:40 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.0
 
 ---
  include/linux/lru_marie.h      |  442 ++++++
@@ -18,7 +18,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.1
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  205 +++
  mm/lru_marie/compat.h          |  126 ++
- mm/lru_marie/core.c            | 1144 ++++++++++++++
+ mm/lru_marie/core.c            | 1144 +++++++++++++
  mm/lru_marie/pfn_install.h     |   91 ++
  mm/lru_marie/prefetch.h        |  111 ++
  mm/lru_marie/simd.h            |  109 ++
@@ -27,8 +27,8 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.1
  mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 2715 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  893 +++++++++++
+ mm/lru_marie/state.c           | 2733 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  925 +++++++++++
  mm/lru_marie/version.h         |   22 +
  mm/lru_marie/walker.c          |  947 +++++++++++
  mm/memcontrol-v1.c             |   11 +
@@ -40,7 +40,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.5.1
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  347 +++-
- 36 files changed, 9028 insertions(+), 23 deletions(-)
+ 36 files changed, 9078 insertions(+), 23 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -3920,10 +3920,10 @@ index 0000000000..71f8eff7e5
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..b02239c792
+index 0000000000..bd60171dcc
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2715 @@
+@@ -0,0 +1,2733 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -4361,7 +4361,7 @@ index 0000000000..b02239c792
 +	       MARIE_PFN_TIER_MASK | MARIE_PFN_TYPE_MASK;
 +	target = MARIE_PFN_TRACKED |
 +		 (oldest_gen << MARIE_PFN_GEN_SHIFT) |
-+		 ((tier & 0x3) << MARIE_PFN_TIER_SHIFT) |
++		 ((tier & MARIE_PFN_TIER_MAX) << MARIE_PFN_TIER_SHIFT) |
 +		 (type ? MARIE_PFN_TYPE_FILE : 0);
 +
 +	start_pfn = pgdat->node_start_pfn;
@@ -5596,6 +5596,18 @@ index 0000000000..b02239c792
 +				if (may_advance) {
 +					cur_head = (u8)atomic_read(
 +						&marie_head_gen[type]);
++					/*
++					 * Only seal a NON-EMPTY head. Advancing an
++					 * empty head would recycle it into a sealed
++					 * empty gen -- a hole that find_oldest skips
++					 * and that nothing fills until the head laps
++					 * the ring. The other advance site (install
++					 * cadence in marie_folio_install) is likewise
++					 * non-empty: it fires right after the publish
++					 * that bumped gen_occupied[head]. So no
++					 * caller of marie_try_advance_head_mlv ever
++					 * advances an empty head.
++					 */
 +					if (atomic_long_read(
 +						&marie_gen_occupied[cur_head][type]) > 0 &&
 +					    marie_try_advance_head_mlv(type))
@@ -5839,8 +5851,14 @@ index 0000000000..b02239c792
 +				 * folio escaping reclaim forever. A cold survivor
 +				 * stays at oldest+1 (putback_gen).
 +				 */
-+				w = (folio_test_active(f) ? 2 : 0) |
-+				    (folio_test_referenced(f) ? 1 : 0);
++				/*
++				 * (strong=active, weak=referenced) -> seed tier.
++				 * seed is non-zero iff (active||referenced), so the
++				 * gen = w ? head : putback_gen decision below is
++				 * preserved unchanged across both tier-count splits.
++				 */
++				w = marie_seed_tier(folio_test_active(f),
++						    folio_test_referenced(f));
 +				target_tier = prev > w ? prev : w;
 +				gen = w
 +					? (u8)atomic_read(&marie_head_gen[type])
@@ -6198,8 +6216,8 @@ index 0000000000..b02239c792
 +	 */
 +	was_active = folio_test_active(folio);
 +	was_workingset = folio_test_workingset(folio);
-+	tier = ((unsigned int)was_active << 1) | (unsigned int)was_workingset;
-+	tier &= MARIE_PFN_TIER_MAX;
++	/* (strong=active, weak=workingset) -> seed tier; agnostic to tier count. */
++	tier = marie_seed_tier(was_active, was_workingset);
 +
 +	if (was_active)
 +		folio_clear_active(folio);
@@ -6641,10 +6659,10 @@ index 0000000000..b02239c792
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..b2e9c9c754
+index 0000000000..56b28656f1
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,893 @@
+@@ -0,0 +1,925 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -6676,12 +6694,21 @@ index 0000000000..b2e9c9c754
 + * Byte layout
 + * -----------
 + *
++ * Byte layout (8 gens x 2 tiers; see the field-width defines below for the
++ * rationale):
++ *
 + *   bit 7     TRACKED      1 = folio is owned by Marie; 0 = ignore byte
 + *   bit 6     TYPE         1 = file LRU, 0 = anon LRU
 + *   bit 5..4  ZONE         folio_zonenum: 0=DMA, 1=DMA32, 2=NORMAL, 3=MOVABLE
-+ *   bit 3..2  GEN          relative-position 0..3 in the cycling ring
++ *   bit 3..1  GEN          relative-position 0..7 in the cycling ring
 + *                          (0 = oldest, head = atomic_read(&marie_head_gen[type]))
-+ *   bit 1..0  TIER         0=cold, 1=workingset, 2=active, 3=refault
++ *   bit 0     TIER         0 = cold, 1 = referenced/active (any hotness signal)
++ *
++ * The 8 gens give a longer head->oldest descent (time-domain grace), which
++ * measurably protects warm/marginally-hot folios: their hotness signal has
++ * more time to re-promote them to the head before they reach reclaim range
++ * (QEMU warm-set A/B: ~40% fewer refaults vs the former 4-gen x 4-tier split;
++ * the 2-tier recency loss was measured neutral).
 + *
 + * The 8 bits saturate the byte. Bits are laid out in reclaim filter
 + * hierarchy from MSB (root: existence) down to LSB (leaf: hotness),
@@ -6692,7 +6719,7 @@ index 0000000000..b2e9c9c754
 + *   (byte & 0x80)          -> TRACKED
 + *   (byte & 0xC0)          -> TRACKED + type
 + *   (byte & 0xF0)          -> TRACKED + type + zone
-+ *   (byte & 0xFC)          -> TRACKED + type + zone + gen
++ *   (byte & 0xFE)          -> TRACKED + type + zone + gen
 + *   (byte & 0xFF)          -> all five dimensions
 + *
 + * The whole filter is a pure byte mask + compare with no pfn_folio()
@@ -6713,15 +6740,15 @@ index 0000000000..b2e9c9c754
 + * Aging — gen ring as a cycling counter (per type)
 + * ------------------------------------------------
 + *
-+ *   atomic_t marie_head_gen[ANON_AND_FILE];           // 0..3 cycling per type
-+ *   atomic_long_t marie_gen_installs[4][ANON_AND_FILE];
-+ *   atomic_long_t marie_gen_occupied[4][ANON_AND_FILE];
++ *   atomic_t marie_head_gen[ANON_AND_FILE];           // 0..NR_GENS-1 cycling per type
++ *   atomic_long_t marie_gen_installs[MARIE_PFN_NR_GENS][ANON_AND_FILE];
++ *   atomic_long_t marie_gen_occupied[MARIE_PFN_NR_GENS][ANON_AND_FILE];
 + *
 + * install:
 + *
 + *   u8 gen = atomic_read(&marie_head_gen[type]);
 + *   marie_state[pfn] = MARIE_PFN_TRACKED | (type<<6) | (zone<<4) |
-+ *                      (gen<<2) | tier;
++ *                      (gen<<MARIE_PFN_GEN_SHIFT) | tier;
 + *   set_bit(pfn, marie_gen_bitmap[gen][type]);
 + *   atomic_long_inc(&marie_gen_installs[gen][type]);
 + *   atomic_long_inc(&marie_gen_occupied[gen][type]);
@@ -6816,20 +6843,30 @@ index 0000000000..b2e9c9c754
 + * MSB -> LSB by reclaim filter hierarchy: TRACKED, TYPE, ZONE, GEN,
 + * TIER. See the byte-layout block above for the rationale.
 + */
++/*
++ * gen:tier split of the per-PFN byte's low nibble: 8 gens (3 bits) x 2 tiers
++ * (1 bit). The 8 gens lengthen the head->oldest descent (time-domain grace) so a
++ * warm folio's hotness signal has time to re-promote it before it reaches reclaim
++ * range; a QEMU warm-set A/B (cold filler + a working set re-accessed near the
++ * grace period) measured ~40% fewer warm-folio refaults than the former 4-gens-x-
++ * 4-tiers split, and a 4-gens-x-2-tiers control did NOT improve -- isolating the
++ * gain to the gen count, not the (coarser) 2-tier promotion threshold. GEN_SHIFT/
++ * ZONE_SHIFT derive from the field widths; ZONE/TYPE/TRACKED are unaffected.
++ */
 +#define MARIE_PFN_TIER_SHIFT		0
-+#define MARIE_PFN_TIER_BITS		2
++#define MARIE_PFN_TIER_BITS		1
++#define MARIE_PFN_GEN_BITS		3
 +#define MARIE_PFN_TIER_MASK		(((1U << MARIE_PFN_TIER_BITS) - 1) << \
 +					 MARIE_PFN_TIER_SHIFT)
 +#define MARIE_PFN_NR_TIERS		(1U << MARIE_PFN_TIER_BITS)
 +#define MARIE_PFN_TIER_MAX		(MARIE_PFN_NR_TIERS - 1)
 +
-+#define MARIE_PFN_GEN_SHIFT		2
-+#define MARIE_PFN_GEN_BITS		2
++#define MARIE_PFN_GEN_SHIFT		(MARIE_PFN_TIER_SHIFT + MARIE_PFN_TIER_BITS)
 +#define MARIE_PFN_GEN_MASK		(((1U << MARIE_PFN_GEN_BITS) - 1) << \
 +					 MARIE_PFN_GEN_SHIFT)
 +#define MARIE_PFN_NR_GENS		(1U << MARIE_PFN_GEN_BITS)
 +
-+#define MARIE_PFN_ZONE_SHIFT		4
++#define MARIE_PFN_ZONE_SHIFT		(MARIE_PFN_GEN_SHIFT + MARIE_PFN_GEN_BITS)
 +#define MARIE_PFN_ZONE_BITS		2
 +#define MARIE_PFN_ZONE_MASK		(((1U << MARIE_PFN_ZONE_BITS) - 1) << \
 +					 MARIE_PFN_ZONE_SHIFT)
@@ -6852,6 +6889,19 @@ index 0000000000..b2e9c9c754
 +{
 +	return (u8)((zone & (MARIE_PFN_NR_ZONES_ENCODED - 1)) <<
 +		    MARIE_PFN_ZONE_SHIFT);
++}
++
++/*
++ * Map a (strong, weak) hotness signal pair to a seed tier (1-bit tier: any
++ * hotness signal -> protected tier 1, none -> cold tier 0).
++ *   install:  strong = PG_active,  weak = PG_workingset (refault-on-entry)
++ *   putback:  strong = PG_active,  weak = PG_referenced (accessed-since-scan)
++ * The result is non-zero iff (strong||weak), so the putback path reuses it for
++ * its head-promotion decision (gen = seed ? head : putback_gen).
++ */
++static inline u8 marie_seed_tier(bool strong, bool weak)
++{
++	return (strong || weak) ? 1 : 0;
 +}
 +
 +/* The base allocation (subsys_initcall) covers totalram_pages PFNs. */
@@ -7540,7 +7590,7 @@ index 0000000000..b2e9c9c754
 +#endif /* _MM_LRU_MARIE_STATE_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..a530dfac52
+index 0000000000..04929187b8
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -7563,7 +7613,7 @@ index 0000000000..a530dfac52
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.5.1"
++#define MARIE_VERSION	"0.6.0"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
