@@ -176,10 +176,10 @@ index b18c2b2..52dbbf7 100644
  };
  
 diff --git a/mm/filemap.c b/mm/filemap.c
-index 09cf51f..74acd2d 100644
+index 5af62e6..4a506fc 100644
 --- a/mm/filemap.c
 +++ b/mm/filemap.c
-@@ -3552,6 +3552,7 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
+@@ -3548,6 +3548,7 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
  	struct folio *folio;
  	vm_fault_t ret = 0;
  	bool mapping_locked = false;
@@ -187,7 +187,7 @@ index 09cf51f..74acd2d 100644
  
  	max_idx = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
  	if (unlikely(index >= max_idx))
-@@ -3648,6 +3649,8 @@ retry_find:
+@@ -3644,6 +3645,8 @@ retry_find:
  	 */
  	if (fpin) {
  		folio_unlock(folio);
@@ -196,7 +196,7 @@ index 09cf51f..74acd2d 100644
  		goto out_retry;
  	}
  	if (mapping_locked)
-@@ -3698,7 +3701,7 @@ out_retry:
+@@ -3694,7 +3697,7 @@ out_retry:
  		filemap_invalidate_unlock_shared(mapping);
  	if (fpin)
  		fput(fpin);
