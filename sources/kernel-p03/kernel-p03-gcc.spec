@@ -81,15 +81,15 @@
 # ==============================================================================
 # Build identification
 # ==============================================================================
-# _rel:    0 = stable, N = release candidate N
+# _rel:    %%undefine = stable, 0 = rc0, N = release candidate rcN
 # _koji_patch: 0 = latest available build, N = pin to exact patch number
 # _koji_fc:    0 = auto-detect from {dist}, N = override (e.g. 45)
 
 %define _basekver   7.1
-%define _stablekver .0
-%define _rel        0
-%define _koji_patch 55
-%define _koji_fc    45
+%define _stablekver .1
+%undefine _rel
+%define _koji_patch 300
+%define _koji_fc    44
 
 # Build mode:
 #   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
@@ -99,9 +99,10 @@
 
 # Release field examples:
 #   stable, patch=205  →  205.p03.4.fc44
+#   rc0, patch=33      →  33.rc0.p03.4.fc45
 #   rc4, patch=33      →  33.rc4.p03.4.fc45
 #   rc4, auto-patch    →  rc4.p03.4.fc45
-%if %{_rel} > 0
+%if "%{?_rel}" != ""
   %if %{_koji_patch} > 0
     %define _koji_rel_tag %{_koji_patch}.rc%{_rel}.
   %else
@@ -119,7 +120,7 @@
   %if %{_koji_patch} == 0
     %{error: static mode (_koji_dynamic 0) requires a pinned _koji_patch > 0}
   %endif
-  %if %{_rel} > 0
+  %if "%{?_rel}" != ""
     %define _static_koji_release 0.rc%{_rel}.%{_koji_patch}.fc%{_koji_fc}
   %else
     %define _static_koji_release %{_koji_patch}.fc%{_koji_fc}
@@ -137,7 +138,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   8
+%define _buildver   1
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -288,7 +289,7 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 # Patches are NOT declared here individually.
 # Everything inside sources/patchset/, sources/patches-p03/, and
 # sources/patchset-nvidia/ in the GitHub repo is applied automatically
-# in %prep. Drop a .patch into SOURCES/local-patches/ for local testing.
+# in %%prep. Drop a .patch into SOURCES/local-patches/ for local testing.
 
 # ==============================================================================
 %description
@@ -338,7 +339,7 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
   %endif
     [ -z "${_fedoraver}" ] && { echo "ERROR: %{dist} is empty — cannot determine Fedora version" >&2; exit 1; }
 
-  %if %{_rel} > 0
+  %if "%{?_rel}" != ""
     %if %{_koji_patch} > 0
       _pattern="kernel-%{_tarkver}-0.rc%{_rel}*%{_koji_patch}.fc${_fedoraver}"
     %else
