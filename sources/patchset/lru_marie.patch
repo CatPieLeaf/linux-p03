@@ -1,25 +1,24 @@
-From 6473b82d37397c0e3529880e0c181a8d37e1fa0a Mon Sep 17 00:00:00 2001
+From c3d917d893295e4e640570ba88fde9c33afe98dc Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Mon, 22 Jun 2026 08:00:40 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.0
+Date: Wed, 24 Jun 2026 09:46:53 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.2
 
 ---
- include/linux/lru_marie.h      |  442 ++++++
+ include/linux/lru_marie.h      |  469 ++++++
  include/linux/memcontrol.h     |   26 +-
  include/linux/mm_inline.h      |  103 +-
  include/linux/mmzone.h         |   15 +
  include/linux/swap.h           |   18 +
  mm/Kconfig                     |   30 +
  mm/Makefile                    |    1 +
- mm/huge_memory.c               |   26 +-
+ mm/huge_memory.c               |   39 +-
  mm/internal.h                  |   55 +
  mm/lru_marie/Makefile          |   19 +
  mm/lru_marie/account.h         |  106 ++
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  205 +++
- mm/lru_marie/compat.h          |  126 ++
- mm/lru_marie/core.c            | 1144 +++++++++++++
- mm/lru_marie/pfn_install.h     |   91 ++
+ mm/lru_marie/core.c            | 1193 ++++++++++++++
+ mm/lru_marie/pfn_install.h     |  137 ++
  mm/lru_marie/prefetch.h        |  111 ++
  mm/lru_marie/simd.h            |  109 ++
  mm/lru_marie/simd_generic.c    |   46 +
@@ -27,10 +26,12 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.0
  mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 2733 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.c           | 2736 ++++++++++++++++++++++++++++++++
  mm/lru_marie/state.h           |  925 +++++++++++
+ mm/lru_marie/state_compat.h    |   94 ++
  mm/lru_marie/version.h         |   22 +
- mm/lru_marie/walker.c          |  947 +++++++++++
+ mm/lru_marie/walker.c          |  969 +++++++++++
+ mm/lru_marie/walker_compat.h   |   82 +
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
  mm/mm_init.c                   |    3 +
@@ -40,13 +41,12 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.0
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  347 +++-
- 36 files changed, 9078 insertions(+), 23 deletions(-)
+ 37 files changed, 9288 insertions(+), 23 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
  create mode 100644 mm/lru_marie/bitmap.c
  create mode 100644 mm/lru_marie/bitmap.h
- create mode 100644 mm/lru_marie/compat.h
  create mode 100644 mm/lru_marie/core.c
  create mode 100644 mm/lru_marie/pfn_install.h
  create mode 100644 mm/lru_marie/prefetch.h
@@ -58,15 +58,17 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.0
  create mode 100644 mm/lru_marie/simd_x86_sse2.S
  create mode 100644 mm/lru_marie/state.c
  create mode 100644 mm/lru_marie/state.h
+ create mode 100644 mm/lru_marie/state_compat.h
  create mode 100644 mm/lru_marie/version.h
  create mode 100644 mm/lru_marie/walker.c
+ create mode 100644 mm/lru_marie/walker_compat.h
 
 diff --git a/include/linux/lru_marie.h b/include/linux/lru_marie.h
 new file mode 100644
-index 0000000000..58ca95b861
+index 0000000000..26837720e7
 --- /dev/null
 +++ b/include/linux/lru_marie.h
-@@ -0,0 +1,442 @@
+@@ -0,0 +1,469 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _LINUX_LRU_MARIE_H
 +#define _LINUX_LRU_MARIE_H
@@ -382,6 +384,33 @@ index 0000000000..58ca95b861
 + */
 +void lru_marie_split_folio(struct lruvec *lruvec, struct folio *head,
 +			 struct folio *new_folio);
++
++/**
++ * lru_marie_split_folio_isolated - register a reclaim-split tail under Marie.
++ * @head:       THP head folio, Marie-tracked but OFF the LRU (reclaim-isolated)
++ * @new_folio:  tail folio created by __split_huge_page during reclaim
++ *
++ * The reclaim-split counterpart to lru_marie_split_folio. When page reclaim
++ * splits a huge page, lru_add_page_tail() runs with a non-NULL @list (the
++ * head is frozen OFF the LRU, PG_lru clear) and threads each tail onto that
++ * reclaim list instead of the LRU. Without this, the tail stays UNTRACKED:
++ * Marie's reclaim/putback machinery (which assumes every folio it handles is
++ * TRACKED) then either mis-accounts it or, once a generic putback re-sets
++ * PG_lru, produces a ¬TRACKED∧PG_lru "escapee" whose eventual legacy del
++ * underflows mem_cgroup mz->lru_zone_size and corrupts memory.
++ *
++ * Publishes the tail's per-PFN TRACKED state at @head's gen (tier 0) and bumps
++ * marie_nr_folios, mirroring lru_marie_split_folio -- but does NOT set PG_lru
++ * and does NOT touch folio->lru linkage: the caller threads the tail onto the
++ * reclaim @list, and the tail stays off-LRU exactly like the isolated head.
++ * No lru_size credit: the head's install +N already covered the compound and
++ * the reclaim isolate debited it; each tail's own del/putback balances from
++ * there. No-op when @head is not Marie-tracked.
++ *
++ * Caller holds @head's lruvec->lru_lock (lru_add_page_tail asserts it).
++ */
++void lru_marie_split_folio_isolated(struct folio *head,
++				    struct folio *new_folio);
 +
 +/**
 + * lru_marie_look_around - opportunistic PMD scan during rmap reference check.
@@ -855,7 +884,7 @@ index 8ad2ab0824..1f8385ecee 100644
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
  obj-$(CONFIG_HUGETLBFS)	+= hugetlb.o hugetlb_sysfs.o hugetlb_sysctl.o
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
-index 970e077019..9300bdecf7 100644
+index 970e077019..8ba88176e3 100644
 --- a/mm/huge_memory.c
 +++ b/mm/huge_memory.c
 @@ -6,6 +6,7 @@
@@ -866,7 +895,24 @@ index 970e077019..9300bdecf7 100644
  #include <linux/sched.h>
  #include <linux/sched/mm.h>
  #include <linux/sched/numa_balancing.h>
-@@ -3562,10 +3563,31 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
+@@ -3558,14 +3559,48 @@ static void lru_add_split_folio(struct folio *folio, struct folio *new_folio,
+ 		/* page reclaim is reclaiming a huge page */
+ 		VM_WARN_ON(folio_test_lru(folio));
+ 		folio_get(new_folio);
++#ifdef CONFIG_LRU_MARIE
++		/*
++		 * Reclaim-split of a Marie-owned THP: register the tail with
++		 * Marie (TRACKED) just like the on-LRU split below, so it never
++		 * becomes a ¬TRACKED folio that a later putback re-stamps PG_lru
++		 * onto -- an escapee whose legacy del underflows mz->lru_zone_size
++		 * and corrupts memory. The tail goes on the reclaim @list off-LRU
++		 * (no PG_lru), exactly like its isolated head; Marie's
++		 * reclaim/putback then accounts it. No-op when @folio is untracked.
++		 */
++		if (lru_marie_enabled())
++			lru_marie_split_folio_isolated(folio, new_folio);
++#endif
+ 		list_add_tail(&new_folio->lru, list);
  	} else {
  		/* head is still on lru (and we have it frozen) */
  		VM_WARN_ON(!folio_test_lru(folio));
@@ -1451,144 +1497,12 @@ index 0000000000..eb4b6ee263
 +}
 +
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
-diff --git a/mm/lru_marie/compat.h b/mm/lru_marie/compat.h
-new file mode 100644
-index 0000000000..d57fba4742
---- /dev/null
-+++ b/mm/lru_marie/compat.h
-@@ -0,0 +1,126 @@
-+/* SPDX-License-Identifier: GPL-2.0 */
-+#ifndef _MM_LRU_MARIE_COMPAT_H
-+#define _MM_LRU_MARIE_COMPAT_H
-+
-+/*
-+ * Per-kernel-version adaptation layer.
-+ *
-+ * Marie's core (the mm/lru_marie/ sources) is meant to be byte-identical across every
-+ * kernel it is ported to (currently 6.12 / 6.18 / 7.0 / 7.1).  The only core
-+ * code that genuinely has to differ per version is a handful of in-tree mm
-+ * APIs that changed signature.  They are ALL isolated here, behind uniform
-+ * names, so producing a per-version patch re-touches this one file plus the
-+ * unavoidable context lines of the integration hunks -- never the bulk of the
-+ * core.
-+ *
-+ * Two adaptation idioms are used:
-+ *   1. a macro that resolves to the version's spelling of an lvalue
-+ *      (MARIE_FOLIO_FLAGS), and
-+ *   2. a static-inline wrapper that exposes the UNION of arguments across
-+ *      versions and drops/synthesises the ones a given version lacks
-+ *      (marie_shrink_folio_list, marie_folio_pte_batch).
-+ *
-+ * Include AFTER "../internal.h" (and the usual mm headers): the wrappers are
-+ * static inline and need the underlying declarations + struct types complete.
-+ *
-+ * Version boundaries below match the four supported targets exactly; revisit
-+ * them when adding a new target kernel.
-+ */
-+
-+#include <linux/version.h>
-+#include <linux/mmu_notifier.h>	/* ptep_clear_young_notify (young-ptes shim) */
-+
-+/*
-+ * folio->flags became the typed memdesc_flags_t -- struct { unsigned long f; }
-+ * -- in 6.18 (upstream series "Add and use memdesc_flags_t", first commit
-+ * 53fbef56e07d; <6.18 is a plain unsigned long, so this boundary is exact, not
-+ * just target-derived).  The macro yields the raw "unsigned long" lvalue on
-+ * every version, so both a read (`MARIE_FOLIO_FLAGS(f) & MASK`) and a bit op
-+ * (`set_mask_bits(&MARIE_FOLIO_FLAGS(f), ...)`) are version-agnostic.
-+ *
-+ * Marie touches the raw word in only the two narrow spots the page-flag
-+ * accessors do not cover: clearing stale LRU_GEN/LRU_REFS residue and the
-+ * single atomic PG_active->0 + PG_lru->1 publish.
-+ */
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-+#define MARIE_FOLIO_FLAGS(folio)	((folio)->flags.f)
-+#else
-+#define MARIE_FOLIO_FLAGS(folio)	((folio)->flags)
-+#endif
-+
-+/*
-+ * shrink_folio_list() gained a trailing @memcg parameter in 6.18 (the scan is
-+ * told which memcg it is reclaiming for).  Marie always has the memcg in hand
-+ * at the call site, so the uniform wrapper takes it unconditionally and simply
-+ * does not forward it on the pre-6.18 signature.
-+ */
-+static inline unsigned int
-+marie_shrink_folio_list(struct list_head *folio_list, struct pglist_data *pgdat,
-+			struct scan_control *sc, struct reclaim_stat *stat,
-+			bool ignore_references, struct mem_cgroup *memcg)
-+{
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-+	return shrink_folio_list(folio_list, pgdat, sc, stat, ignore_references,
-+				 memcg);
-+#else
-+	return shrink_folio_list(folio_list, pgdat, sc, stat, ignore_references);
-+#endif
-+}
-+
-+/*
-+ * Look-around neighbour batching.  6.12 has folio_pte_batch() with the long
-+ * (max_nr, FPB flags, out-params) signature; 6.18+ replaced it with
-+ * folio_pte_batch_flags(folio, vma, ptep, &pte, max_nr, FPB_*).  Both collapse
-+ * a run of present PTEs mapping @folio while ignoring young/dirty differences:
-+ *   - 6.12: FPB_MERGE_YOUNG_DIRTY does not exist, but folio_pte_batch()
-+ *     pte_mkold()s before comparing, so FPB_IGNORE_DIRTY alone gives the same
-+ *     young/dirty-agnostic batching.
-+ *   - 6.18+: FPB_MERGE_YOUNG_DIRTY merges across young/dirty directly.
-+ * The uniform wrapper takes the 6.12 argument set (@addr is unused on 6.18+).
-+ */
-+static inline int
-+marie_folio_pte_batch(struct folio *folio, unsigned long addr, pte_t *ptep,
-+		      pte_t pte, unsigned int max_nr)
-+{
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
-+	return folio_pte_batch_flags(folio, NULL, ptep, &pte, max_nr,
-+				     FPB_MERGE_YOUNG_DIRTY);
-+#else
-+	return folio_pte_batch(folio, addr, ptep, pte, max_nr, FPB_IGNORE_DIRTY,
-+			       NULL, NULL, NULL);
-+#endif
-+}
-+
-+/*
-+ * arch_enter/leave_lazy_mmu_mode() were renamed to
-+ * lazy_mmu_mode_enable/disable() in 7.0.  Provide the new names on the older
-+ * targets so the walker can use one spelling.
-+ */
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
-+#define lazy_mmu_mode_enable()	arch_enter_lazy_mmu_mode()
-+#define lazy_mmu_mode_disable()	arch_leave_lazy_mmu_mode()
-+#endif
-+
-+/*
-+ * test_and_clear_young_ptes_notify() -- the batched young-clear with
-+ * mmu-notifier callback -- landed in 7.1.  On older targets emulate it as a
-+ * per-PTE ptep_clear_young_notify() loop; functionally equivalent, losing only
-+ * the batched-notifier amortisation.
-+ */
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 0)
-+static inline int marie_test_and_clear_young_ptes(struct vm_area_struct *vma,
-+						  unsigned long addr,
-+						  pte_t *pte, unsigned int nr)
-+{
-+	int young = 0;
-+	unsigned int i;
-+
-+	for (i = 0; i < nr; i++)
-+		young |= ptep_clear_young_notify(vma, addr + i * PAGE_SIZE,
-+						 pte + i);
-+	return young;
-+}
-+#define test_and_clear_young_ptes_notify marie_test_and_clear_young_ptes
-+#endif
-+
-+#endif /* _MM_LRU_MARIE_COMPAT_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..2e9b110ec2
+index 0000000000..c2e4a27265
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1144 @@
+@@ -0,0 +1,1193 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -2025,6 +1939,55 @@ index 0000000000..2e9b110ec2
 +	}
 +}
 +EXPORT_SYMBOL_GPL(lru_marie_split_folio);
++
++/*
++ * lru_marie_split_folio_isolated - reclaim-split counterpart of
++ * lru_marie_split_folio. See the header doc in <linux/lru_marie.h>.
++ *
++ * Symmetry with the on-LRU split is the whole point: lru_add_page_tail()'s
++ * on-LRU branch (head still on the LRU) routes tails through
++ * lru_marie_split_folio + folio_set_lru, so a normal split keeps every tail
++ * TRACKED. The reclaim branch (head frozen off the LRU, tails threaded onto
++ * the reclaim list) historically did a bare list_add_tail, leaving the tail
++ * UNTRACKED -- the source of the THP "lru_size -1" escapee. This restores the
++ * symmetry: publish TRACKED for the tail, but leave PG_lru clear and the list
++ * linkage to the caller, because the tail lives on the reclaim list off-LRU
++ * exactly like its isolated head.
++ */
++void lru_marie_split_folio_isolated(struct folio *head, struct folio *new_folio)
++{
++	if (!folio_marie_test_tracked(head))
++		return;
++	if (folio_test_unevictable(head))
++		return;
++
++	/* Marie's invariant: clear PG_active before publishing TRACKED. */
++	if (folio_test_active(new_folio))
++		folio_clear_active(new_folio);
++
++	scoped_guard(marie_type_lock, &marie_type_locks[folio_is_file_lru(head)]) {
++		int type = folio_is_file_lru(head);
++		int zone = folio_zonenum(new_folio);
++		u8 head_gen = (u8)atomic_read(&marie_head_gen[type]);
++
++		/*
++		 * Publish the tail in the ISOLATED state (TRACKED byte only --
++		 * no scan bit, no gen_occupied, no nr_folios), NOT a fresh
++		 * install. The parent THP was already isolated
++		 * (marie_evict_counters_only) before this split, so each child
++		 * inherits that state and is balanced exactly once downstream:
++		 * by free if reclaimed (bit-gated, net-zero) or by the putback
++		 * path if it survives. marie_pfn_publish_inherit here would
++		 * double-count gen_occupied (split inc + putback inc, freed
++		 * once), leaving phantom gen_occupied>0/bit=0 occupancy that
++		 * wedges find_oldest + head-advance after the tails free -- the
++		 * THP-only, reboot-persistent anon-reclaim stall. See
++		 * marie_pfn_publish_isolated.
++		 */
++		marie_pfn_publish_isolated(new_folio, type, head_gen, 0, zone);
++	}
++}
++EXPORT_SYMBOL_GPL(lru_marie_split_folio_isolated);
 +
 +bool lru_marie_del_folio(struct lruvec *lv, struct folio *folio, bool reclaiming)
 +{
@@ -2735,10 +2698,10 @@ index 0000000000..2e9b110ec2
 +subsys_initcall(marie_init);
 diff --git a/mm/lru_marie/pfn_install.h b/mm/lru_marie/pfn_install.h
 new file mode 100644
-index 0000000000..6c86cd20cd
+index 0000000000..f5abb4f221
 --- /dev/null
 +++ b/mm/lru_marie/pfn_install.h
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,137 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_PFN_INSTALL_H
 +#define _MM_LRU_MARIE_PFN_INSTALL_H
@@ -2791,6 +2754,52 @@ index 0000000000..6c86cd20cd
 +		marie_pfn_zone_bits(zone);
 +	marie_bm_set(&marie_track_bm[type][gen][tier], pfn);
 +	atomic_long_inc(&marie_gen_occupied[gen][type]);
++}
++
++/*
++ * marie_pfn_publish_isolated - publish a PFN as TRACKED in the *isolated*
++ * state: the byte only, with NO scan bit and NO gen_occupied increment.
++ *
++ * This mirrors exactly the residual state marie_evict_counters_only leaves
++ * on an isolated folio (TRACKED byte retained for the install-race early-out;
++ * scan bit + gen_occupied already retired; nr_folios + lru_size already
++ * debited). It is the correct publish for a reclaim-split THP tail.
++ *
++ * The parent THP was isolated via marie_evict_counters_only (occ + bit
++ * retired, nr_folios/lru_size debited) BEFORE shrink_folio_list split it, so
++ * each child must enter the isolated state, NOT a fresh install:
++ *   - a child that is reclaimed frees with no bit -> nothing to retire
++ *     (free/uncharge are gated on the bit), net-zero, matching the parent's
++ *     already-debited aggregate;
++ *   - a child that survives is balanced EXACTLY ONCE by the putback path
++ *     (marie_state_publish_at_gen sets bit + occ; marie_account_install_isolate
++ *     adds nr_folios + lru_size) -- the same balance as a non-split isolated
++ *     survivor.
++ *
++ * Using marie_pfn_publish_inherit here instead publishes the tail in the
++ * fresh-install state (bit + occ + nr_folios), so a surviving tail is
++ * counted twice (split inc + putback inc) but retired once at free, leaking
++ * +1 gen_occupied (and +1 nr_folios) per surviving tail. After the tails
++ * free, that residue is phantom gen_occupied>0 / bit=0 occupancy: find_oldest
++ * keeps returning the phantom gen, the scanner finds no bit there, anon
++ * reclaim makes zero progress, and head-advance is wedged (its gate is
++ * gen_occupied[next]==0). THP-only (order-0 never splits) and persists across
++ * OOM until a reboot zeroes the global gen ring -- the "first tail run
++ * reclaims, every retry stalls at swapout onset" freeze.
++ *
++ * Caller context: identical to marie_pfn_publish_inherit (split path holds
++ * the per-type lock; the tail is exclusively owned, off-LRU, PG_lru clear).
++ */
++static inline void marie_pfn_publish_isolated(struct folio *f, int type,
++					      u8 gen, u8 tier, int zone)
++{
++	unsigned long pfn = folio_pfn(f);
++
++	marie_state[pfn] = MARIE_PFN_TRACKED |
++		(gen << MARIE_PFN_GEN_SHIFT) |
++		(tier << MARIE_PFN_TIER_SHIFT) |
++		(type ? MARIE_PFN_TYPE_FILE : 0) |
++		marie_pfn_zone_bits(zone);
 +}
 +
 +/*
@@ -3920,10 +3929,10 @@ index 0000000000..71f8eff7e5
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..bd60171dcc
+index 0000000000..5de407fe70
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2733 @@
+@@ -0,0 +1,2736 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -3970,7 +3979,7 @@ index 0000000000..bd60171dcc
 +#endif
 +
 +#include "../internal.h"	/* struct scan_control, shrink_folio_list */
-+#include "compat.h"	/* MARIE_FOLIO_FLAGS, marie_shrink_folio_list */
++#include "state_compat.h"	/* MARIE_FOLIO_FLAGS, marie_shrink_folio_list, marie_account_reclaim */
 +#include "account.h"
 +#include "pfn_install.h"
 +#include "prefetch.h"
@@ -5511,6 +5520,12 @@ index 0000000000..bd60171dcc
 +			LIST_HEAD(folio_list);
 +			struct reclaim_stat stat = {};
 +			unsigned long n_taken = 0;
++			/* PAGE count of isolated folios (n_taken counts folios; a
++			 * THP is folio_nr_pages pages). NR_ISOLATED_* and PGSCAN_*
++			 * are page counters by kernel convention, so they must use
++			 * this, not n_taken -- else THP undercounts NR_ISOLATED and
++			 * too_many_isolated() under-throttles concurrent reclaim. */
++			unsigned long n_taken_pages = 0;
 +			unsigned int n_reclaimed = 0;
 +			int oldest_for_putback;
 +			u8 putback_gen;
@@ -5559,6 +5574,7 @@ index 0000000000..bd60171dcc
 +			INIT_LIST_HEAD(&folio_list);
 +			stat = (struct reclaim_stat){};
 +			n_taken = 0;
++			n_taken_pages = 0;
 +			n_reclaimed = 0;
 +			ignore_refs = false;
 +
@@ -5727,6 +5743,7 @@ index 0000000000..bd60171dcc
 +					marie_evict_counters_only(f);
 +
 +					list_add(&f->lru, &folio_list);
++					n_taken_pages += folio_nr_pages(f);
 +					accept_idx++;
 +				}
 +				n_taken = accept_idx;
@@ -5750,19 +5767,12 @@ index 0000000000..bd60171dcc
 +			 * back).
 +			 */
 +			{
-+				enum vm_event_item scan_item =
-+					PGSCAN_KSWAPD +
-+					vmscan_reclaimer_offset(sc);
-+
 +				mod_node_page_state(pgdat,
 +						    NR_ISOLATED_ANON + type,
-+						    n_taken);
-+				if (!sc_cgroup_reclaim(sc))
-+					count_vm_events(scan_item, n_taken);
-+				count_memcg_events(memcg, scan_item,
-+						   n_taken);
-+				count_vm_events(PGSCAN_ANON + type,
-+						n_taken);
++						    n_taken_pages);
++				marie_account_reclaim(lruvec, sc,
++						PGSCAN_KSWAPD, PGSCAN_ANON,
++						type, n_taken_pages);
 +			}
 +
 +			n_reclaimed = marie_shrink_folio_list(&folio_list, pgdat,
@@ -5781,20 +5791,12 @@ index 0000000000..bd60171dcc
 +			 * isolation window for these n_taken folios is over.
 +			 */
 +			{
-+				enum vm_event_item steal_item =
-+					PGSTEAL_KSWAPD +
-+					vmscan_reclaimer_offset(sc);
-+
 +				mod_node_page_state(pgdat,
 +						    NR_ISOLATED_ANON + type,
-+						    -n_taken);
-+				if (!sc_cgroup_reclaim(sc))
-+					count_vm_events(steal_item,
-+							n_reclaimed);
-+				count_memcg_events(memcg, steal_item,
-+						   n_reclaimed);
-+				count_vm_events(PGSTEAL_ANON + type,
-+						n_reclaimed);
++						    -n_taken_pages);
++				marie_account_reclaim(lruvec, sc,
++						PGSTEAL_KSWAPD, PGSTEAL_ANON,
++						type, n_reclaimed);
 +			}
 +
 +			oldest_for_putback =
@@ -6249,8 +6251,18 @@ index 0000000000..bd60171dcc
 +	 * rotating hot ones. Counter is global/atomic (installs run under
 +	 * different per-lruvec lru_locks); reset only on a real advance, so a
 +	 * blocked attempt (next slot still draining) retries on the next install.
++	 *
++	 * Count PAGES, not folios: a large folio (THP) deposits folio_nr_pages
++	 * pages onto the head gen in one install, so the head must advance in
++	 * proportion. Incrementing by 1 per folio advanced the head up to
++	 * 512x too slowly under THP=always -- the entire anon set piled into the
++	 * head gen, reclaim (which scans the aged gens) found nothing to isolate,
++	 * and the node went all_unreclaimable with free swap: premature OOM and a
++	 * multi-CPU lru_lock livelock (tens-of-seconds GUI freeze). order-0 is
++	 * unaffected (folio_nr_pages == 1).
 +	 */
-+	if (atomic_long_inc_return(&marie_gen_installs[type]) >=
++	if (atomic_long_add_return(folio_nr_pages(folio),
++				   &marie_gen_installs[type]) >=
 +	    READ_ONCE(marie_gen_growth_threshold)) {
 +		if (marie_try_advance_head_mlv(type))
 +			atomic_long_set(&marie_gen_installs[type], 0);
@@ -7588,9 +7600,109 @@ index 0000000000..56b28656f1
 +
 +#endif /* CONFIG_LRU_MARIE */
 +#endif /* _MM_LRU_MARIE_STATE_H */
+diff --git a/mm/lru_marie/state_compat.h b/mm/lru_marie/state_compat.h
+new file mode 100644
+index 0000000000..4d07cedd9c
+--- /dev/null
++++ b/mm/lru_marie/state_compat.h
+@@ -0,0 +1,94 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_STATE_COMPAT_H
++#define _MM_LRU_MARIE_STATE_COMPAT_H
++
++/*
++ * Per-kernel-version adaptation layer for the reclaim state machine (state.c).
++ *
++ * Marie's core sources are meant to be byte-identical across every kernel it is
++ * ported to (currently 6.12 / 6.18 / 7.0 / 7.1).  The only core code that
++ * genuinely has to differ per version is a handful of in-tree mm APIs that
++ * changed signature; the reclaim side's share of those is isolated here behind
++ * uniform names (the walker side lives in walker_compat.h), so producing a
++ * per-version patch re-touches just these small headers plus the unavoidable
++ * context lines of the integration hunks -- never the bulk of the core.
++ *
++ * Include AFTER "../internal.h" and the usual mm headers (in particular
++ * <linux/vmstat.h> and <linux/memcontrol.h>): the wrappers are static inline
++ * and need the underlying declarations + struct types complete.
++ *
++ * Version boundaries below match the four supported targets exactly; revisit
++ * them when adding a new target kernel.
++ */
++
++#include <linux/version.h>
++
++/*
++ * folio->flags became the typed memdesc_flags_t -- struct { unsigned long f; }
++ * -- in 6.18 (upstream series "Add and use memdesc_flags_t", first commit
++ * 53fbef56e07d; <6.18 is a plain unsigned long, so this boundary is exact, not
++ * just target-derived).  The macro yields the raw "unsigned long" lvalue on
++ * every version, so both a read (`MARIE_FOLIO_FLAGS(f) & MASK`) and a bit op
++ * (`set_mask_bits(&MARIE_FOLIO_FLAGS(f), ...)`) are version-agnostic.
++ *
++ * Marie touches the raw word in only the two narrow spots the page-flag
++ * accessors do not cover: clearing stale LRU_GEN/LRU_REFS residue and the
++ * single atomic PG_active->0 + PG_lru->1 publish.
++ */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++#define MARIE_FOLIO_FLAGS(folio)	((folio)->flags.f)
++#else
++#define MARIE_FOLIO_FLAGS(folio)	((folio)->flags)
++#endif
++
++/*
++ * shrink_folio_list() gained a trailing @memcg parameter in 6.18 (the scan is
++ * told which memcg it is reclaiming for).  Marie always has the memcg in hand
++ * at the call site, so the uniform wrapper takes it unconditionally and simply
++ * does not forward it on the pre-6.18 signature.
++ */
++static inline unsigned int
++marie_shrink_folio_list(struct list_head *folio_list, struct pglist_data *pgdat,
++			struct scan_control *sc, struct reclaim_stat *stat,
++			bool ignore_references, struct mem_cgroup *memcg)
++{
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++	return shrink_folio_list(folio_list, pgdat, sc, stat, ignore_references,
++				 memcg);
++#else
++	return shrink_folio_list(folio_list, pgdat, sc, stat, ignore_references);
++#endif
++}
++
++/*
++ * Reclaim-counter accounting.
++ *
++ * 7.1 relocated the PGSTEAL, PGSCAN, PGDEMOTE and PGREFILL counters out of
++ * enum vm_event_item into enum node_stat_item (they are per-memcg lruvec stats
++ * now).  Route the post-isolation (PGSCAN) and post-reclaim (PGSTEAL) bumps
++ * through whichever API the building kernel exposes.  @base is the
++ * PG{SCAN,STEAL}_KSWAPD reclaimer-offset base, @per_type the PG{SCAN,STEAL}_ANON
++ * counter indexed by the anon/file @type; both are passed as int so the call
++ * site is identical whichever enum they live in.
++ */
++static inline void marie_account_reclaim(struct lruvec *lruvec,
++					 struct scan_control *sc,
++					 int base, int per_type,
++					 int type, unsigned long nr)
++{
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 1, 0)
++	/* node_stat_item: one lruvec update folds node vmstat + memcg stat. */
++	mod_lruvec_state(lruvec, base + vmscan_reclaimer_offset(sc), nr);
++	mod_lruvec_state(lruvec, per_type + type, nr);
++#else
++	/* vm_event_item: global (skipped for cgroup reclaim) + memcg + type. */
++	int item = base + vmscan_reclaimer_offset(sc);
++
++	if (!sc_cgroup_reclaim(sc))
++		count_vm_events(item, nr);
++	count_memcg_events(lruvec_memcg(lruvec), item, nr);
++	count_vm_events(per_type + type, nr);
++#endif
++}
++
++#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..04929187b8
+index 0000000000..33894e04fd
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -7613,15 +7725,15 @@ index 0000000000..04929187b8
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.6.0"
++#define MARIE_VERSION	"0.6.2"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
 new file mode 100644
-index 0000000000..c7da842330
+index 0000000000..e047779206
 --- /dev/null
 +++ b/mm/lru_marie/walker.c
-@@ -0,0 +1,947 @@
+@@ -0,0 +1,969 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/walker.c — Marie's SIMD-accelerated PTE walker.
@@ -7689,7 +7801,7 @@ index 0000000000..c7da842330
 +#include <linux/xarray.h>
 +
 +#include "../internal.h"	/* folio_pte_batch_flags / FPB_MERGE_YOUNG_DIRTY */
-+#include "compat.h"	/* marie_folio_pte_batch, lazy_mmu / young-ptes shims */
++#include "walker_compat.h"	/* marie_folio_pte_batch, lazy_mmu / young-ptes shims */
 +#include "state.h"
 +#include "simd.h"
 +
@@ -7731,7 +7843,8 @@ index 0000000000..c7da842330
 +
 +/*
 + * Version-shimmed mm APIs (test_and_clear_young_ptes_notify, lazy_mmu_mode_*,
-+ * folio_pte_batch) live in compat.h so this file is identical across kernels.
++ * folio_pte_batch) live in walker_compat.h so this file is identical across
++ * kernels.
 + */
 +
 +/* Forward decl: bloom Producer used by look_around. Definition lives in
@@ -7750,6 +7863,27 @@ index 0000000000..c7da842330
 +	int i;
 +
 +	lockdep_assert_held(pvmw->ptl);
++
++	/*
++	 * Clamp the target clear to the PMD (pte-page) boundary. @nr is the
++	 * folio's pvmw.nr_pages; for a large folio (THP/mTHP) that straddles a
++	 * PMD boundary or is only partially mapped at @addr, clearing @nr
++	 * consecutive PTEs forward from @pte would run off the end of this
++	 * pte page into the adjacent -- possibly freed (PAGE_POISONING) or
++	 * non-existent -- page table, write-faulting in
++	 * test_and_clear_young_ptes_notify(). pvmw->pte/ptl only cover this
++	 * one page table. (MGLRU's lru_gen_look_around sidesteps this by
++	 * clearing a single pte; the surrounding scan below is already
++	 * PMD-bounded via @end + marie_folio_pte_batch.) The common
++	 * PMD-aligned THP (nr == 512, addr at index 0) is unaffected.
++	 */
++	{
++		unsigned int pmd_room =
++			(((addr | ~PMD_MASK) + 1) - addr) >> PAGE_SHIFT;
++
++		if (nr > pmd_room)
++			nr = pmd_room;
++	}
 +
 +	/* Always clear the target folio's own young bit and propagate the
 +	 * result to the caller, regardless of whether we go on to scan the
@@ -7839,7 +7973,7 @@ index 0000000000..c7da842330
 +		if (folio_test_large(folio)) {
 +			const unsigned int max_nr = (end - addr) >> PAGE_SHIFT;
 +
-+			/* Version-agnostic neighbour batching; see compat.h. */
++			/* Version-agnostic neighbour batching; see walker_compat.h. */
 +			nr = marie_folio_pte_batch(folio, addr, pte, ptent, max_nr);
 +		}
 +
@@ -8569,6 +8703,94 @@ index 0000000000..c7da842330
 +	for (nid = 0; nid < MAX_NUMNODES; nid++)
 +		spin_lock_init(&marie_blooms[nid].lock);
 +}
+diff --git a/mm/lru_marie/walker_compat.h b/mm/lru_marie/walker_compat.h
+new file mode 100644
+index 0000000000..5942d25151
+--- /dev/null
++++ b/mm/lru_marie/walker_compat.h
+@@ -0,0 +1,82 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_WALKER_COMPAT_H
++#define _MM_LRU_MARIE_WALKER_COMPAT_H
++
++/*
++ * Per-kernel-version adaptation layer for the page-table walker (walker.c).
++ *
++ * Marie's core sources are meant to be byte-identical across every kernel it is
++ * ported to (currently 6.12 / 6.18 / 7.0 / 7.1).  The only core code that
++ * genuinely has to differ per version is a handful of in-tree mm APIs that
++ * changed signature; the walker's share of those is isolated here behind
++ * uniform names (the reclaim side lives in state_compat.h), so producing a
++ * per-version patch re-touches just these small headers plus the unavoidable
++ * context lines of the integration hunks -- never the bulk of the core.
++ *
++ * Include AFTER "../internal.h" (and the usual mm headers): the wrappers are
++ * static inline and need the underlying declarations + struct types complete.
++ *
++ * Version boundaries below match the four supported targets exactly; revisit
++ * them when adding a new target kernel.
++ */
++
++#include <linux/version.h>
++#include <linux/mmu_notifier.h>	/* ptep_clear_young_notify (young-ptes shim) */
++
++/*
++ * Look-around neighbour batching.  6.12 has folio_pte_batch() with the long
++ * (max_nr, FPB flags, out-params) signature; 6.18+ replaced it with
++ * folio_pte_batch_flags(folio, vma, ptep, &pte, max_nr, FPB_*).  Both collapse
++ * a run of present PTEs mapping @folio while ignoring young/dirty differences:
++ *   - 6.12: FPB_MERGE_YOUNG_DIRTY does not exist, but folio_pte_batch()
++ *     pte_mkold()s before comparing, so FPB_IGNORE_DIRTY alone gives the same
++ *     young/dirty-agnostic batching.
++ *   - 6.18+: FPB_MERGE_YOUNG_DIRTY merges across young/dirty directly.
++ * The uniform wrapper takes the 6.12 argument set (@addr is unused on 6.18+).
++ */
++static inline int
++marie_folio_pte_batch(struct folio *folio, unsigned long addr, pte_t *ptep,
++		      pte_t pte, unsigned int max_nr)
++{
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0)
++	return folio_pte_batch_flags(folio, NULL, ptep, &pte, max_nr,
++				     FPB_MERGE_YOUNG_DIRTY);
++#else
++	return folio_pte_batch(folio, addr, ptep, pte, max_nr, FPB_IGNORE_DIRTY,
++			       NULL, NULL, NULL);
++#endif
++}
++
++/*
++ * arch_enter/leave_lazy_mmu_mode() were renamed to
++ * lazy_mmu_mode_enable/disable() in 7.0.  Provide the new names on the older
++ * targets so the walker can use one spelling.
++ */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
++#define lazy_mmu_mode_enable()	arch_enter_lazy_mmu_mode()
++#define lazy_mmu_mode_disable()	arch_leave_lazy_mmu_mode()
++#endif
++
++/*
++ * test_and_clear_young_ptes_notify() -- the batched young-clear with
++ * mmu-notifier callback -- landed in 7.1.  On older targets emulate it as a
++ * per-PTE ptep_clear_young_notify() loop; functionally equivalent, losing only
++ * the batched-notifier amortisation.
++ */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 1, 0)
++static inline int marie_test_and_clear_young_ptes(struct vm_area_struct *vma,
++						  unsigned long addr,
++						  pte_t *pte, unsigned int nr)
++{
++	int young = 0;
++	unsigned int i;
++
++	for (i = 0; i < nr; i++)
++		young |= ptep_clear_young_notify(vma, addr + i * PAGE_SIZE,
++						 pte + i);
++	return young;
++}
++#define test_and_clear_young_ptes_notify marie_test_and_clear_young_ptes
++#endif
++
++#endif /* _MM_LRU_MARIE_WALKER_COMPAT_H */
 diff --git a/mm/memcontrol-v1.c b/mm/memcontrol-v1.c
 index 433bba9dfe..a7923ef2fa 100644
 --- a/mm/memcontrol-v1.c
