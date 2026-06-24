@@ -1,0 +1,14 @@
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c b/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
+--- a/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/amdgpu_smu.c
+@@ -975,6 +975,10 @@
+ 
+ 	smu_restore_dpm_user_profile(smu);
+ 
++	/* Increase maximum power limit by 15% */
++	smu->max_power_limit *= 115;
++	smu->max_power_limit /= 100;
++
+ 	return 0;
+ }
+ 
