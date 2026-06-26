@@ -43,6 +43,7 @@
  - BORE scheduler
  - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
+ - AMD HDMI-FRL Support
  - xConfig and nConfig during build
  - ADIOS I/O Scheduler
  - Handheld support (ROG Ally, Steam Deck, etc)
