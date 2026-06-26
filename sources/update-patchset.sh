@@ -89,7 +89,7 @@ p "aufs.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-aufs-7.1-merge-v20260621.patch"
 
 p "nap.patch" \
-  "https://raw.githubusercontent.com/firelzrd/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.0.patch"
+  "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
 
 p "vhba.patch" \
   "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/04-vhba.patch"

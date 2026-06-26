@@ -197,7 +197,7 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
  - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
  - LRU-Marie patches from [Firelzrd/lru_marie](https://github.com/firelzrd/lru_marie)
- - Nap patches from [Firelzrd/nap](https://github.com/firelzrd/nap)
+ - Nap patches from [NikoMalik/nap](https://github.com/NikoMalik/nap/)
 
 ---
 
