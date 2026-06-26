@@ -115,6 +115,9 @@ p "mm-max-map-count-INT-MAX.patch" \
 p "hdmi_frl.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0001-hdmi_frl.patch"
 
+p "handheld.patch" \
+  "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-handheld.patch"
+
 # ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
