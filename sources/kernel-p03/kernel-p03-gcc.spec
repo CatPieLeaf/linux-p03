@@ -66,6 +66,12 @@
 # Minimal kernel via modprobed.db (CI only, not for production).
 %define _build_minimal 0
 
+# Local-patches-only mode:
+#   0 = default: download GitHub patchset and apply it, then apply local patches
+#   1 = offline:  skip GitHub download entirely; apply only patches found in
+#                 SOURCES/local-patches/ (kernel) and SOURCES/local-patches-nvidia/
+%define _local_patches_only 0
+
 %define _build_generic 1
 %define _interactive_config 0
 
@@ -304,19 +310,24 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     mkdir -p "%{_sourcedir}/local-patches"
     mkdir -p "%{_sourcedir}/local-patches-nvidia"
 
+%if !%{_local_patches_only}
     # Download the GitHub repo archive once; used by all patch directories below.
     _gh_tmp="%{_builddir}/_gh_repo"
     mkdir -p "${_gh_tmp}"
     curl -fsSL "%{_gh_archive}" | tar xz -C "${_gh_tmp}" --strip-components=1
+%endif
 
 %if %{_build_nv}
-    # ---- Apply NVIDIA patches from sources/patchset-nvidia/ ------------------
+    # ---- Apply NVIDIA patches ------------------------------------------------
     mkdir -p %{_builddir}/nv-patches
     export QUILT_PATCHES=%{_builddir}/nv-patches
+%if !%{_local_patches_only}
+    # sources/patchset-nvidia/* — online patches from GitHub repo
     while IFS= read -r p; do
         cp "$p" "%{_builddir}/nv-patches/"
         echo "$(basename "$p")" >> "%{_builddir}/nv-patches/series"
     done < <(find "${_gh_tmp}/sources/patchset-nvidia" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+%endif
 
     # SOURCES/local-patches-nvidia/* — for local test builds, applied last
     while IFS= read -r p; do
@@ -395,6 +406,7 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     mkdir -p %{_builddir}/patches
     export QUILT_PATCHES=%{_builddir}/patches
 
+%if !%{_local_patches_only}
     # sources/patchset/* — every .patch, alphanumeric order
     while IFS= read -r p; do
         cp "$p" "%{_builddir}/patches/"
@@ -406,6 +418,7 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
         cp "$p" "%{_builddir}/patches/"
         echo "$(basename "$p")" >> "%{_builddir}/patches/series"
     done < <(find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+%endif
 
     # SOURCES/local-patches/* — for local test builds, applied last
     while IFS= read -r p; do

@@ -59,7 +59,7 @@ p "posted-msi-enable-by-default.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch"
 
 p "bbr3.patch" \
-  "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.1/NEXT/12-bbr3.patch"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/tcp/0001-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch?ref_type=heads"
 
 p "disable-split-lock.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch"
@@ -107,10 +107,10 @@ p "tcp-write-buffer.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0022-tcp-write-buffer.patch"
 
 p "sched-wait-lifo-accept.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0021-sched-wait-lifo-accept.patch"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/clearlinux/0001-sched-wait-Do-accept-in-LIFO-order-for-cache-efficie.patch?ref_type=heads"
 
-p "mm-max-map-count-INT-MAX.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0012-mm-max-map-count-INT-MAX.patch"
+p "mm-raise-max_map_count-default-value.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0013-XANMOD-mm-Raise-max_map_count-default-value.patch?ref_type=heads"
 
 p "hdmi_frl.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/main/0001-hdmi_frl.patch"
