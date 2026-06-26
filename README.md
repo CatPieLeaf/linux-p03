@@ -9,7 +9,7 @@
 <div align="center">
   <img src=".github/title-darkmode.png#gh-dark-mode-only" width="450">
   <img src=".github/title-lightmode.png#gh-light-mode-only" width="450">
-  <p align="center">A zero-misplay kernel with CachyOS, TKG, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
+  <p align="center">A zero-misplay kernel with CachyOS, TKG, XanMod, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
 </div>
 
 <p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
@@ -190,6 +190,7 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Patches from [Mauri870's Custom Kernel](https://github.com/mauri870/linux-kernel/)
  - Patches from [babiulep's Custom Kernel](https://github.com/babiulep/my-kernel-patches)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
+ - Patches from [XanMod Kernel](https://gitlab.com/xanmod/linux-patches)
  - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
  - ADIOS patches from [Firelzrd/adios](https://github.com/firelzrd/adios)
  - POC patches from [Firelzrd/poc-selector](https://github.com/firelzrd/poc-selector)
