@@ -1,7 +1,7 @@
-From c3d917d893295e4e640570ba88fde9c33afe98dc Mon Sep 17 00:00:00 2001
+From 4465784f3435c8d22ad7f17df6a07ef3c75d6bdc Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Wed, 24 Jun 2026 09:46:53 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.2
+Date: Tue, 30 Jun 2026 11:18:34 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.3
 
 ---
  include/linux/lru_marie.h      |  469 ++++++
@@ -17,8 +17,8 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.2
  mm/lru_marie/account.h         |  106 ++
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  205 +++
- mm/lru_marie/core.c            | 1193 ++++++++++++++
- mm/lru_marie/pfn_install.h     |  137 ++
+ mm/lru_marie/core.c            | 1202 ++++++++++++++
+ mm/lru_marie/pfn_install.h     |  138 ++
  mm/lru_marie/prefetch.h        |  111 ++
  mm/lru_marie/simd.h            |  109 ++
  mm/lru_marie/simd_generic.c    |   46 +
@@ -26,11 +26,11 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.2
  mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 2736 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  925 +++++++++++
+ mm/lru_marie/state.c           | 2723 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  952 +++++++++++
  mm/lru_marie/state_compat.h    |   94 ++
  mm/lru_marie/version.h         |   22 +
- mm/lru_marie/walker.c          |  969 +++++++++++
+ mm/lru_marie/walker.c          |  969 ++++++++++++
  mm/lru_marie/walker_compat.h   |   82 +
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
@@ -41,7 +41,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.2
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  347 +++-
- 37 files changed, 9288 insertions(+), 23 deletions(-)
+ 37 files changed, 9312 insertions(+), 23 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -1499,10 +1499,10 @@ index 0000000000..eb4b6ee263
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..c2e4a27265
+index 0000000000..e96e47fc0f
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1193 @@
+@@ -0,0 +1,1202 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -2061,7 +2061,16 @@ index 0000000000..c2e4a27265
 +	 * fall-through path.
 +	 */
 +	if (lru_marie_del_folio(*lruvecp, folio, false)) {
-+		__folio_clear_lru_flags(folio);
++		/*
++		 * marie_evict_locked already did list_del + cleared PG_lru and
++		 * PG_active (it must, for its isolate-race defence and lru-index
++		 * ordering -- see its body). The stock __folio_clear_lru_flags()
++		 * would re-assert PG_lru is still set (VM_BUG_ON_FOLIO under
++		 * DEBUG_VM, now false) and redundantly re-clear lru/active; only
++		 * its PG_unevictable clear is still owed before the buddy handoff
++		 * (PAGE_FLAGS_CHECK_AT_FREE). Clear just that.
++		 */
++		__folio_clear_unevictable(folio);
 +		return;
 +	}
 +
@@ -2698,10 +2707,10 @@ index 0000000000..c2e4a27265
 +subsys_initcall(marie_init);
 diff --git a/mm/lru_marie/pfn_install.h b/mm/lru_marie/pfn_install.h
 new file mode 100644
-index 0000000000..f5abb4f221
+index 0000000000..33a68696ac
 --- /dev/null
 +++ b/mm/lru_marie/pfn_install.h
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,138 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_PFN_INSTALL_H
 +#define _MM_LRU_MARIE_PFN_INSTALL_H
@@ -2722,7 +2731,8 @@ index 0000000000..f5abb4f221
 + *   - marie_state[pfn]: TRACKED | (gen) | (tier) | (type) | (zone)
 + *   - marie_track_bm[type][gen][tier]: scan bit for this PFN (a single
 + *     global per-(type,gen,tier) plane)
-+ *   - atomic_long_inc(&marie_gen_occupied[gen][type])
++ *   - marie_gen_occ_inc(gen, type): the single gen-occupancy choke-point
++ *     (state.h), shared with every other transition site
 + *
 + * What it deliberately does NOT touch:
 + *   - folio->flags (PG_active / PG_lru) -- the install path flips these
@@ -2753,7 +2763,7 @@ index 0000000000..f5abb4f221
 +		(type ? MARIE_PFN_TYPE_FILE : 0) |
 +		marie_pfn_zone_bits(zone);
 +	marie_bm_set(&marie_track_bm[type][gen][tier], pfn);
-+	atomic_long_inc(&marie_gen_occupied[gen][type]);
++	marie_gen_occ_inc(gen, type);
 +}
 +
 +/*
@@ -3929,10 +3939,10 @@ index 0000000000..71f8eff7e5
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..5de407fe70
+index 0000000000..16f14cd50b
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2736 @@
+@@ -0,0 +1,2723 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -4298,24 +4308,11 @@ index 0000000000..5de407fe70
 +}
 +
 +/*
-+ * gen_occupancy abstraction -- the SINGLE interface for "a folio entered /
-+ * left gen @g of @type". Every per-PFN gen-transition helper (publish_inherit,
-+ * drop_pfn, move_to_gen, publish_at_gen, inc_tier, evict_counters_only) routes
-+ * its occupancy bookkeeping through here so a new transition site cannot forget
-+ * to update it.
-+ *
-+ * Desktop/global-only: gen_occupied is a single global per-(gen, type) counter,
-+ * so these take no carrier.
++ * marie_gen_occ_inc/dec -- the SINGLE gen-occupancy interface -- now live as
++ * static inline in state.h so pfn_install.h's install-side publisher
++ * (marie_pfn_publish_inherit) routes through the same hook instead of bumping
++ * marie_gen_occupied directly. See the contract above their definition there.
 + */
-+static inline void marie_gen_occ_inc(int gen, int type)
-+{
-+	atomic_long_inc(&marie_gen_occupied[gen][type]);
-+}
-+
-+static inline void marie_gen_occ_dec(int gen, int type)
-+{
-+	atomic_long_dec(&marie_gen_occupied[gen][type]);
-+}
 +
 +/*
 + * marie_state_isolate_scan_l2lock - L2-bitmap pre-filtered scan with
@@ -6671,10 +6668,10 @@ index 0000000000..5de407fe70
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..56b28656f1
+index 0000000000..48d0fad3d9
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,925 @@
+@@ -0,0 +1,952 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -6928,6 +6925,33 @@ index 0000000000..56b28656f1
 + * tracked?" signal for marie_file_floor_protect.
 + */
 +extern atomic_long_t marie_gen_occupied[MARIE_PFN_NR_GENS][2 /* ANON_AND_FILE */];
++
++/*
++ * gen_occupancy abstraction -- the SINGLE interface for "a folio entered /
++ * left gen @g of @type". EVERY per-PFN gen-transition site routes its
++ * occupancy bookkeeping through here: the install/split publisher
++ * (marie_pfn_publish_inherit, pfn_install.h) and the state.c transitions
++ * (publish_at_gen, move_to_gen, inc_tier, drop_pfn, drop_pfn_at_free,
++ * evict_counters_only, uncharge_backstop). Keeping it a single choke-point
++ * means a new transition site cannot forget to update the counter -- and
++ * gives a future per-pageblock occupancy mirror (MDC compaction) one hook to
++ * tap, with Sigma_blocks(mirror) == Sigma(marie_gen_occupied) as its
++ * completeness invariant.
++ *
++ * static inline in the header (was state.c-private) precisely so the
++ * install-side publisher in pfn_install.h shares this path instead of
++ * bumping marie_gen_occupied directly. Desktop/global-only: a single global
++ * per-(gen, type) counter, so these take no carrier.
++ */
++static inline void marie_gen_occ_inc(int gen, int type)
++{
++	atomic_long_inc(&marie_gen_occupied[gen][type]);
++}
++
++static inline void marie_gen_occ_dec(int gen, int type)
++{
++	atomic_long_dec(&marie_gen_occupied[gen][type]);
++}
 +
 +/* Global aging epoch (bumped per walker pass per type); see state.c. */
 +extern atomic_t marie_aging_epoch[2 /* ANON_AND_FILE */];
@@ -7702,7 +7726,7 @@ index 0000000000..4d07cedd9c
 +#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..33894e04fd
+index 0000000000..8debc9456e
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -7725,7 +7749,7 @@ index 0000000000..33894e04fd
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.6.2"
++#define MARIE_VERSION	"0.6.3"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
