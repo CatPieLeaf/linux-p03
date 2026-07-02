@@ -1,10 +1,10 @@
-From 4465784f3435c8d22ad7f17df6a07ef3c75d6bdc Mon Sep 17 00:00:00 2001
+From c4eb07213f232e43f7a24346a4191c76c6e5c2c8 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Tue, 30 Jun 2026 11:18:34 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.3
+Date: Wed, 1 Jul 2026 21:42:09 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-7.1-marie
 
 ---
- include/linux/lru_marie.h      |  469 ++++++
+ include/linux/lru_marie.h      |  470 ++++++
  include/linux/memcontrol.h     |   26 +-
  include/linux/mm_inline.h      |  103 +-
  include/linux/mmzone.h         |   15 +
@@ -17,31 +17,31 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.3
  mm/lru_marie/account.h         |  106 ++
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  205 +++
- mm/lru_marie/core.c            | 1202 ++++++++++++++
+ mm/lru_marie/core.c            | 1246 ++++++++++++++
  mm/lru_marie/pfn_install.h     |  138 ++
  mm/lru_marie/prefetch.h        |  111 ++
  mm/lru_marie/simd.h            |  109 ++
  mm/lru_marie/simd_generic.c    |   46 +
- mm/lru_marie/simd_x86.c        |  271 ++++
+ mm/lru_marie/simd_x86.c        |  271 +++
  mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 2723 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  952 +++++++++++
+ mm/lru_marie/state.c           | 2832 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  961 +++++++++++
  mm/lru_marie/state_compat.h    |   94 ++
  mm/lru_marie/version.h         |   22 +
- mm/lru_marie/walker.c          |  969 ++++++++++++
+ mm/lru_marie/walker.c          |  969 +++++++++++
  mm/lru_marie/walker_compat.h   |   82 +
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
  mm/mm_init.c                   |    3 +
- mm/page_alloc.c                |   76 +
+ mm/page_alloc.c                |   95 ++
  mm/page_io.c                   |  187 +++
  mm/rmap.c                      |    6 +
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  347 +++-
- 37 files changed, 9312 insertions(+), 23 deletions(-)
+ 37 files changed, 9494 insertions(+), 23 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -65,10 +65,10 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.3
 
 diff --git a/include/linux/lru_marie.h b/include/linux/lru_marie.h
 new file mode 100644
-index 0000000000..26837720e7
+index 0000000000..2803b2aa6c
 --- /dev/null
 +++ b/include/linux/lru_marie.h
-@@ -0,0 +1,469 @@
+@@ -0,0 +1,470 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _LINUX_LRU_MARIE_H
 +#define _LINUX_LRU_MARIE_H
@@ -464,12 +464,13 @@ index 0000000000..26837720e7
 + * snapshots are taken at the top of each loop iteration so a concurrent
 + * write only takes effect on the next pass.
 + */
-+extern unsigned long marie_gen_growth_threshold;
 +extern unsigned long marie_walker_interval_critical;	/* jiffies */
 +extern unsigned long marie_walker_interval_low;		/* jiffies */
 +extern unsigned long marie_walker_interval_normal;	/* jiffies */
 +extern unsigned long marie_walker_interval_idle;	/* jiffies */
 +extern unsigned int  marie_fpu_batch;			/* PMDs per FPU bracket */
++extern unsigned int  marie_oom_free_ratio;		/* % totalram; 0 = off (zram thrash OOM) */
++unsigned long marie_non_anon_freeable_pages(void);	/* free + clean file above the floor */
 +
 +#ifdef CONFIG_SWAP
 +/*
@@ -1499,10 +1500,10 @@ index 0000000000..eb4b6ee263
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..e96e47fc0f
+index 0000000000..fe888563fc
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1202 @@
+@@ -0,0 +1,1246 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -1524,7 +1525,7 @@ index 0000000000..e96e47fc0f
 + *   - single global cycling per-type gen clock (MARIE_PFN_NR_GENS = 4)
 + *     encoded in the per-PFN byte, advanced by global install cadence
 + *     (marie_folio_install counts installs onto the head gen and
-+ *     advances at marie_gen_growth_threshold)
++ *     advances at marie_gen_growth_live[type])
 + *   - SIMD PTE young-bit batch scan with boot-time AVX-512F / AVX2 /
 + *     SSE2 dispatch on x86; scalar fallback on arm64 and elsewhere
 + *
@@ -1688,7 +1689,7 @@ index 0000000000..e96e47fc0f
 + * marie_gen_installs, marie_recycle_epoch), the global track bitmap,
 + * and the MARIE_PFN_NR_GENS / MARIE_NR_TIERS / MARIE_TIER_MAX /
 + * MARIE_ISOLATE_BATCH constants live in state.{h,c}. Runtime-tunable
-+ * knobs (marie_gen_growth_threshold, etc.) live in the sysfs section at
++ * knobs (clean_min_ratio, walker intervals, etc.) live in the sysfs section at
 + * the bottom of this file. Desktop/global-only: there are no per-lruvec
 + * objects, so no lookup / alloc / free / memcg-teardown lifecycle.
 + */
@@ -1727,7 +1728,7 @@ index 0000000000..e96e47fc0f
 + *   - head_gen advances per type via marie_try_advance_head_mlv (the
 + *     _mlv suffix is historical -- the clock is a single global one per
 + *     type), fired by global install cadence alone (marie_folio_install
-+ *     checks marie_gen_installs[type] against marie_gen_growth_threshold;
++ *     checks marie_gen_installs[type] against marie_gen_growth_live[type];
 + *     the old reclaim-time occupied<2 trigger was removed as it thrashed
 + *     the ring). Advance is gated: the next slot must be fully empty
 + *     (marie_gen_occupied[next][type] == 0).
@@ -2242,7 +2243,8 @@ index 0000000000..e96e47fc0f
 +	return sysfs_emit(buf,
 +			  "nr_folios %lld\n"
 +			  "pick file_strict %ld anon_strict %ld file_then_anon %ld anon_first %ld file_first %ld\n"
-+			  "reclaimed anon %ld file %ld\n",
++			  "reclaimed anon %ld file %ld\n"
++			  "gen_growth_live anon %lu file %lu\n",
 +			  percpu_counter_sum(&marie_nr_folios),
 +			  atomic_long_read(&marie_dbg_pick[0]),
 +			  atomic_long_read(&marie_dbg_pick[1]),
@@ -2250,7 +2252,9 @@ index 0000000000..e96e47fc0f
 +			  atomic_long_read(&marie_dbg_pick[3]),
 +			  atomic_long_read(&marie_dbg_pick[4]),
 +			  atomic_long_read(&marie_dbg_reclaimed[0]),
-+			  atomic_long_read(&marie_dbg_reclaimed[1]));
++			  atomic_long_read(&marie_dbg_reclaimed[1]),
++			  READ_ONCE(marie_gen_growth_live[0]),
++			  READ_ONCE(marie_gen_growth_live[1]));
 +}
 +
 +static struct kobj_attribute marie_stats_attr = __ATTR_RO(stats);
@@ -2277,11 +2281,41 @@ index 0000000000..e96e47fc0f
 +	if (v > 100)
 +		return -EINVAL;
 +	WRITE_ONCE(marie_clean_min_ratio, v);
++	/* The file reserve/NR_GENS threshold floor tracks this ratio. */
++	marie_recompute_growth_threshold(1);
 +	return count;
 +}
 +
 +static struct kobj_attribute marie_clean_min_ratio_attr =
 +	__ATTR_RW(clean_min_ratio);
++
++/*
++ * oom_free_ratio sysfs knob. Range 0..100 (percentage of totalram).
++ * 0 disables. See marie_oom_free_ratio above and should_reclaim_retry.
++ */
++static ssize_t oom_free_ratio_show(struct kobject *kobj,
++				   struct kobj_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%u\n", READ_ONCE(marie_oom_free_ratio));
++}
++
++static ssize_t oom_free_ratio_store(struct kobject *kobj,
++				    struct kobj_attribute *attr,
++				    const char *buf, size_t count)
++{
++	unsigned int v;
++	int err = kstrtouint(buf, 10, &v);
++
++	if (err)
++		return err;
++	if (v > 100)
++		return -EINVAL;
++	WRITE_ONCE(marie_oom_free_ratio, v);
++	return count;
++}
++
++static struct kobj_attribute marie_oom_free_ratio_attr =
++	__ATTR_RW(oom_free_ratio);
 +
 +#ifdef CONFIG_SWAP
 +/*
@@ -2436,20 +2470,58 @@ index 0000000000..e96e47fc0f
 +unsigned int marie_clean_min_ratio = 10;
 +
 +/*
-+ * marie_gen_growth_threshold — pages installed onto the global head gen
-+ * before marie_folio_install advances the head (seals the gen and opens
-+ * a fresh younger one). This is the global install-cadence aging
-+ * trigger; see marie_folio_install and marie_try_advance_head_mlv (the
-+ * _mlv suffix is historical -- the clock is a single global one per type).
++ * marie_oom_free_ratio — emergency OOM trigger against RAM-backed swap thrash
++ * (zram/zswap). When a post-reclaim allocation retry finds the NON-ANON freeable
++ * memory (marie_non_anon_freeable_pages) below this percentage of totalram, go
++ * OOM instead of retrying.
 + *
-+ * Default 65536 pages (= SWAP_CLUSTER_MAX << 11, i.e. 256 MiB/gen, ~1 GiB
-+ * of ring depth). Lower values produce finer gen granularity (more aging
-+ * churn but tighter hot/cold separation); higher values coarsen the ring.
-+ * The earlier 8192 (32 MiB) over-cycled the ring under fast allocation so
-+ * the oldest gen never aged before reclaim reached it -- raised here so
-+ * folios stratify by age before the ring wraps.
++ * Rationale: zram/zswap report their NOMINAL disksize as free swap, so
++ * get_nr_swap_pages() stays > 0 even after the compressed store has physically
++ * exhausted RAM. anon therefore keeps counting as reclaimable, the alloc retry
++ * loop keeps swapping anon into the same RAM the swap-out just freed (net-zero
++ * once RAM is full), and the kernel OOM killer never fires -- the box thrashes
++ * on compression forever while userspace starves (a hard freeze on a 2-core
++ * zram-only laptop; reproduces under stock MGLRU too). This gate keys on the
++ * memory we can free WITHOUT swapping anon; once that is gone the only reclaim
++ * left is the futile anon->swap, so we give up. Ignores nominal swap capacity,
++ * so it holds at ANY zram disksize (2x .. 100x of RAM).
++ *
++ * 0 = disabled (default). Range 0..100. See should_reclaim_retry (page_alloc.c).
 + */
-+unsigned long marie_gen_growth_threshold = (unsigned long)SWAP_CLUSTER_MAX << 11;
++unsigned int marie_oom_free_ratio;
++
++/*
++ * marie_non_anon_freeable_pages - pages reclaimable WITHOUT swapping anon:
++ * free pages + clean file above the clean_min_ratio floor. This is the "how
++ * much more room can we make for anon by non-futile means" signal the RAM-
++ * backed-swap OOM gate (marie_oom_free_ratio, should_reclaim_retry) thresholds
++ * on. Self-correcting: while anon-swap is productive (zram still has room) the
++ * swap-out frees RAM and this value recovers; it stays low only once the
++ * compressed store has saturated physical RAM. Ignores nominal swap capacity,
++ * so it is disksize-independent.
++ */
++unsigned long marie_non_anon_freeable_pages(void)
++{
++	unsigned long free = global_zone_page_state(NR_FREE_PAGES);
++	unsigned long file, shmem, dirty, clean, floor;
++
++	/*
++	 * NR_ACTIVE_FILE/NR_INACTIVE_FILE include shmem/tmpfs, which sits on
++	 * the file LRU but is swap-backed: reclaiming it means swapping to the
++	 * same RAM-backed store, not the anon-free reclaim this signal is
++	 * about. Subtract it, else a browser desktop's shmem (GPU buffers,
++	 * tmpfs, /dev/shm) keeps this value high and the OOM gate never trips.
++	 */
++	file  = global_node_page_state(NR_ACTIVE_FILE) +
++		global_node_page_state(NR_INACTIVE_FILE);
++	shmem = global_node_page_state(NR_SHMEM);
++	file  = file > shmem ? file - shmem : 0;
++	dirty = global_node_page_state(NR_FILE_DIRTY);
++	clean = file > dirty ? file - dirty : 0;
++	floor = totalram_pages() * READ_ONCE(marie_clean_min_ratio) / 100;
++
++	return free + (clean > floor ? clean - floor : 0);
++}
 +
 +/*
 + * marie_walker_interval_* — adaptive walker pass deadline per pgdat,
@@ -2510,33 +2582,6 @@ index 0000000000..e96e47fc0f
 +}
 +__setup("lru_marie.fpu_batch=", marie_fpu_batch_setup);
 +#endif /* CONFIG_X86 */
-+
-+static ssize_t gen_growth_threshold_show(struct kobject *kobj,
-+					 struct kobj_attribute *attr,
-+					 char *buf)
-+{
-+	return sysfs_emit(buf, "%lu\n",
-+			  READ_ONCE(marie_gen_growth_threshold));
-+}
-+
-+static ssize_t gen_growth_threshold_store(struct kobject *kobj,
-+					  struct kobj_attribute *attr,
-+					  const char *buf, size_t count)
-+{
-+	unsigned long v;
-+	int err = kstrtoul(buf, 10, &v);
-+
-+	if (err)
-+		return err;
-+	/* Must hold at least one MARIE_ISOLATE_BATCH-sized pop. */
-+	if (v < SWAP_CLUSTER_MAX || v > (1UL << 28))
-+		return -EINVAL;
-+	WRITE_ONCE(marie_gen_growth_threshold, v);
-+	return count;
-+}
-+
-+static struct kobj_attribute marie_gen_growth_threshold_attr =
-+	__ATTR_RW(gen_growth_threshold);
 +
 +#ifdef CONFIG_X86
 +static ssize_t fpu_batch_show(struct kobject *kobj,
@@ -2616,6 +2661,7 @@ index 0000000000..e96e47fc0f
 +	&marie_version_attr.attr,
 +	&marie_stats_attr.attr,
 +	&marie_clean_min_ratio_attr.attr,
++	&marie_oom_free_ratio_attr.attr,
 +#ifdef CONFIG_SWAP
 +	&marie_kcompmari_attr.attr,
 +#endif
@@ -2624,7 +2670,6 @@ index 0000000000..e96e47fc0f
 +	&marie_simd_max_attr.attr,
 +	&marie_fpu_batch_attr.attr,
 +#endif
-+	&marie_gen_growth_threshold_attr.attr,
 +	&marie_walker_interval_critical_ms_attr.attr,
 +	&marie_walker_interval_low_ms_attr.attr,
 +	&marie_walker_interval_normal_ms_attr.attr,
@@ -2707,7 +2752,7 @@ index 0000000000..e96e47fc0f
 +subsys_initcall(marie_init);
 diff --git a/mm/lru_marie/pfn_install.h b/mm/lru_marie/pfn_install.h
 new file mode 100644
-index 0000000000..33a68696ac
+index 0000000000..35e1741b4e
 --- /dev/null
 +++ b/mm/lru_marie/pfn_install.h
 @@ -0,0 +1,138 @@
@@ -2836,7 +2881,7 @@ index 0000000000..33a68696ac
 + *      LIST_POISON{1,2} that would later fault list_del_init.
 + *   5. Publish per-PFN state via marie_pfn_publish_inherit.
 + *   6. Bump marie_gen_installs[type] and advance the head at
-+ *      marie_gen_growth_threshold. Split path skips this bump
++ *      marie_gen_growth_live[type]. Split path skips this bump
 + *      (publish_inherit only).
 + *   7. set_mask_bits(PG_active->0, PG_lru->1) -- one atomic flag write.
 + *      Ordered AFTER step 5 so a concurrent __page_cache_release
@@ -3939,10 +3984,10 @@ index 0000000000..71f8eff7e5
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..16f14cd50b
+index 0000000000..fc6e18da14
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2723 @@
+@@ -0,0 +1,2832 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -4237,6 +4282,16 @@ index 0000000000..16f14cd50b
 +	 */
 +	static_branch_enable(&marie_state_ready_key);
 +
++	/*
++	 * Seed the dynamic install-cadence thresholds before the first install
++	 * so the cadence never compares against a 0 live value (which would
++	 * advance the head on every install). At init occ==0 and adv==0, so
++	 * live = memtotal/8 (anon warm-up decay) / max(reserve/NR_GENS, memtotal/256)
++	 * (file).
++	 */
++	marie_recompute_growth_threshold(0);
++	marie_recompute_growth_threshold(1);
++
 +	pr_info("allocated state %lu B + 16 tracking bitmaps (max_pfn=%lu, l2_shift=%u)\n",
 +		bytes, max_pfn, marie_l2_shift);
 +	return 0;
@@ -4276,6 +4331,88 @@ index 0000000000..16f14cd50b
 +}
 +
 +/*
++ * Dynamic per-type install-cadence threshold. marie_gen_growth_live[type] is the
++ * LIVE value the install cadence compares marie_gen_installs[type] against.
++ * Fully automatic -- there is no sysfs knob:
++ *
++ *   live[anon] = max(occ/NR_GENS, (memtotal - occ)/NR_GENS, memtotal/256)
++ *   live[file] = max(occ/NR_GENS,  reserve/NR_GENS,         memtotal/256)
++ *
++ *   occ/NR_GENS = scale-invariant steady state: the ring spans the type's
++ *              working set, so the oldest gen holds ~1/NR_GENS of it and a folio
++ *              ages over ~one set-turnover of installs. PAGES (node LRU stat),
++ *              not folios, to match the page-counted install cadence so THP does
++ *              not skew it.
++ *   (memtotal - occ)/NR_GENS = ANON ONLY, stateless coverage/slack warm-up.
++ *              max()'d with occ/NR_GENS the effective anon gen size becomes
++ *              max(anon, memtotal - anon)/NR_GENS, so the ring ALWAYS spans the
++ *              full anon set (never under-strata) and gains head-ahead slack
++ *              while anon is below half of RAM -- coarse gens defer stratifying a
++ *              still-filling set. It tightens to a full NR_GENS-deep ring as anon
++ *              approaches memtotal and hands off to occ/NR_GENS past half of RAM,
++ *              exactly the under-pressure regime where fine cold-folio selection
++ *              matters (under swappiness=1 anon is tapped only when it already
++ *              fills the non-file remainder, so "anon large" ~= "anon reclaimed").
++ *              No latch, no advance counter: pressure-reactive and self-recovering.
++ *              File has no such term -- pagecache churns continuously (no
++ *              fill-then-settle phase), so immediate occ/NR_GENS stratification is
++ *              correct.
++ *   reserve/NR_GENS = FILE ONLY: the clean_min_ratio reserve / NR_GENS. When file
++ *              is squeezed to its protected reserve the ring still stratifies that
++ *              reserve across all gens; occ/NR_GENS takes over once file grows
++ *              past the reserve. Anon has no clean_min_ratio reserve (it is a file
++ *              concept), so no such term.
++ *   memtotal/256 = absolute thrash floor for the occ~0 / high-churn corner (and
++ *              for file when clean_min_ratio == 0 zeroes its reserve term).
++ *
++ * Recomputed only at a head advance (rare) and on a clean_min_ratio write -- the
++ * per-install hot path is one READ_ONCE(marie_gen_growth_live[type]). Both live
++ * terms track current occupancy, so an advance-time recompute keeps them fresh.
++ */
++unsigned long marie_gen_growth_live[2];
++
++void marie_recompute_growth_threshold(int type)
++{
++	unsigned long total = totalram_pages();
++	unsigned long occ_pages, occ, thr;
++
++	/* Absolute thrash floor; also covers clean_min_ratio==0 for file. */
++	thr = total >> 8;			/* memtotal/256 */
++
++	/* Scale-invariant steady state: occupancy pages / NR_GENS. */
++	if (type == 0)
++		occ_pages = global_node_page_state(NR_ACTIVE_ANON) +
++			    global_node_page_state(NR_INACTIVE_ANON);
++	else
++		occ_pages = global_node_page_state(NR_ACTIVE_FILE) +
++			    global_node_page_state(NR_INACTIVE_FILE);
++	occ = occ_pages / MARIE_PFN_NR_GENS;
++	if (occ > thr)
++		thr = occ;
++
++	if (type == 1) {
++		/* FILE policy floor: clean_min_ratio reserve / NR_GENS. */
++		unsigned long resv = total * READ_ONCE(marie_clean_min_ratio)
++				     / 100 / MARIE_PFN_NR_GENS;
++		if (resv > thr)
++			thr = resv;
++	} else {
++		/*
++		 * ANON coverage/slack warm-up (stateless): (memtotal - anon)/NR_GENS.
++		 * max()'d with occ/NR_GENS -> effective gen = max(anon, memtotal-anon)
++		 * /NR_GENS: ring always spans the anon set, slack while anon < half RAM,
++		 * full NR_GENS-deep once anon fills. See the header block.
++		 */
++		unsigned long warm = (total > occ_pages)
++				     ? (total - occ_pages) / MARIE_PFN_NR_GENS : 0;
++		if (warm > thr)
++			thr = warm;
++	}
++
++	WRITE_ONCE(marie_gen_growth_live[type], thr);
++}
++
++/*
 + * Advance the global head if its next slot is empty. The gate
 + * (gen_occupied[next]==0) guarantees nothing live sits at the slot the head
 + * recycles, so it never aliases old folios. Stamp recycle_epoch so
@@ -4304,6 +4441,12 @@ index 0000000000..16f14cd50b
 +		return false;
 +	WRITE_ONCE(marie_recycle_epoch[next][type],
 +		   atomic_read(&marie_aging_epoch[type]));
++	/*
++	 * Real advance: recompute this type's live install-cadence threshold from
++	 * current occupancy (both the occ/NR_GENS and the anon warm-up terms track
++	 * live occ_pages). Runs for install-cadence AND demand-pull advances.
++	 */
++	marie_recompute_growth_threshold(type);
 +	return true;
 +}
 +
@@ -5234,7 +5377,7 @@ index 0000000000..16f14cd50b
 +/*
 + * marie_file_floor_protect - is the clean_min_ratio file floor in force?
 + *
-+ * Returns true when this node's clean file pagecache has fallen below
++ * Returns true when this node's clean file pagecache has fallen TO OR BELOW
 + * marie_clean_min_ratio (% of node_present_pages) and Marie still has
 + * anon to absorb the pressure, so file reclaim must be withheld. The pick
 + * driver diverts file -> anon on this signal (skip_file) and folds the
@@ -5268,7 +5411,18 @@ index 0000000000..16f14cd50b
 +	file_pages = (file_pages > dirty) ? file_pages - dirty : 0;
 +	file_min = pgdat->node_present_pages * min_ratio / 100;
 +
-+	if (file_pages >= file_min)
++	/*
++	 * Strict '>' (not '>='): clean file AT EXACTLY the floor must be
++	 * protected, not reclaimed. Under swappiness=1 the FILE_THEN_ANON tail
++	 * concedes to anon iff this returns true (concede == floor_protect for
++	 * global reclaim); with '>=', file held at the floor by pagecache refill
++	 * never crosses STRICTLY below it, so concede never fires and GBs of cold
++	 * anon are stranded behind a file refill treadmill -- the allocator
++	 * livelocks (anon still counts as reclaimable, so the OOM gate never
++	 * trips) instead of swapping. Conceding at the floor is the intended
++	 * "file first, until the floor, then anon".
++	 */
++	if (file_pages > file_min)
 +		return false;
 +
 +	for (g = 0; g < MARIE_PFN_NR_GENS; g++)
@@ -5281,7 +5435,7 @@ index 0000000000..16f14cd50b
 + * marie_state_shrink_lruvec - per-PFN paradigm reclaim driver.
 + *
 + * Aging has two head-advance triggers. SUPPLY-PUSH: install cadence
-+ * advances the head every marie_gen_growth_threshold installs
++ * advances the head every marie_gen_growth_live[type] installs
 + * (marie_folio_install). DEMAND-PULL: when a type's sweep finds the aged
 + * ring exhausted (find_oldest < 0) but cold pages are parked in the head
 + * gen, it seals the head so they age into reclaim range -- the
@@ -5370,7 +5524,7 @@ index 0000000000..16f14cd50b
 +	/*
 +	 * No head advance here. Aging is driven by install cadence
 +	 * (marie_folio_install advances the head every
-+	 * marie_gen_growth_threshold installs, under lru_lock). The old
++	 * marie_gen_growth_live[type] installs, under lru_lock). The old
 +	 * reclaim-time "occupied < 2" advance thrashed the ring under
 +	 * concurrent reclaim; see marie_try_advance_head_mlv.
 +	 */
@@ -6241,7 +6395,7 @@ index 0000000000..16f14cd50b
 +	marie_pfn_publish_inherit(folio, type, head, (u8)tier, zone);
 +	/*
 +	 * Install-cadence aging (global). Count installs onto the head gen and
-+	 * seal the generation once it has accumulated marie_gen_growth_threshold
++	 * seal the generation once it has accumulated marie_gen_growth_live[type]
 +	 * pages, advancing the head so subsequent installs land in a fresh
 +	 * younger gen. This stratifies folios by age PROACTIVELY so the oldest
 +	 * gen holds genuinely-old folios and reclaim does not waste scans
@@ -6260,7 +6414,7 @@ index 0000000000..16f14cd50b
 +	 */
 +	if (atomic_long_add_return(folio_nr_pages(folio),
 +				   &marie_gen_installs[type]) >=
-+	    READ_ONCE(marie_gen_growth_threshold)) {
++	    READ_ONCE(marie_gen_growth_live[type])) {
 +		if (marie_try_advance_head_mlv(type))
 +			atomic_long_set(&marie_gen_installs[type], 0);
 +	}
@@ -6668,10 +6822,10 @@ index 0000000000..16f14cd50b
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..48d0fad3d9
+index 0000000000..c64598117f
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,952 @@
+@@ -0,0 +1,961 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -6765,7 +6919,7 @@ index 0000000000..48d0fad3d9
 + * head_gen advance is global and per-type, drain-wait gated (next gen
 + * empty for that type), and fired by install cadence alone: a single
 + * global per-type counter (marie_gen_installs[type]) counts installs onto
-+ * the head gen and advances at marie_gen_growth_threshold
++ * the head gen and advances at marie_gen_growth_live[type]
 + * (marie_folio_install -> marie_try_advance_head_mlv, under lru_lock). The
 + * former reclaim-time "occupied < 2 at shrink entry" trigger was removed --
 + * under concurrent global reclaim it thrashed the ring and collapsed age
@@ -6960,6 +7114,16 @@ index 0000000000..48d0fad3d9
 +extern atomic_t marie_head_gen[2 /* ANON_AND_FILE */];
 +extern u32 marie_recycle_epoch[MARIE_PFN_NR_GENS][2 /* ANON_AND_FILE */];
 +extern atomic_long_t marie_gen_installs[2 /* ANON_AND_FILE */];
++
++/*
++ * Dynamic per-type install-cadence threshold (see state.c). marie_gen_growth_live[]
++ * is the live value the install cadence reads; marie_recompute_growth_threshold()
++ * runs at each head advance and on a clean_min_ratio write. Fully automatic (no
++ * sysfs knob): per-type gen size scales to occupancy (occ/NR_GENS) with an anon
++ * coverage/slack warm-up and a file clean_min_ratio-reserve floor.
++ */
++extern unsigned long marie_gen_growth_live[2 /* ANON_AND_FILE */];
++void marie_recompute_growth_threshold(int type);
 +
 +/* Global anon-vs-file proportional pick bias; see marie_swap_pick_type. */
 +extern atomic64_t marie_swap_bias;
@@ -7464,12 +7628,11 @@ index 0000000000..48d0fad3d9
 +#define MARIE_ISOLATE_BATCH SWAP_CLUSTER_MAX
 +
 +/*
-+ * Allocation-side aging trigger threshold (per head gen installs)
-+ * lives in mm/lru_marie/core.c as marie_gen_growth_threshold and is
-+ * runtime-tunable via /sys/kernel/mm/lru_marie/gen_growth_threshold.
-+ * Default 65536 pages (= SWAP_CLUSTER_MAX << 11, i.e. 256 MiB/gen).
-+ * Global install cadence: marie_folio_install advances the head gen once
-+ * the global marie_gen_installs[type] counter reaches this threshold.
++ * Allocation-side aging trigger threshold (per head gen installs). Fully
++ * automatic, per-type: marie_gen_growth_live[type] (state.c),
++ * recomputed at each head advance and on a clean_min_ratio write. Global
++ * install cadence: marie_folio_install advances the head gen once the global
++ * marie_gen_installs[type] counter reaches marie_gen_growth_live[type].
 + */
 +
 +/*
@@ -7726,7 +7889,7 @@ index 0000000000..4d07cedd9c
 +#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..8debc9456e
+index 0000000000..668025f001
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -7749,7 +7912,7 @@ index 0000000000..8debc9456e
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.6.3"
++#define MARIE_VERSION	"0.6.5"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
@@ -8898,7 +9061,7 @@ index f9f8e1af92..5855f9ef89 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index 23c7298d3b..1978c03b10 100644
+index 23c7298d3b..4c94344e78 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -16,6 +16,7 @@
@@ -8938,7 +9101,7 @@ index 23c7298d3b..1978c03b10 100644
  	if (memcg_kmem_online() && PageMemcgKmem(page))
  		__memcg_kmem_uncharge_page(page, order);
  
-@@ -4595,6 +4618,45 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+@@ -4595,6 +4618,64 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
  	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
  		goto out;
  
@@ -8976,15 +9139,34 @@ index 23c7298d3b..1978c03b10 100644
 +	    likely(!tsk_is_oom_victim(current))) {
 +		long swap_fail_delta = atomic_long_read(&nr_swap_write_failed) -
 +				       ac->initial_swap_write_failed;
++		unsigned int oom_free_ratio;
 +
 +		if (swap_fail_delta > MAX_SWAP_WRITE_FAIL_RETRIES)
++			goto out;
++
++		/*
++		 * RAM-backed swap (zram/zswap) thrash guard. We are here after a
++		 * reclaim pass that failed to satisfy the allocation. marie_non_anon
++		 * _freeable_pages() is the memory we can free WITHOUT swapping anon
++		 * (free + clean file above the clean_min_ratio floor). Once that is
++		 * below marie_oom_free_ratio% of totalram, the only reclaim left is
++		 * anon -> RAM-backed swap, which cannot net-free memory when RAM is
++		 * full, yet nominal swap capacity keeps anon counting as reclaimable
++		 * so the retry loop never OOMs -- the box thrashes on compression
++		 * forever. Give up here, before descending into another swap cycle.
++		 * Ignores nominal swap capacity, so it holds at any zram disksize.
++		 */
++		oom_free_ratio = READ_ONCE(marie_oom_free_ratio);
++		if (oom_free_ratio &&
++		    marie_non_anon_freeable_pages() <
++		    totalram_pages() * oom_free_ratio / 100)
 +			goto out;
 +	}
 +#endif
  
  	/*
  	 * Keep reclaiming pages while there is a chance this will lead
-@@ -4718,6 +4780,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4718,6 +4799,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
  	}
  
