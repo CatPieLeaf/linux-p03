@@ -144,7 +144,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   1
+%define _buildver   2
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -602,10 +602,6 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 
     cp --parents `find -type f -name "Makefile*" -o -name "Kconfig*"` %{buildroot}%{_devel_dir}
     cp -a scripts %{buildroot}%{_devel_dir}
-    rm -rf %{buildroot}%{_devel_dir}/include
-    rm -rf %{buildroot}%{_devel_dir}/scripts
-    rm -rf %{buildroot}%{_devel_dir}/scripts/tracing
-    rm -f  %{buildroot}%{_devel_dir}/scripts/spdxcheck.py
 
     # Files needed for `make scripts`
     cp -a --parents security/selinux/include/classmap.h              %{buildroot}%{_devel_dir}
