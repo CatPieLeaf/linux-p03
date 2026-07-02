@@ -94,7 +94,7 @@
 %define _basekver   7.1
 %define _stablekver .2
 %undefine _rel
-%define _koji_patch 200
+%define _koji_patch 201
 %define _koji_fc    44
 
 # Build mode:
@@ -144,7 +144,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   2
+%define _buildver   1
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
