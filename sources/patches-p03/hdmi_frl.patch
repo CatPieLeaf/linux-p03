@@ -1379,17 +1379,7 @@ diff --git a/drivers/gpu/drm/amd/display/dc/core/dc.c b/drivers/gpu/drm/amd/disp
 index b3530fbf32f7..b9df09a0db6f 100644
 --- a/drivers/gpu/drm/amd/display/dc/core/dc.c
 +++ b/drivers/gpu/drm/amd/display/dc/core/dc.c
-@@ -1541,6 +1541,9 @@ struct dc *dc_create(const struct dc_init_data *init_params)
- 	}
- 
- 	dc->dcn_reg_offsets = init_params->dcn_reg_offsets;
-+	DC_LOG_ERROR("DCN reg offset 1: 0x%x\n", init_params->dcn_reg_offsets[1]);
-+	DC_LOG_ERROR("DCN reg offset 2: 0x%x\n", init_params->dcn_reg_offsets[2]);
-+	DC_LOG_ERROR("DCN reg offset 3: 0x%x\n", init_params->dcn_reg_offsets[3]);
- 	dc->nbio_reg_offsets = init_params->nbio_reg_offsets;
- 	dc->clk_reg_offsets = init_params->clk_reg_offsets;
- 
-@@ -3350,6 +3353,9 @@ static void copy_stream_update_to_stream(struct dc *dc,
+@@ -3350,6 +3350,9 @@ static void copy_stream_update_to_stream(struct dc *dc,
  	if (update->vrr_active_fixed)
  		stream->vrr_active_fixed = *update->vrr_active_fixed;
  

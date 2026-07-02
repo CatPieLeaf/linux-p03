@@ -112,9 +112,6 @@ p "sched-wait-lifo-accept.patch" \
 p "mm-raise-max_map_count-default-value.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0013-XANMOD-mm-Raise-max_map_count-default-value.patch?ref_type=heads"
 
-p "hdmi_frl.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0001-hdmi_frl.patch"
-
 p "handheld.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-handheld.patch"
 
