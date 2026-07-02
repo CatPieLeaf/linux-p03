@@ -658,8 +658,8 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     cp -a --parents tools/arch/x86/tools/gen-insn-attr-x86.awk %{buildroot}%{_devel_dir}
     cp -a --parents tools/objtool/arch/x86/                  %{buildroot}%{_devel_dir}
 
-    cp -a include                    %{buildroot}%{_devel_dir}/include
-    cp -a sound/soc/sof/sof-audio.h %{buildroot}%{_devel_dir}/sound/soc/sof
+    cp -a include                    %{buildroot}%{_devel_dir}
+    cp -a sound/soc/sof/sof-audio.h  %{buildroot}%{_devel_dir}/sound/soc/sof
     cp -a tools/objtool/fixdep       %{buildroot}%{_devel_dir}/tools/objtool/
     cp -a tools/objtool/objtool      %{buildroot}%{_devel_dir}/tools/objtool/
 
