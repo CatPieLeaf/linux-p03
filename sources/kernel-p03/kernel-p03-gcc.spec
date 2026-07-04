@@ -29,6 +29,19 @@
 %undefine _auto_set_build_flags
 
 # ==============================================================================
+# Distro detection / RHEL & openSUSE compatibility
+# ==============================================================================
+
+%define _distro_fedora %{?fedora:1}%{!?fedora:0}
+%define _distro_rhel   %{?rhel:1}%{!?rhel:0}
+%define _distro_suse   %{?suse_version:1}%{!?suse_version:0}
+
+%if !%{_distro_fedora} && !%{_distro_rhel} && !%{_distro_suse}
+  %{warn: could not detect distro (%%fedora/%%rhel/%%suse_version all unset) — falling back to Fedora packaging rules}
+  %define _distro_fedora 1
+%endif
+
+# ==============================================================================
 # Feature flags
 # ==============================================================================
 
@@ -45,7 +58,7 @@
 %define _build_clang 0
 %define _build_gcc   1
 
-# LTO: set at most one to 1.
+# LTO: clang-only. Set at most one to 1.
 %define _build_lto 0
 %define _lto_thin  0
 %define _lto_full  0
@@ -101,7 +114,8 @@
 #   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
 #   0 = static:  use a pre-fetched SRPM as Source0 (RPM Fusion / offline builds)
 #                requires _koji_patch > 0
-%define _koji_dynamic 1
+#
+%define _koji_dynamic 0
 
 # Release field examples:
 #   stable, patch=205  →  205.p03.4.fc44
@@ -144,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   2
+%define _buildver   3
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -167,7 +181,7 @@
 %endif
 
 %if %{_build_gcc} && %{_build_lto}
-  %{error: build with gcc does not support lto}
+  %{error: GCC LTO is not supported by this specfile — LTO is only available with _build_clang; unset _build_lto or set _build_clang to 1}
 %endif
 
 # ==============================================================================
@@ -175,25 +189,18 @@
 # ==============================================================================
 %if %{_opt_level}
   %define _opt_cflags -O%{_opt_level}
+  %define _krustflags -Copt-level=%{_opt_level}
 %else
   %define _opt_cflags %{nil}
+  %define _krustflags %{nil}
 %endif
+
+%define _kcflags %{_opt_cflags}
 
 %if %{_build_clang}
   %define _clang_args  CC=clang CXX=clang++ LD=ld.lld LLVM=1 LLVM_IAS=1
-  %define _kcflags     %{_opt_cflags}
-  %if %{_opt_level}
-    %define _krustflags  -Copt-level=%{_opt_level}
-  %else
-    %define _krustflags  %{nil}
-  %endif
 %else
-  %define _gcc_ld_args LD=ld.bfd
-  %if %{_opt_level}
-    %define _krustflags  -Copt-level=%{_opt_level}
-  %else
-    %define _krustflags  %{nil}
-  %endif
+  %define _gcc_ld_args LD=ld.lld
 %endif
 
 %if %{_build_secureboot}
@@ -230,31 +237,61 @@ BuildRequires: bc
 BuildRequires: bison
 BuildRequires: cpio
 BuildRequires: dwarves
-BuildRequires: elfutils-devel
 BuildRequires: flex
 BuildRequires: gcc
 BuildRequires: gettext
 BuildRequires: kmod
 BuildRequires: make
 BuildRequires: openssl
+BuildRequires: python3-devel
+BuildRequires: zstd
+BuildRequires: rust
+BuildRequires: rust-src
+BuildRequires: quilt
+BuildRequires: ncurses-devel
+
+%if %{_distro_suse}
+BuildRequires: libelf-devel
+BuildRequires: libopenssl-devel
+%else
+BuildRequires: elfutils-devel
 BuildRequires: openssl-devel
+%endif
+
+%if %{_distro_suse}
+BuildRequires: perl
+%else
 BuildRequires: perl-Carp
 BuildRequires: perl-devel
 BuildRequires: perl-generators
 BuildRequires: perl-interpreter
-BuildRequires: python3-devel
+%endif
+
+%if %{_distro_suse}
+BuildRequires: python3-PyYAML
+%else
 BuildRequires: python3-pyyaml
-BuildRequires: zstd
+%endif
+
 BuildRequires: mimalloc
+
+%if %{_distro_suse}
+BuildRequires: rust-bindgen
+BuildRequires: cargo
+%else
 BuildRequires: bindgen
-BuildRequires: rust
-BuildRequires: rust-src
+%endif
+
 BuildRequires: rustfmt
+
+BuildRequires: lld
 
 %if %{_build_clang}
 BuildRequires: clang
-BuildRequires: lld
 BuildRequires: llvm
+%endif
+
+%if %{_build_clang} && %{_build_lto}
 BuildRequires: polly
 %endif
 
@@ -262,14 +299,17 @@ BuildRequires: polly
 BuildRequires: gcc-c++
 %endif
 
-BuildRequires: ncurses-devel
 %if %{_interactive_config}
+%if %{_distro_suse}
+BuildRequires: libqt5-qtbase-devel
+%else
 BuildRequires: qt5-qtbase-devel
 %endif
+%endif
+
 %if %{_koji_dynamic}
 BuildRequires: koji
 %endif
-BuildRequires: quilt
 
 # ==============================================================================
 # Sources
@@ -286,6 +326,10 @@ Source1: %{_baseurl}/kconfig/linux-p03.config
 
 %if %{_build_minimal}
 Source2: https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-config/%{_basekver}/minimal-modprobed.db
+%endif
+
+%if !%{_local_patches_only}
+Source3: %{_gh_archive}
 %endif
 
 %if %{_build_nv}
@@ -311,10 +355,9 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     mkdir -p "%{_sourcedir}/local-patches-nvidia"
 
 %if !%{_local_patches_only}
-    # Download the GitHub repo archive once; used by all patch directories below.
     _gh_tmp="%{_builddir}/_gh_repo"
     mkdir -p "${_gh_tmp}"
-    curl -fsSL "%{_gh_archive}" | tar xz -C "${_gh_tmp}" --strip-components=1
+    tar xzf %{SOURCE3} -C "${_gh_tmp}" --strip-components=1
 %endif
 
 %if %{_build_nv}
@@ -685,7 +728,11 @@ Summary: Linux P03
 AutoReq: no
 
 Conflicts: xfsprogs < 4.3.0-1
+%if %{_distro_suse}
+Conflicts: xf86-video-vmmouse < 13.0.99
+%else
 Conflicts: xorg-x11-drv-vmmouse < 13.0.99
+%endif
 
 Provides: installonlypkg(kernel)
 Provides: kernel              = %{_rpmver}
@@ -697,16 +744,29 @@ Requires(pre): /usr/bin/kernel-install
 Requires(pre): coreutils
 Requires(pre): dracut >= 027
 Requires(pre): systemd >= 203-2
+
+%if %{_distro_suse}
+Requires(pre): ((kernel-firmware-all) if kernel-firmware-all)
+%else
 Requires(pre): ((linux-firmware >= 20150904-56.git6ebf5d57) if linux-firmware)
+%endif
 
 Requires(preun): systemd >= 200
 
+%if %{_distro_suse}
+Recommends: kernel-firmware-all
+%else
 Recommends: linux-firmware
+%endif
 
 %if %{_build_secureboot}
+%if %{_distro_suse}
+Requires(post): sbsigntools
+%else
 Requires(post): openssl
 Requires(post): nss-tools
 Requires(post): pesign
+%endif
 %endif
 
 %description core
@@ -748,6 +808,10 @@ Requires(post): pesign
     # so the file that ends up in /boot is already signed.
     echo "Signing vmlinuz for Secure Boot..."
     SB_VMLINUZ="%{_kernel_dir}/vmlinuz"
+%if %{_distro_suse}
+    sbsign --key "${MOK_KEY}" --cert "${MOK_PEM}" --output "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
+    mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
+%else
     TMP_NSS=$(mktemp -d)
     trap "rm -rf ${TMP_NSS}" EXIT
     certutil  -d "${TMP_NSS}" -N --empty-password
@@ -757,6 +821,7 @@ Requires(post): pesign
     mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
     trap - EXIT
     rm -rf "${TMP_NSS}"
+%endif
     echo "vmlinuz signed."
 %endif
     if [ ! -e /run/ostree-booted ]; then
@@ -865,17 +930,28 @@ Provides: kernel-devel         = %{_rpmver}
 Provides: kernel-devel-uname-r = %{_kver}
 
 Requires: bison
-Requires: elfutils-libelf-devel
 Requires: findutils
 Requires: flex
 Requires: make
+
+%if %{_distro_suse}
+Requires: libelf-devel
+Requires: libopenssl-devel
+Requires: perl
+%else
+Requires: elfutils-libelf-devel
 Requires: openssl-devel
 Requires: perl-interpreter
+%endif
+
+Requires: lld
 
 %if %{_build_clang}
 Requires: clang
-Requires: lld
 Requires: llvm
+%if %{_build_lto}
+Requires: polly
+%endif
 %else
 Requires: gcc
 %endif
@@ -929,7 +1005,9 @@ Provides: nvidia-kmod >= %{_nv_ver}
 
 Requires: kernel-uname-r = %{_kver}
 Requires: kmod
+%if !%{_distro_suse}
 Requires: nvidia-gpu-firmware
+%endif
 %if %{_build_secureboot}
 Requires: zstd
 %endif
