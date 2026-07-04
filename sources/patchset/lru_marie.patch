@@ -1,7 +1,7 @@
-From c4eb07213f232e43f7a24346a4191c76c6e5c2c8 Mon Sep 17 00:00:00 2001
+From f9ab5c8c122b951912cbcc0d08a2515dc71af8fc Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
 Date: Wed, 1 Jul 2026 21:42:09 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-7.1-marie
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.5
 
 ---
  include/linux/lru_marie.h      |  470 ++++++
