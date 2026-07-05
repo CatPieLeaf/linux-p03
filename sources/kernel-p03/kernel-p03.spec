@@ -319,7 +319,7 @@ BuildRequires: koji
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
 
 %if !%{_koji_dynamic}
-Source0: https://koji.fedoraproject.org/packages/kernel/%{_tarkver}/%{_static_koji_release}/src/%{_static_nvr}.src.rpm
+Source0: https://koji.fedoraproject.org/packages/kernel/%{_tarkver}/%{_static_koji_release}/src/%{_static_nvr}.src.rpm#/%{_static_nvr}.srpm
 %endif
 
 Source1: %{_baseurl}/kconfig/linux-p03.config
