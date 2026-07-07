@@ -94,7 +94,7 @@
 
 # NVIDIA open kernel modules.
 %define _build_nv 1
-%define _nv_ver   610.43.02
+%define _nv_ver   610.43.03
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
 # ==============================================================================
@@ -158,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   1
+%define _buildver   2
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -506,21 +506,21 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 
     # Secure Boot: IMA, module signing, lockdown
 %if %{_build_secureboot}
-    scripts/config -e  CONFIG_IMA
-    scripts/config -e  CONFIG_IMA_APPRAISE
-    scripts/config -e  CONFIG_IMA_APPRAISE_BOOTPARAM
-    scripts/config -e  CONFIG_IMA_APPRAISE_MODSIG
-    scripts/config -e  CONFIG_IMA_ARCH_POLICY
-    scripts/config -e  CONFIG_IMA_SECURE_AND_OR_TRUSTED_BOOT
-    scripts/config -d  CONFIG_IMA_DEFAULT_HASH_SHA1
-    scripts/config -e  CONFIG_IMA_DEFAULT_HASH_SHA256
-    scripts/config --set-str CONFIG_IMA_DEFAULT_HASH "sha256"
+    scripts/config -e  IMA
+    scripts/config -e  IMA_APPRAISE
+    scripts/config -e  IMA_APPRAISE_BOOTPARAM
+    scripts/config -e  IMA_APPRAISE_MODSIG
+    scripts/config -e  IMA_ARCH_POLICY
+    scripts/config -e  IMA_SECURE_AND_OR_TRUSTED_BOOT
+    scripts/config -d  IMA_DEFAULT_HASH_SHA1
+    scripts/config -e  IMA_DEFAULT_HASH_SHA256
+    scripts/config --set-str IMA_DEFAULT_HASH "sha256"
     scripts/config -e  MODULE_SIG
     scripts/config -e  MODULE_SIG_ALL
     scripts/config -e  MODULE_SIG_FORCE
     scripts/config -e  MODULE_SIG_SHA512
     scripts/config --set-str MODULE_SIG_HASH sha512
-    scripts/config -e  CONFIG_KEXEC_SIG
+    scripts/config -e  KEXEC_SIG
     scripts/config -e  INTEGRITY_ASYMMETRIC_KEYS
     scripts/config -e  INTEGRITY_SIGNATURE
     scripts/config -e  LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY
@@ -533,37 +533,33 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 
     # Clang LTO
 %if %{_build_clang} && %{_build_lto}
-    scripts/config -d CONFIG_LTO_NONE
+    scripts/config -d LTO_NONE
     scripts/config -e POLLY_CLANG  # requires clang-polly patch from patchset/
   %if %{_lto_thin}
-    scripts/config -e  CONFIG_LTO_CLANG_THIN
     scripts/config -e  LTO_CLANG_THIN
-    scripts/config -d  CONFIG_LTO_CLANG_FULL
     scripts/config -d  LTO_CLANG_FULL
   %endif
   %if %{_lto_full}
-    scripts/config -e  CONFIG_LTO_CLANG_FULL
     scripts/config -e  LTO_CLANG_FULL
-    scripts/config -d  CONFIG_LTO_CLANG_THIN
     scripts/config -d  LTO_CLANG_THIN
   %endif
 %endif
 
     # Optimization level
 %if %{_opt_level} == 3
-    scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-    scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
-    scripts/config -d CONFIG_CC_OPTIMIZE_FOR_SIZE
+    scripts/config -d CC_OPTIMIZE_FOR_PERFORMANCE
+    scripts/config -e CC_OPTIMIZE_FOR_PERFORMANCE_O3
+    scripts/config -d CC_OPTIMIZE_FOR_SIZE
 %else
   %if %{_opt_level} == 2
-    scripts/config -e CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-    scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
-    scripts/config -d CONFIG_CC_OPTIMIZE_FOR_SIZE
+    scripts/config -e CC_OPTIMIZE_FOR_PERFORMANCE
+    scripts/config -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+    scripts/config -d CC_OPTIMIZE_FOR_SIZE
   %else
     %if %{_opt_level} == 0
-      scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-      scripts/config -d CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3
-      scripts/config -e CONFIG_CC_OPTIMIZE_FOR_SIZE
+      scripts/config -d CC_OPTIMIZE_FOR_PERFORMANCE
+      scripts/config -d CC_OPTIMIZE_FOR_PERFORMANCE_O3
+      scripts/config -e CC_OPTIMIZE_FOR_SIZE
     %endif
   %endif
 %endif
@@ -578,10 +574,10 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 
     # Debug info
 %if %{_build_debug}
-    scripts/config -d CONFIG_DEBUG_INFO_NONE
-    scripts/config -e CONFIG_DEBUG_INFO
-    scripts/config -e CONFIG_DEBUG_INFO_DWARF5
-    scripts/config -e CONFIG_DEBUG_INFO_BTF
+    scripts/config -d DEBUG_INFO_NONE
+    scripts/config -e DEBUG_INFO
+    scripts/config -e DEBUG_INFO_DWARF5
+    scripts/config -e DEBUG_INFO_BTF
 %endif
 
     %make_build oldconfig
