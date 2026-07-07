@@ -158,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   2
+%define _buildver   3
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -756,13 +756,8 @@ Recommends: linux-firmware
 %endif
 
 %if %{_build_secureboot}
-%if %{_distro_suse}
-Requires(post): sbsigntools
-%else
 Requires(post): openssl
-Requires(post): nss-tools
-Requires(post): pesign
-%endif
+Requires(post): sbsigntools
 %endif
 
 %description core
@@ -804,20 +799,8 @@ Requires(post): pesign
     # so the file that ends up in /boot is already signed.
     echo "Signing vmlinuz for Secure Boot..."
     SB_VMLINUZ="%{_kernel_dir}/vmlinuz"
-%if %{_distro_suse}
     sbsign --key "${MOK_KEY}" --cert "${MOK_PEM}" --output "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
     mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
-%else
-    TMP_NSS=$(mktemp -d)
-    trap "rm -rf ${TMP_NSS}" EXIT
-    certutil  -d "${TMP_NSS}" -N --empty-password
-    openssl pkcs12 -export -out "${TMP_NSS}/sb.p12" -inkey "${MOK_KEY}" -in "${MOK_PEM}" -name "${MOK_CN}" -passout pass:
-    pk12util -i "${TMP_NSS}/sb.p12" -d "${TMP_NSS}" -W ""
-    pesign -n "${TMP_NSS}" -c "${MOK_CN}" --sign -i "${SB_VMLINUZ}" -o "${SB_VMLINUZ}.signed"
-    mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
-    trap - EXIT
-    rm -rf "${TMP_NSS}"
-%endif
     echo "vmlinuz signed."
 %endif
     if [ ! -e /run/ostree-booted ]; then
