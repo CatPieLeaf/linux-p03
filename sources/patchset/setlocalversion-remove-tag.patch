@@ -1,0 +1,26 @@
+From 97b3dd4520cc9b8f881cee8bdf2ebc5cc179cbad Mon Sep 17 00:00:00 2001
+From: Alexandre Frade <kernel@xanmod.org>
+Date: Sun, 29 May 2022 00:57:40 +0000
+Subject: [PATCH 17/18] XANMOD: scripts/setlocalversion: remove '+' tag for git
+ repo short version
+
+Signed-off-by: Alexandre Frade <kernel@xanmod.org>
+---
+ scripts/setlocalversion | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/scripts/setlocalversion b/scripts/setlocalversion
+index 28169d7e143b..6ce26e12342f 100755
+--- a/scripts/setlocalversion
++++ b/scripts/setlocalversion
+@@ -117,7 +117,6 @@ scm_version()
+ 		# If only the short version is requested, don't bother
+ 		# running further git commands
+ 		if $short; then
+-			echo "+"
+ 			return
+ 		fi
+ 
+-- 
+2.47.3
+

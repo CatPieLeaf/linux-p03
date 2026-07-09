@@ -115,6 +115,45 @@ p "mm-raise-max_map_count-default-value.patch" \
 p "handheld.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-handheld.patch"
 
+p "vfs-cache-reclaim-rate.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0012-XANMOD-vfs-Decrease-rate-at-which-vfs-caches-are-rec.patch?ref_type=heads"
+
+p "setlocalversion-remove-tag.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0017-XANMOD-scripts-setlocalversion-remove-tag-for-git-re.patch?ref_type=heads"
+
+p "setlocalversion-move.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0018-XANMOD-scripts-setlocalversion-Move-localversion-fil.patch?ref_type=heads"
+
+p "evdev-use-call-rcu.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/zen/0001-ZEN-input-evdev-Use-call_rcu-when-detaching-client.patch?ref_type=heads"
+
+p "dm-crypt-async-queue.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/zen/0002-ZEN-dm-crypt-Disable-workqueues-for-crypto-ops.patch?ref_type=heads"
+
+p "mglru-workingset-protection.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/mm/0001-mm-Add-working-set-protection-for-anon-and-clean-fil.patch?ref_type=heads"
+
+p "tcp-skip-collapse.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/tcp/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch?ref_type=heads"
+
+p "netfilter-fullcone.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/netfilter/0001-netfilter-Add-netfilter-nf_tables-fullcone-support.patch?ref_type=heads"
+
+p "netfilter-flowoffload.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/netfilter/0001-netfilter-add-xt_FLOWOFFLOAD-target.patch?ref_type=heads"
+
+p "binder-debug-mask.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/binder/0002-binder-give-binder_alloc-its-own-debug-mask-file.patch?ref_type=heads"
+
+p "stateless-firmware-loading.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/clearlinux/0002-firmware-Enable-stateless-firmware-loading.patch?ref_type=heads"
+
+p "pci-missing-acs-overrides.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/pci_acso/0001-PCI-Enable-overrides-for-missing-ACS-capabilities.patch?ref_type=heads"
+
+p "allow-wake-up-pollfree-gpl.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/binder/0003-wait-allow-to-use-__wake_up_pollfree-from-GPL-module.patch?ref_type=heads"
+
 # ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
