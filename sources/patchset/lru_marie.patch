@@ -1,24 +1,28 @@
-From f9ab5c8c122b951912cbcc0d08a2515dc71af8fc Mon Sep 17 00:00:00 2001
+From 6e79d2a069041de4ac85f964c396dc8613d74d14 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Wed, 1 Jul 2026 21:42:09 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.5
+Date: Fri, 10 Jul 2026 06:29:44 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.7.6
 
 ---
- include/linux/lru_marie.h      |  470 ++++++
+ include/linux/lru_marie.h      |  493 ++++++
  include/linux/memcontrol.h     |   26 +-
  include/linux/mm_inline.h      |  103 +-
  include/linux/mmzone.h         |   15 +
  include/linux/swap.h           |   18 +
- mm/Kconfig                     |   30 +
+ mm/Kconfig                     |   54 +
  mm/Makefile                    |    1 +
+ mm/compaction.c                |   32 +-
  mm/huge_memory.c               |   39 +-
- mm/internal.h                  |   55 +
- mm/lru_marie/Makefile          |   19 +
+ mm/internal.h                  |   67 +
+ mm/lru_marie/Makefile          |   21 +
  mm/lru_marie/account.h         |  106 ++
  mm/lru_marie/bitmap.c          |  118 ++
- mm/lru_marie/bitmap.h          |  205 +++
- mm/lru_marie/core.c            | 1246 ++++++++++++++
- mm/lru_marie/pfn_install.h     |  138 ++
+ mm/lru_marie/bitmap.h          |  221 +++
+ mm/lru_marie/core.c            | 1230 ++++++++++++++
+ mm/lru_marie/defrag.c          | 1088 ++++++++++++
+ mm/lru_marie/defrag.h          |   85 +
+ mm/lru_marie/defrag_compat.h   |   53 +
+ mm/lru_marie/pfn_install.h     |  139 ++
  mm/lru_marie/prefetch.h        |  111 ++
  mm/lru_marie/simd.h            |  109 ++
  mm/lru_marie/simd_generic.c    |   46 +
@@ -26,8 +30,8 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.5
  mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 2832 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  961 +++++++++++
+ mm/lru_marie/state.c           | 2860 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  976 +++++++++++
  mm/lru_marie/state_compat.h    |   94 ++
  mm/lru_marie/version.h         |   22 +
  mm/lru_marie/walker.c          |  969 +++++++++++
@@ -35,19 +39,23 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.5
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
  mm/mm_init.c                   |    3 +
- mm/page_alloc.c                |   95 ++
+ mm/oom_kill.c                  |  210 +++
+ mm/page_alloc.c                |  120 +-
  mm/page_io.c                   |  187 +++
  mm/rmap.c                      |    6 +
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
- mm/vmscan.c                    |  347 +++-
- 37 files changed, 9494 insertions(+), 23 deletions(-)
+ mm/vmscan.c                    |  336 +++-
+ 42 files changed, 11076 insertions(+), 28 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
  create mode 100644 mm/lru_marie/bitmap.c
  create mode 100644 mm/lru_marie/bitmap.h
  create mode 100644 mm/lru_marie/core.c
+ create mode 100644 mm/lru_marie/defrag.c
+ create mode 100644 mm/lru_marie/defrag.h
+ create mode 100644 mm/lru_marie/defrag_compat.h
  create mode 100644 mm/lru_marie/pfn_install.h
  create mode 100644 mm/lru_marie/prefetch.h
  create mode 100644 mm/lru_marie/simd.h
@@ -65,10 +73,10 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.6.5
 
 diff --git a/include/linux/lru_marie.h b/include/linux/lru_marie.h
 new file mode 100644
-index 0000000000..2803b2aa6c
+index 0000000000..fc30269822
 --- /dev/null
 +++ b/include/linux/lru_marie.h
-@@ -0,0 +1,470 @@
+@@ -0,0 +1,493 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _LINUX_LRU_MARIE_H
 +#define _LINUX_LRU_MARIE_H
@@ -391,7 +399,7 @@ index 0000000000..2803b2aa6c
 + * @new_folio:  tail folio created by __split_huge_page during reclaim
 + *
 + * The reclaim-split counterpart to lru_marie_split_folio. When page reclaim
-+ * splits a huge page, lru_add_page_tail() runs with a non-NULL @list (the
++ * splits a huge page, lru_add_split_folio() runs with a non-NULL @list (the
 + * head is frozen OFF the LRU, PG_lru clear) and threads each tail onto that
 + * reclaim list instead of the LRU. Without this, the tail stays UNTRACKED:
 + * Marie's reclaim/putback machinery (which assumes every folio it handles is
@@ -407,7 +415,7 @@ index 0000000000..2803b2aa6c
 + * the reclaim isolate debited it; each tail's own del/putback balances from
 + * there. No-op when @head is not Marie-tracked.
 + *
-+ * Caller holds @head's lruvec->lru_lock (lru_add_page_tail asserts it).
++ * Caller holds @head's lruvec->lru_lock (lru_add_split_folio asserts it).
 + */
 +void lru_marie_split_folio_isolated(struct folio *head,
 +				    struct folio *new_folio);
@@ -441,6 +449,30 @@ index 0000000000..2803b2aa6c
 + */
 +void lru_marie_age_node(struct pglist_data *pgdat, struct scan_control *sc);
 +
++#ifdef CONFIG_LRU_MARIE_DEFRAG
++/**
++ * lru_marie_defrag_active - is the lru_marie/defrag switch on, i.e. should
++ * Marie defrag replace stock compaction in kcompactd? Gates the swap in BOTH
++ * of mm/compaction.c's kcompactd paths (true => call lru_marie_defrag_pgdat
++ * instead of the stock compaction).
++ */
++bool lru_marie_defrag_active(void);
++
++/**
++ * lru_marie_defrag_pgdat - run one Marie defrag pass for @pgdat.
++ * @may_drop: urgency from the calling path -- true on the demand path
++ *            (kcompactd_do_work; a high-order allocation is blocked) so Marie
++ *            MOVEs + DROPs cold-dead clean file; false on the proactive
++ *            background path so Marie MOVEs only.
++ *
++ * Called from mm/compaction.c INSTEAD OF the stock compaction (compact_node on
++ * the proactive path, the demand sweep on kcompactd_do_work) when
++ * lru_marie_defrag_active() is true. Runs in the kcompactd kthread context
++ * (may sleep). See mm/lru_marie/defrag.c.
++ */
++void lru_marie_defrag_pgdat(struct pglist_data *pgdat, bool may_drop);
++#endif
++
 +/**
 + * lru_marie_swappiness_changed - notify Marie that a swappiness value
 + *                                has been written via sysctl or memcg.
@@ -469,12 +501,11 @@ index 0000000000..2803b2aa6c
 +extern unsigned long marie_walker_interval_normal;	/* jiffies */
 +extern unsigned long marie_walker_interval_idle;	/* jiffies */
 +extern unsigned int  marie_fpu_batch;			/* PMDs per FPU bracket */
-+extern unsigned int  marie_oom_free_ratio;		/* % totalram; 0 = off (zram thrash OOM) */
-+unsigned long marie_non_anon_freeable_pages(void);	/* free + clean file above the floor */
++extern unsigned int  marie_low_swappiness_mode;		/* bool; clamp effective swappiness to <=1 */
 +
 +#ifdef CONFIG_SWAP
 +/*
-+ * kcompmari mode (sysfs /sys/kernel/mm/lru_marie/kcompmari):
++ * kcompressd mode (sysfs /sys/kernel/mm/lru_marie/kcompressd):
 + *   signed -100..+100, default +24.
 + *
 + *     0          — disabled (kthread fan-out off, swap_writeout inline)
@@ -485,34 +516,34 @@ index 0000000000..2803b2aa6c
 + *                  when Marie is off.
 + *
 + * Default +24 mirrors the queue length kcompressd-unofficial proved
-+ * sound under sustained anon pressure. The producer reads vm_kcompmari
++ * sound under sustained anon pressure. The producer reads vm_kcompressd
 + * directly to derive the queue depth; the on/off and Marie/force gates
 + * are encoded as a pair of static branches so the hot path in
-+ * mm/page_io.c::kcompmari_store costs a single jump in the common case:
++ * mm/page_io.c::kcompressd_store costs a single jump in the common case:
 + *
-+ *   kcompmari_enabled_key — true when vm_kcompmari != 0  (default TRUE)
-+ *   kcompmari_force_key   — true when vm_kcompmari  < 0  (default FALSE)
++ *   kcompressd_enabled_key — true when vm_kcompressd != 0  (default TRUE)
++ *   kcompressd_force_key   — true when vm_kcompressd  < 0  (default FALSE)
 + *
 + * The Marie-gated branch (positive value) reuses lru_marie_enabled_key
 + * directly, so no extra branch is paid when Marie is on.
 + */
-+DECLARE_STATIC_KEY_TRUE(kcompmari_enabled_key);
-+DECLARE_STATIC_KEY_FALSE(kcompmari_force_key);
++DECLARE_STATIC_KEY_TRUE(kcompressd_enabled_key);
++DECLARE_STATIC_KEY_FALSE(kcompressd_force_key);
 +
-+extern int vm_kcompmari;
++extern int vm_kcompressd;
 +
 +/**
-+ * kcompmari_active - should kswapd off-load this swap-out to kcompmari?
++ * kcompressd_active - should kswapd off-load this swap-out to kcompressd?
 + *
 + * Default-on: the enabled_key starts TRUE for the +24 default. Setting
-+ * vm_kcompmari to 0 flips it off; negative values force-on regardless
++ * vm_kcompressd to 0 flips it off; negative values force-on regardless
 + * of Marie; positive values gate on lru_marie_enabled_key.
 + */
-+static inline bool kcompmari_active(void)
++static inline bool kcompressd_active(void)
 +{
-+	if (!static_branch_likely(&kcompmari_enabled_key))
++	if (!static_branch_likely(&kcompressd_enabled_key))
 +		return false;
-+	if (static_branch_unlikely(&kcompmari_force_key))
++	if (static_branch_unlikely(&kcompressd_force_key))
 +		return true;
 +	return lru_marie_enabled();
 +}
@@ -770,7 +801,7 @@ index a171070e15..4779a3b6b9 100644
  		return;
  
 diff --git a/include/linux/mmzone.h b/include/linux/mmzone.h
-index 9adb2ad21d..c552243729 100644
+index 9adb2ad21d..3dd56a3add 100644
 --- a/include/linux/mmzone.h
 +++ b/include/linux/mmzone.h
 @@ -24,6 +24,7 @@
@@ -788,15 +819,15 @@ index 9adb2ad21d..c552243729 100644
 +#if defined(CONFIG_LRU_MARIE) && defined(CONFIG_SWAP)
 +/*
 + * kfifo backing storage capacity (in folio* slots). The sysfs knob
-+ * vm_kcompmari sets the effective queue length in [-100, +100]; this
++ * vm_kcompressd sets the effective queue length in [-100, +100]; this
 + * matches the upper bound. ~800 bytes per pgdat regardless of the
 + * currently configured depth.
 + */
-+#define KCOMPMARI_FIFO_SIZE 100
-+	wait_queue_head_t kcompmari_wait;
-+	struct task_struct *kcompmari;
-+	struct kfifo kcompmari_fifo;
-+	spinlock_t kcompmari_fifo_lock;
++#define KCOMPRESSD_FIFO_SIZE 100
++	wait_queue_head_t kcompressd_wait;
++	struct task_struct *kcompressd;
++	struct kfifo kcompressd_fifo;
++	spinlock_t kcompressd_fifo_lock;
 +#endif
 +
  #ifdef CONFIG_COMPACTION
@@ -832,10 +863,10 @@ index 7a09df6977..cb9d9acecb 100644
  static inline bool vm_swap_full(void)
  {
 diff --git a/mm/Kconfig b/mm/Kconfig
-index e8bf1e9e6a..1cadc73d81 100644
+index e8bf1e9e6a..9de11ccbdc 100644
 --- a/mm/Kconfig
 +++ b/mm/Kconfig
-@@ -1396,6 +1396,36 @@ config LRU_GEN_WALKS_MMU
+@@ -1396,6 +1396,60 @@ config LRU_GEN_WALKS_MMU
  	depends on LRU_GEN && ARCH_HAS_HW_PTE_YOUNG
  # }
  
@@ -867,6 +898,30 @@ index e8bf1e9e6a..1cadc73d81 100644
 +	  paths unchanged.
 +
 +	  Say Y unless you understand what this is.
++
++config LRU_MARIE_DEFRAG
++	bool "Marie defragmentation"
++	depends on LRU_MARIE && COMPACTION
++	default y
++	help
++	  Marie defragmentation reuses Marie's dense per-PFN state array and
++	  aging generations to drive memory defragmentation at far lower cost
++	  than mainline compaction: it scores 2 MiB pageblocks by the cost to
++	  evacuate them and clears only the few cold/unmapped stragglers of
++	  near-empty movable blocks -- MOVE (reusing migrate_pages()) or, for
++	  cold-dead clean file, a cheap DROP.
++
++	  When enabled, the /sys/kernel/mm/lru_marie/defrag switch (default 1)
++	  makes Marie defrag REPLACE stock compaction inside kcompactd on both
++	  paths (demand = MOVE+DROP, proactive = MOVE-only); write 0 to fall
++	  back to stock kernel compaction at runtime. The histogram adds one
++	  atomic per Marie gen transition (install/aging/free). When N, all hooks
++	  compile out and the kernel image is identical to plain Marie. See
++	  mm/lru_marie/defrag_design.md.
++
++	  Prototype: verified safe (refault-free migration, bounded DROP, no
++	  corruption); the yield-vs-stock A/B is real-HW territory and not yet
++	  done. Default y on this Marie tree; set N to exclude it entirely.
 +# }
 +
  config ARCH_SUPPORTS_PER_VMA_LOCK
@@ -884,6 +939,63 @@ index 8ad2ab0824..1f8385ecee 100644
  obj-$(CONFIG_ZSWAP)	+= zswap.o
  obj-$(CONFIG_HAS_DMA)	+= dmapool.o
  obj-$(CONFIG_HUGETLBFS)	+= hugetlb.o hugetlb_sysfs.o hugetlb_sysctl.o
+diff --git a/mm/compaction.c b/mm/compaction.c
+index 3648ce22c8..3f0f769c1d 100644
+--- a/mm/compaction.c
++++ b/mm/compaction.c
+@@ -24,6 +24,7 @@
+ #include <linux/page_owner.h>
+ #include <linux/psi.h>
+ #include <linux/cpuset.h>
++#include <linux/lru_marie.h>
+ #include "internal.h"
+ 
+ #ifdef CONFIG_COMPACTION
+@@ -3092,6 +3093,23 @@ static void kcompactd_do_work(pg_data_t *pgdat)
+ 							cc.highest_zoneidx);
+ 	count_compact_event(KCOMPACTD_WAKE);
+ 
++#ifdef CONFIG_LRU_MARIE_DEFRAG
++	/*
++	 * lru_marie/defrag=1: Marie defrag REPLACES stock demand compaction.
++	 * Demand is urgent (a high-order allocation is blocked), so Marie runs
++	 * with may_drop=true -- MOVE + DROP cold-dead clean file, its cheapest
++	 * and highest-value rung (the clean_min_ratio floor still bounds DROP).
++	 * Skip the stock two-scanner sweep entirely and mark the request
++	 * satisfied. defrag=0 / CONFIG off: the stock sweep below runs.
++	 */
++	if (lru_marie_defrag_active()) {
++		lru_marie_defrag_pgdat(pgdat, true);
++		pgdat->kcompactd_max_order = 0;
++		pgdat->kcompactd_highest_zoneidx = pgdat->nr_zones - 1;
++		return;
++	}
++#endif
++
+ 	for (zoneid = 0; zoneid <= cc.highest_zoneidx; zoneid++) {
+ 		int status;
+ 
+@@ -3228,7 +3246,19 @@ static int kcompactd(void *p)
+ 			unsigned int prev_score, score;
+ 
+ 			prev_score = fragmentation_score_node(pgdat);
+-			compact_node(pgdat, true);
++#ifdef CONFIG_LRU_MARIE_DEFRAG
++			/*
++			 * lru_marie/defrag=1: Marie defrag REPLACES stock proactive
++			 * compaction here. Background (no allocation waiting), so
++			 * may_drop=false -- MOVE only, never sacrifice cache. The
++			 * score-progress defer below applies to Marie's result
++			 * identically. =0 (default) or CONFIG off: stock compact_node().
++			 */
++			if (lru_marie_defrag_active())
++				lru_marie_defrag_pgdat(pgdat, false);
++			else
++#endif
++				compact_node(pgdat, true);
+ 			score = fragmentation_score_node(pgdat);
+ 			/*
+ 			 * Defer proactive compaction if the fragmentation
 diff --git a/mm/huge_memory.c b/mm/huge_memory.c
 index 970e077019..8ba88176e3 100644
 --- a/mm/huge_memory.c
@@ -948,7 +1060,7 @@ index 970e077019..8ba88176e3 100644
  	}
  }
 diff --git a/mm/internal.h b/mm/internal.h
-index 5a2ddcf68e..9307a24661 100644
+index 5a2ddcf68e..4f640c01f3 100644
 --- a/mm/internal.h
 +++ b/mm/internal.h
 @@ -625,12 +625,55 @@ extern unsigned long highest_memmap_pfn;
@@ -1007,7 +1119,7 @@ index 5a2ddcf68e..9307a24661 100644
  int user_proactive_reclaim(char *buf,
  			   struct mem_cgroup *memcg, pg_data_t *pgdat);
  
-@@ -693,6 +736,18 @@ struct alloc_context {
+@@ -693,6 +736,30 @@ struct alloc_context {
  	 */
  	enum zone_type highest_zoneidx;
  	bool spread_dirty_pages;
@@ -1023,15 +1135,27 @@ index 5a2ddcf68e..9307a24661 100644
 +	 */
 +	long initial_swap_write_failed;
 +#endif
++
++	/*
++	 * Snapshot of the global workingset refault counters (anon + file) at
++	 * the previous should_reclaim_retry check for this allocation.
++	 * should_reclaim_retry takes the delta to tell real reclaim progress
++	 * from a thrash treadmill: when the pages reclaimed during a retry
++	 * loop are dwarfed by working-set refaults over the same window, the
++	 * "progress" is other tasks' working sets being pulled straight back
++	 * in, and must not keep resetting no_progress_loops (else a RAM-backed
++	 * swap device that never looks full livelocks the OOM path forever).
++	 */
++	unsigned long last_refaults;
  };
  
  /*
 diff --git a/mm/lru_marie/Makefile b/mm/lru_marie/Makefile
 new file mode 100644
-index 0000000000..c1e9c9becf
+index 0000000000..d01e2157ad
 --- /dev/null
 +++ b/mm/lru_marie/Makefile
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,21 @@
 +# SPDX-License-Identifier: GPL-2.0
 +#
 +# Marie LRU. Reached from mm/Makefile via obj-$(CONFIG_LRU_MARIE) += lru_marie/.
@@ -1042,6 +1166,8 @@ index 0000000000..c1e9c9becf
 +obj-y	+= core.o
 +obj-y	+= state.o
 +obj-y	+= walker.o
++
++obj-$(CONFIG_LRU_MARIE_DEFRAG)	+= defrag.o
 +
 +ifdef CONFIG_X86
 +obj-y	+= simd_x86.o
@@ -1289,10 +1415,10 @@ index 0000000000..637f874de6
 +}
 diff --git a/mm/lru_marie/bitmap.h b/mm/lru_marie/bitmap.h
 new file mode 100644
-index 0000000000..eb4b6ee263
+index 0000000000..e55cccd321
 --- /dev/null
 +++ b/mm/lru_marie/bitmap.h
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,221 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * Hierarchical PFN bitmap backing Marie's global per-(type, gen, tier)
@@ -1379,45 +1505,61 @@ index 0000000000..eb4b6ee263
 +/*
 + * marie_bm_set - mark @pfn tracked.
 + *
-+ * Atomically sets the L1 bit at @pfn. The per-cell refcount is then
-+ * atomic_inc_return'd; on the 0 -> 1 transition the L2 summary bit
-+ * for @pfn's range is set. Idempotent w.r.t. already-set L1 bit if
-+ * the same PFN is set twice (cell_count overcounts; balanced by a
-+ * matching number of clears).
++ * Atomically sets the L1 bit at @pfn via test_and_set_bit; the per-cell
++ * refcount is incremented ONLY on the real 0 -> 1 transition, and on that
++ * 0 -> 1 the L2 summary bit for @pfn's range is set. Counting the actual L1
++ * transition (rather than incrementing unconditionally) keeps
++ * l2_count == popcount(L1 in range) an exact invariant: a double-set is a
++ * no-op on the count and -- paired with the symmetric marie_bm_clear() --
++ * a concurrent double-clear can no longer drive the count negative.
++ *
++ * Returns true iff this call performed the 0 -> 1 transition. Callers gate
++ * their paired marie_gen_occ_inc() on it, so the L1 bit is the exactly-once
++ * ownership token for gen_occupied too (same discipline as l2_count): whoever
++ * wins the atomic set owns the +1, keeping gen_occupied == popcount(bits in
++ * gen) >= 0 even when installs/moves race a reclaim isolate on one folio.
 + *
 + * static inline because this is a hot-path operation invoked at
 + * every install / promote / move; out-of-lining would add a function
 + * call + bound-check overhead per call.
 + */
-+static inline void marie_bm_set(struct marie_bitmap *bm, unsigned long pfn)
++static inline bool marie_bm_set(struct marie_bitmap *bm, unsigned long pfn)
 +{
 +	unsigned int l2bit;
 +
 +	if (!bm->l1 || pfn >= max_pfn)
-+		return;
-+	set_bit(pfn, bm->l1);
++		return false;
++	if (test_and_set_bit(pfn, bm->l1))
++		return false;		/* already set: keep l2_count == popcount(L1) */
 +	l2bit = marie_pfn_to_l2_bit(pfn);
 +	if (atomic_inc_return(&bm->l2_count[l2bit]) == 1)
 +		set_bit(l2bit, bm->l2);
++	return true;			/* this call set the bit (0 -> 1) */
 +}
 +
 +/*
 + * marie_bm_clear - mark @pfn untracked.
 + *
-+ * Atomically clears the L1 bit at @pfn. The per-cell refcount is
-+ * atomic_dec_return'd; on the 1 -> 0 transition the L2 summary bit
-+ * for @pfn's range is cleared.
++ * Atomically clears the L1 bit at @pfn via test_and_clear_bit; the per-cell
++ * refcount is decremented ONLY on the real 1 -> 0 transition, and on that
++ * 1 -> 0 the L2 summary bit for @pfn's range is cleared. Decrementing only
++ * when this call actually cleared a set bit makes a double-clear -- e.g. a
++ * reclaim isolate (marie_evict_counters_only) racing the lock-free tier/gen
++ * mutators, both retiring the same (gen, tier) coordinate for one folio --
++ * harmless, instead of underflowing l2_count and desyncing the L2 summary.
 + */
-+static inline void marie_bm_clear(struct marie_bitmap *bm, unsigned long pfn)
++static inline bool marie_bm_clear(struct marie_bitmap *bm, unsigned long pfn)
 +{
 +	unsigned int l2bit;
 +
 +	if (!bm->l1 || pfn >= max_pfn)
-+		return;
-+	clear_bit(pfn, bm->l1);
++		return false;
++	if (!test_and_clear_bit(pfn, bm->l1))
++		return false;		/* already clear: do not underflow l2_count */
 +	l2bit = marie_pfn_to_l2_bit(pfn);
 +	if (atomic_dec_return(&bm->l2_count[l2bit]) == 0)
 +		clear_bit(l2bit, bm->l2);
++	return true;			/* this call cleared the bit (1 -> 0) */
 +}
 +
 +/*
@@ -1500,10 +1642,10 @@ index 0000000000..eb4b6ee263
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..fe888563fc
+index 0000000000..d168fa00d0
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1246 @@
+@@ -0,0 +1,1230 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -1544,7 +1686,15 @@ index 0000000000..fe888563fc
 + * transition. cgroup charging stays on the stock path.
 + *
 + * Recommended userspace configuration:
-+ *   - vm.swappiness = 1
++ *   - vm.swappiness: nothing to set.  Marie clamps its effective
++ *     swappiness to at most 1 in-kernel by default via low_swappiness_mode
++ *     (a /sys/kernel/mm/lru_marie/ knob that defaults on), so the higher
++ *     values udev rules, tuning daemons, or distro defaults install in
++ *     vm.swappiness are ignored by the reclaim pick driver.  (The clamp
++ *     only lowers, so a deliberate vm.swappiness=0 "never swap" is still
++ *     honoured.)  This is why CONFIG_LRU_MARIE=y no longer overrides the
++ *     vm_swappiness default.  The rationale for swappiness = 1 follows.
++ *
 + *     swappiness historically encoded the relative IO cost of swap
 + *     vs. filesystem paging, on the assumption that file cache and
 + *     anon working set carry comparable "hotness" distributions and
@@ -1587,12 +1737,14 @@ index 0000000000..fe888563fc
 + *     zero throughout, because swappiness=1 short-circuits the
 + *     proportional update path.
 + *
-+ *     Higher values (s = 2..199) remain useful on slower-storage
-+ *     systems where the file refault cost is no longer negligible;
-+ *     Marie honours them via the stubborn proportional controller
-+ *     in marie_swap_bias_update. s = 0 is a hard "never swap" --
-+ *     reach OOM rather than touch anon. s = 200 is the symmetric
-+ *     "anon only" override. Both are intentional user policy
++ *     With low_swappiness_mode cleared, higher values (s = 2..199)
++ *     remain useful on slower-storage systems where the file refault
++ *     cost is no longer negligible; Marie honours them via the stubborn
++ *     proportional controller in marie_swap_bias_update. s = 0 is a
++ *     hard "never swap" -- reach OOM rather than touch anon (and, being
++ *     the low extreme, is honoured even with low_swappiness_mode on).
++ *     s = 200 is the symmetric "anon only" override, clamped to 1 while
++ *     low_swappiness_mode is on. All are intentional user policy
 + *     overrides; clean_min_ratio does not punch through them.
 + *   - systemd-oomd OFF
 + *     systemd-oomd reacts to PSI before Marie's clean_min_ratio
@@ -1638,6 +1790,7 @@ index 0000000000..fe888563fc
 +#include <linux/xarray.h>
 +
 +#include "../internal.h"	/* struct scan_control, shrink_folio_list */
++#include "defrag.h"
 +#include "pfn_install.h"
 +#include "simd.h"
 +#include "state.h"
@@ -1945,7 +2098,7 @@ index 0000000000..fe888563fc
 + * lru_marie_split_folio_isolated - reclaim-split counterpart of
 + * lru_marie_split_folio. See the header doc in <linux/lru_marie.h>.
 + *
-+ * Symmetry with the on-LRU split is the whole point: lru_add_page_tail()'s
++ * Symmetry with the on-LRU split is the whole point: lru_add_split_folio()'s
 + * on-LRU branch (head still on the LRU) routes tails through
 + * lru_marie_split_folio + folio_set_lru, so a normal split keeps every tail
 + * TRACKED. The reclaim branch (head frozen off the LRU, tails threaded onto
@@ -2290,74 +2443,90 @@ index 0000000000..fe888563fc
 +	__ATTR_RW(clean_min_ratio);
 +
 +/*
-+ * oom_free_ratio sysfs knob. Range 0..100 (percentage of totalram).
-+ * 0 disables. See marie_oom_free_ratio above and should_reclaim_retry.
++ * low_swappiness_mode — clamp Marie's effective swappiness to at most 1
++ * (bool, default on). When set, the reclaim pick driver caps swappiness at 1
++ * (MARIE_PICK_FILE_THEN_ANON) regardless of the higher vm.swappiness /
++ * memory.swappiness values udev rules, tuning daemons, or distro defaults
++ * install. That is Marie's recommended policy (see the storage-tier rationale
++ * at the top of this file), so enforcing it in-kernel spares the operator from
++ * chasing down every writer. Default on => CONFIG_LRU_MARIE=y needs no
++ * swappiness config.
++ *
++ * It only LOWERS swappiness, never raises it, so the special "never swap"
++ * value 0 is preserved: an operator who set vm.swappiness=0 (OOM rather than
++ * touch anon) still gets 0 even with this mode on. Clear the knob to honour
++ * vm.swappiness verbatim (e.g. a higher proportional value on slow-storage
++ * systems where file refault cost is not negligible).
 + */
-+static ssize_t oom_free_ratio_show(struct kobject *kobj,
-+				   struct kobj_attribute *attr, char *buf)
++unsigned int marie_low_swappiness_mode = 1;
++
++static ssize_t low_swappiness_mode_show(struct kobject *kobj,
++				       struct kobj_attribute *attr, char *buf)
 +{
-+	return sysfs_emit(buf, "%u\n", READ_ONCE(marie_oom_free_ratio));
++	return sysfs_emit(buf, "%u\n", READ_ONCE(marie_low_swappiness_mode));
 +}
 +
-+static ssize_t oom_free_ratio_store(struct kobject *kobj,
-+				    struct kobj_attribute *attr,
-+				    const char *buf, size_t count)
++static ssize_t low_swappiness_mode_store(struct kobject *kobj,
++					struct kobj_attribute *attr,
++					const char *buf, size_t count)
 +{
 +	unsigned int v;
 +	int err = kstrtouint(buf, 10, &v);
 +
 +	if (err)
 +		return err;
-+	if (v > 100)
++	if (v > 1)
 +		return -EINVAL;
-+	WRITE_ONCE(marie_oom_free_ratio, v);
++	WRITE_ONCE(marie_low_swappiness_mode, v);
++	/* Effective swappiness changed: restart the proportional controller. */
++	lru_marie_swappiness_changed();
 +	return count;
 +}
 +
-+static struct kobj_attribute marie_oom_free_ratio_attr =
-+	__ATTR_RW(oom_free_ratio);
++static struct kobj_attribute marie_low_swappiness_mode_attr =
++	__ATTR_RW(low_swappiness_mode);
 +
 +#ifdef CONFIG_SWAP
 +/*
-+ * kcompmari sysfs knob: signed -100..+100, default +24.
++ * kcompressd sysfs knob: signed -100..+100, default +24.
 + *
-+ *   0           — disabled. kcompmari_store short-circuits to false
++ *   0           — disabled. kcompressd_store short-circuits to false
 + *                 and swap_writeout falls straight through to inline
 + *                 zswap_store / __swap_writepage.
 + *   +1..+100    — Marie-gated. Queue length = |v|. The kfifo backing
-+ *                 storage is sized at KCOMPMARI_FIFO_SIZE (the max);
++ *                 storage is sized at KCOMPRESSD_FIFO_SIZE (the max);
 + *                 |v| is the soft depth at which the producer treats
 + *                 the queue as full and falls back to sync writeout.
 + *                 Tracks lru_marie_enabled() so disabling Marie at
-+ *                 runtime also quiesces kcompmari without a second
++ *                 runtime also quiesces kcompressd without a second
 + *                 sysfs write.
 + *   -1..-100    — force mode. Queue length = |v|. Runs even when
 + *                 Marie is off, for users who want the async-compress
 + *                 helper independently of the Marie reclaim path.
 + *
 + * Default +24 mirrors the queue length kcompressd-unofficial proved
-+ * sound under sustained anon pressure. Use -24 to force kcompmari on
++ * sound under sustained anon pressure. Use -24 to force kcompressd on
 + * even with Marie off; use 0 to disable entirely.
 + *
-+ * Encoded as two static branches (kcompmari_enabled_key and
-+ * kcompmari_force_key declared in <linux/lru_marie.h>) so the hot path
++ * Encoded as two static branches (kcompressd_enabled_key and
++ * kcompressd_force_key declared in <linux/lru_marie.h>) so the hot path
 + * costs a single predicted jump in the common (enabled, Marie-gated) case.
 + */
-+DEFINE_STATIC_KEY_TRUE(kcompmari_enabled_key);
-+EXPORT_SYMBOL_GPL(kcompmari_enabled_key);
-+DEFINE_STATIC_KEY_FALSE(kcompmari_force_key);
-+EXPORT_SYMBOL_GPL(kcompmari_force_key);
++DEFINE_STATIC_KEY_TRUE(kcompressd_enabled_key);
++EXPORT_SYMBOL_GPL(kcompressd_enabled_key);
++DEFINE_STATIC_KEY_FALSE(kcompressd_force_key);
++EXPORT_SYMBOL_GPL(kcompressd_force_key);
 +
-+int vm_kcompmari = 24;
-+EXPORT_SYMBOL_GPL(vm_kcompmari);
++int vm_kcompressd = 24;
++EXPORT_SYMBOL_GPL(vm_kcompressd);
 +
-+static ssize_t kcompmari_show(struct kobject *kobj,
++static ssize_t kcompressd_show(struct kobject *kobj,
 +			      struct kobj_attribute *attr, char *buf)
 +{
-+	return sysfs_emit(buf, "%d\n", READ_ONCE(vm_kcompmari));
++	return sysfs_emit(buf, "%d\n", READ_ONCE(vm_kcompressd));
 +}
 +
-+static ssize_t kcompmari_store(struct kobject *kobj,
++static ssize_t kcompressd_store(struct kobject *kobj,
 +			       struct kobj_attribute *attr,
 +			       const char *buf, size_t count)
 +{
@@ -2368,21 +2537,21 @@ index 0000000000..fe888563fc
 +		return err;
 +	if (v < -100 || v > 100)
 +		return -EINVAL;
-+	WRITE_ONCE(vm_kcompmari, v);
++	WRITE_ONCE(vm_kcompressd, v);
 +
 +	if (v != 0)
-+		static_branch_enable(&kcompmari_enabled_key);
++		static_branch_enable(&kcompressd_enabled_key);
 +	else
-+		static_branch_disable(&kcompmari_enabled_key);
++		static_branch_disable(&kcompressd_enabled_key);
 +	if (v < 0)
-+		static_branch_enable(&kcompmari_force_key);
++		static_branch_enable(&kcompressd_force_key);
 +	else
-+		static_branch_disable(&kcompmari_force_key);
++		static_branch_disable(&kcompressd_force_key);
 +
 +	return count;
 +}
 +
-+static struct kobj_attribute marie_kcompmari_attr = __ATTR_RW(kcompmari);
++static struct kobj_attribute marie_kcompressd_attr = __ATTR_RW(kcompressd);
 +#endif /* CONFIG_SWAP */
 +
 +#ifdef CONFIG_X86
@@ -2468,60 +2637,6 @@ index 0000000000..fe888563fc
 + * Range 0..100; default 10.
 + */
 +unsigned int marie_clean_min_ratio = 10;
-+
-+/*
-+ * marie_oom_free_ratio — emergency OOM trigger against RAM-backed swap thrash
-+ * (zram/zswap). When a post-reclaim allocation retry finds the NON-ANON freeable
-+ * memory (marie_non_anon_freeable_pages) below this percentage of totalram, go
-+ * OOM instead of retrying.
-+ *
-+ * Rationale: zram/zswap report their NOMINAL disksize as free swap, so
-+ * get_nr_swap_pages() stays > 0 even after the compressed store has physically
-+ * exhausted RAM. anon therefore keeps counting as reclaimable, the alloc retry
-+ * loop keeps swapping anon into the same RAM the swap-out just freed (net-zero
-+ * once RAM is full), and the kernel OOM killer never fires -- the box thrashes
-+ * on compression forever while userspace starves (a hard freeze on a 2-core
-+ * zram-only laptop; reproduces under stock MGLRU too). This gate keys on the
-+ * memory we can free WITHOUT swapping anon; once that is gone the only reclaim
-+ * left is the futile anon->swap, so we give up. Ignores nominal swap capacity,
-+ * so it holds at ANY zram disksize (2x .. 100x of RAM).
-+ *
-+ * 0 = disabled (default). Range 0..100. See should_reclaim_retry (page_alloc.c).
-+ */
-+unsigned int marie_oom_free_ratio;
-+
-+/*
-+ * marie_non_anon_freeable_pages - pages reclaimable WITHOUT swapping anon:
-+ * free pages + clean file above the clean_min_ratio floor. This is the "how
-+ * much more room can we make for anon by non-futile means" signal the RAM-
-+ * backed-swap OOM gate (marie_oom_free_ratio, should_reclaim_retry) thresholds
-+ * on. Self-correcting: while anon-swap is productive (zram still has room) the
-+ * swap-out frees RAM and this value recovers; it stays low only once the
-+ * compressed store has saturated physical RAM. Ignores nominal swap capacity,
-+ * so it is disksize-independent.
-+ */
-+unsigned long marie_non_anon_freeable_pages(void)
-+{
-+	unsigned long free = global_zone_page_state(NR_FREE_PAGES);
-+	unsigned long file, shmem, dirty, clean, floor;
-+
-+	/*
-+	 * NR_ACTIVE_FILE/NR_INACTIVE_FILE include shmem/tmpfs, which sits on
-+	 * the file LRU but is swap-backed: reclaiming it means swapping to the
-+	 * same RAM-backed store, not the anon-free reclaim this signal is
-+	 * about. Subtract it, else a browser desktop's shmem (GPU buffers,
-+	 * tmpfs, /dev/shm) keeps this value high and the OOM gate never trips.
-+	 */
-+	file  = global_node_page_state(NR_ACTIVE_FILE) +
-+		global_node_page_state(NR_INACTIVE_FILE);
-+	shmem = global_node_page_state(NR_SHMEM);
-+	file  = file > shmem ? file - shmem : 0;
-+	dirty = global_node_page_state(NR_FILE_DIRTY);
-+	clean = file > dirty ? file - dirty : 0;
-+	floor = totalram_pages() * READ_ONCE(marie_clean_min_ratio) / 100;
-+
-+	return free + (clean > floor ? clean - floor : 0);
-+}
 +
 +/*
 + * marie_walker_interval_* — adaptive walker pass deadline per pgdat,
@@ -2661,9 +2776,9 @@ index 0000000000..fe888563fc
 +	&marie_version_attr.attr,
 +	&marie_stats_attr.attr,
 +	&marie_clean_min_ratio_attr.attr,
-+	&marie_oom_free_ratio_attr.attr,
++	&marie_low_swappiness_mode_attr.attr,
 +#ifdef CONFIG_SWAP
-+	&marie_kcompmari_attr.attr,
++	&marie_kcompressd_attr.attr,
 +#endif
 +#ifdef CONFIG_X86
 +	&marie_simd_attr.attr,
@@ -2745,17 +2860,1272 @@ index 0000000000..fe888563fc
 +		return err;
 +	}
 +
++#ifdef CONFIG_LRU_MARIE_DEFRAG
++	/*
++	 * Allocate the Marie defrag per-pageblock occupancy histogram and expose its
++	 * completeness-check node. Non-fatal: a failure here disables Marie defrag
++	 * observability but leaves Marie fully functional (the marie_defrag_hist_inc/dec
++	 * hooks no-op on a NULL array).
++	 */
++	if (marie_defrag_init(marie_kobj))
++		pr_warn("Marie defrag histogram init failed; compaction observability off\n");
++#endif
++
 +	pr_info("currently %s\n",
 +		static_branch_likely(&lru_marie_enabled_key) ? "enabled" : "disabled");
 +	return 0;
 +}
 +subsys_initcall(marie_init);
+diff --git a/mm/lru_marie/defrag.c b/mm/lru_marie/defrag.c
+new file mode 100644
+index 0000000000..2583b1fd02
+--- /dev/null
++++ b/mm/lru_marie/defrag.c
+@@ -0,0 +1,1088 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * mm/lru_marie/defrag.c -- Marie defragmentation, Step 1.
++ *
++ * Maintains a per-pageblock (gen, type) occupancy histogram off Marie's
++ * single gen-occupancy choke-point (marie_gen_occ_inc/dec, state.h). The
++ * histogram is the sufficient-statistic input to the future cost-scored
++ * block selector (see defrag_design.md); this step is observability
++ * ONLY -- no migration, no reclaim, no policy change.
++ *
++ * Correctness is checkable by construction: because the only writers are the
++ * choke-point hooks, summing the histogram over all blocks must reproduce the
++ * global marie_gen_occupied counter for every (gen, type). The read-only
++ * sysfs node verifies this. (gen_occupied and its per-block mirror are bumped
++ * by two separate atomics, so a sum taken under active churn can differ by the
++ * number of in-flight transitions; the invariant is exact at quiescence --
++ * read it after the load settles.)
++ */
++#define pr_fmt(fmt) "lru_marie_defrag: " fmt
++
++#include <linux/atomic.h>
++#include <linux/build_bug.h>
++#include <linux/kobject.h>
++#include <linux/migrate.h>		/* migrate_pages, alloc_migration_target */
++#include <linux/migrate_mode.h>		/* MIGRATE_SYNC_LIGHT */
++#include <linux/mm.h>			/* max_pfn */
++#include <linux/mmzone.h>
++#include <linux/numa.h>			/* NUMA_NO_NODE */
++#include <linux/pageblock-flags.h>
++#include <linux/printk.h>
++#include <linux/sched.h>		/* cond_resched */
++#include <linux/slab.h>
++#include <linux/sort.h>
++#include <linux/sysfs.h>
++#include <linux/vmalloc.h>
++#include <linux/vmstat.h>		/* node_page_state */
++#include <linux/lru_marie.h>		/* lru_marie_enabled */
++
++#include "../internal.h"		/* folio_isolate_lru, migration_target_control */
++#include "defrag_compat.h"		/* marie_defrag_prep_allocated (6.14 refcount split) */
++#include "defrag.h"
++#include "state.h"			/* marie_gen_occupied, MARIE_PFN_NR_GENS */
++
++struct marie_defrag_block_hist *marie_defrag_hist;
++unsigned long marie_defrag_nr_blocks;
++
++/* Max source blocks selected per run (also the candidate cap of the read-only node). */
++#define MARIE_DEFRAG_TOPK	16
++
++/*
++ * Age-neutrality scratch (see the design comment above marie_defrag_freectx).
++ * Two pre-allocated (pfn, gen) tables plus the single-owner trylock guarding
++ * them. Declared here because marie_defrag_scratch_alloc() below sizes them.
++ */
++#define MARIE_DEFRAG_GEN_NONE	0xff	/* srcmap miss -> fall back to oldest */
++
++struct marie_defrag_pg {
++	u32	pfn;
++	u8	gen;
++};
++
++static struct marie_defrag_pg	*marie_defrag_srcmap;	/* src pfn -> gen (isolation) */
++static struct marie_defrag_pg	*marie_defrag_restamp;	/* dst pfn + intended gen */
++static unsigned long		 marie_defrag_scratch_cap;	/* entries per table */
++static atomic_t			 marie_defrag_busy = ATOMIC_INIT(0);
++
++/*
++ * Allocate the per-pageblock histogram covering [0, max_pfn) rounded up to a
++ * whole pageblock. ~1 MiB on a 30 GiB box (≈15k blocks x 64 B). kvmalloc:
++ * accessed by block index only, so physical contiguity is not required. Lives
++ * for the kernel's lifetime, like marie_state.
++ */
++static int __init marie_defrag_hist_alloc(void)
++{
++	unsigned long bytes, pb_pages = 1UL << pageblock_order;
++
++	BUILD_BUG_ON(MARIE_PFN_NR_GENS != MARIE_DEFRAG_NGENS);
++
++	marie_defrag_nr_blocks = (max_pfn + pb_pages - 1) >> pageblock_order;
++	if (!marie_defrag_nr_blocks)
++		return -EINVAL;
++
++	bytes = marie_defrag_nr_blocks * sizeof(struct marie_defrag_block_hist);
++	marie_defrag_hist = kvmalloc(bytes, GFP_KERNEL | __GFP_ZERO);
++	if (!marie_defrag_hist)
++		return -ENOMEM;
++
++	pr_info("per-pageblock histogram: %lu blocks (order %u), %lu KiB\n",
++		marie_defrag_nr_blocks, pageblock_order, bytes >> 10);
++	return 0;
++}
++
++/*
++ * Pre-allocate the two age-neutrality scratch tables (srcmap, restamp) once, at
++ * boot, so the under-pressure defrag path never allocates. Sized to the worst
++ * case run: MARIE_DEFRAG_TOPK fully-occupied source blocks. Non-fatal on failure
++ * -- defrag then runs without age correction (plain head install), like a per-run
++ * alloc that failed used to. ~64 KiB per table on an order-9 pageblock.
++ */
++static void __init marie_defrag_scratch_alloc(void)
++{
++	unsigned long cap = (unsigned long)MARIE_DEFRAG_TOPK << pageblock_order;
++	size_t bytes = cap * sizeof(struct marie_defrag_pg);
++
++	marie_defrag_srcmap = kvmalloc(bytes, GFP_KERNEL);
++	marie_defrag_restamp = kvmalloc(bytes, GFP_KERNEL);
++	if (!marie_defrag_srcmap || !marie_defrag_restamp) {
++		kvfree(marie_defrag_srcmap);
++		kvfree(marie_defrag_restamp);
++		marie_defrag_srcmap = marie_defrag_restamp = NULL;
++		marie_defrag_scratch_cap = 0;
++		pr_warn("age-neutrality scratch alloc failed; defrag runs without age correction\n");
++		return;
++	}
++	marie_defrag_scratch_cap = cap;
++	pr_info("age-neutrality scratch: %lu entries x2 (%zu KiB)\n",
++		cap, (bytes * 2) >> 10);
++}
++
++/*
++ * Completeness invariant. For each (gen, type), the histogram summed over all
++ * blocks must equal the global marie_gen_occupied -- otherwise a gen
++ * transition escaped the choke-point. O(nr_blocks x NCLASS); debug-on-read.
++ */
++static int marie_defrag_invariant_report(char *buf, int len, int cap)
++{
++	long hist_sum[MARIE_DEFRAG_NGENS][MARIE_DEFRAG_NTYPES] = {};
++	unsigned long b;
++	int g, t, mism = 0;
++
++	for (b = 0; b < marie_defrag_nr_blocks; b++) {
++		struct marie_defrag_block_hist *h = &marie_defrag_hist[b];
++
++		for (g = 0; g < MARIE_DEFRAG_NGENS; g++)
++			for (t = 0; t < MARIE_DEFRAG_NTYPES; t++)
++				hist_sum[g][t] +=
++					atomic_read(&h->count[g * MARIE_DEFRAG_NTYPES + t]);
++	}
++
++	for (g = 0; g < MARIE_DEFRAG_NGENS; g++) {
++		for (t = 0; t < MARIE_DEFRAG_NTYPES; t++) {
++			long occ = atomic_long_read(&marie_gen_occupied[g][t]);
++
++			if (hist_sum[g][t] != occ) {
++				mism++;
++				len += scnprintf(buf + len, cap - len,
++					"MISMATCH gen %d type %d: hist %ld occ %ld\n",
++					g, t, hist_sum[g][t], occ);
++			}
++		}
++	}
++	len += scnprintf(buf + len, cap - len, "invariant %s (%d mismatch)\n",
++			 mism ? "FAIL" : "OK", mism);
++	return len;
++}
++
++/* marie_defrag_invariant_report() is consumed by the defrag_stats read below. */
++
++/*
++ * ---------------------------------------------------------------------
++ * Static cost scorer (Step 2) -- read-only block_cost ranking.
++ * ---------------------------------------------------------------------
++ *
++ * block_cost(B) = sum over a block's occupants of a per-(age, type) cost
++ * weight: the sufficient-statistic dot product of defrag_design.md §6.2.
++ * Coefficients are STATIC relative units encoding the §5 evacuation ladder
++ * (Step 5 replaces them with boot-measured / learned ns). Read-only: this
++ * ranks and reports candidate source blocks; it migrates nothing.
++ */
++
++/* Relative per-occupant evacuation cost (abstract units). */
++#define MARIE_DEFRAG_C_DROP	 1u	/* cold, clean, unmapped file: ~unlink (near free) */
++#define MARIE_DEFRAG_C_MOVE_FILE	 3u	/* warm clean unmapped file: copy + xarray, no TLB */
++#define MARIE_DEFRAG_C_MOVE_ANON	16u	/* anon: always mapped -> copy + rmap + TLB shootdown */
++
++/* The oldest MARIE_DEFRAG_DROP_BAND gens (by ring distance from head) are drop-eligible. */
++#define MARIE_DEFRAG_DROP_BAND	 2
++
++/*
++ * Per-occupant cost. age = ring distance from the (youngest) per-type head
++ * gen, so coldness is head-relative (defrag_design.md §17.3): older file
++ * is drop-eligible (near free); anon is TLB-bound regardless of age because it
++ * is always mapped. Volatile mapped/dirty refinement is left to phase 2 / the
++ * later learned coeffs; phase 1 scores on the stable (gen, type) class.
++ */
++static inline u32 marie_defrag_coeff(int gen, int type, u8 head)
++{
++	int age = (head - gen) & (MARIE_DEFRAG_NGENS - 1);
++
++	if (type)	/* FILE */
++		return (age >= MARIE_DEFRAG_NGENS - MARIE_DEFRAG_DROP_BAND) ? MARIE_DEFRAG_C_DROP
++							  : MARIE_DEFRAG_C_MOVE_FILE;
++	return MARIE_DEFRAG_C_MOVE_ANON;	/* ANON */
++}
++
++static long marie_defrag_block_occupancy(const struct marie_defrag_block_hist *h)
++{
++	long occ = 0;
++	int c;
++
++	for (c = 0; c < MARIE_DEFRAG_NCLASS; c++)
++		occ += atomic_read(&h->count[c]);
++	return occ;
++}
++
++static u64 marie_defrag_block_cost(const struct marie_defrag_block_hist *h, u8 head_anon,
++			  u8 head_file)
++{
++	u64 cost = 0;
++	int g;
++
++	for (g = 0; g < MARIE_DEFRAG_NGENS; g++) {
++		long ca = atomic_read(&h->count[g * MARIE_DEFRAG_NTYPES + 0]);
++		long cf = atomic_read(&h->count[g * MARIE_DEFRAG_NTYPES + 1]);
++
++		cost += (u64)ca * marie_defrag_coeff(g, 0, head_anon);
++		cost += (u64)cf * marie_defrag_coeff(g, 1, head_file);
++	}
++	return cost;
++}
++
++struct marie_defrag_cand {
++	u64		cost;
++	unsigned long	blk;
++	long		occ;
++};
++
++/* Insert (cost, blk, occ) into the ascending top-K array holding *n entries. */
++static void marie_defrag_topk_insert(struct marie_defrag_cand *top, int *n, u64 cost,
++			    unsigned long blk, long occ)
++{
++	int i;
++
++	if (*n == MARIE_DEFRAG_TOPK && cost >= top[MARIE_DEFRAG_TOPK - 1].cost)
++		return;
++	i = (*n < MARIE_DEFRAG_TOPK) ? (*n)++ : MARIE_DEFRAG_TOPK - 1;
++	for (; i > 0 && top[i - 1].cost > cost; i--)
++		top[i] = top[i - 1];
++	top[i].cost = cost;
++	top[i].blk = blk;
++	top[i].occ = occ;
++}
++
++/*
++ * Phase 1: rank every non-empty MIGRATE_MOVABLE pageblock by block_cost into
++ * the ascending top-K array. Shared by the read-only candidate listing and the
++ * compaction driver. Returns the count collected (<= MARIE_DEFRAG_TOPK).
++ */
++static int marie_defrag_collect(struct marie_defrag_cand *top, unsigned long *scanned_out,
++		       unsigned long *movable_out)
++{
++	u8 head_anon = (u8)atomic_read(&marie_head_gen[0]);
++	u8 head_file = (u8)atomic_read(&marie_head_gen[1]);
++	unsigned long b, scanned = 0, movable = 0;
++	int n = 0;
++
++	for (b = 0; b < marie_defrag_nr_blocks; b++) {
++		struct marie_defrag_block_hist *h = &marie_defrag_hist[b];
++		unsigned long pfn = b << pageblock_order;
++		long occ = marie_defrag_block_occupancy(h);
++
++		if (occ == 0)
++			continue;
++		scanned++;
++		if (!pfn_valid(pfn))
++			continue;
++		if (get_pageblock_migratetype(pfn_to_page(pfn)) != MIGRATE_MOVABLE)
++			continue;
++		movable++;
++		marie_defrag_topk_insert(top, &n, marie_defrag_block_cost(h, head_anon, head_file),
++				b, occ);
++	}
++	if (scanned_out)
++		*scanned_out = scanned;
++	if (movable_out)
++		*movable_out = movable;
++	return n;
++}
++
++/* marie_defrag_collect() is the selection used by marie_defrag_topn (scanned/
++ * movable out-params unused now; pass NULL). */
++
++/*
++ * ---------------------------------------------------------------------
++ * Migration front-end (Step 3 + Step 6 target selection).
++ * ---------------------------------------------------------------------
++ *
++ * Evacuate the Marie-tracked (movable LRU) folios of the cheapest source
++ * pageblocks via the core migrate_pages() machinery -- design P5: Marie defrag
++ * contributes the SELECTION, not the migration. folio_isolate_lru() routes
++ * through Marie's del (untracking the source folio, decrementing the histogram
++ * at the source block); migrate_pages() copies + remaps and re-adds each
++ * destination via folio_add_lru() -> lru_marie_add_folio() (re-installing it,
++ * incrementing the histogram at the destination block). The move is therefore
++ * histogram-coherent for free.
++ *
++ * Step 6 fixes step 3's net-yield problem: rather than letting the buddy place
++ * targets (alloc_migration_target, which splits high-order free blocks to find
++ * order-0 target pages and so fragments them), Marie defrag pre-harvests target pages
++ * from the sub-pageblock free HOLES of OTHER partial movable blocks
++ * (marie_defrag_harvest_block via __isolate_free_page, capped at MARIE_DEFRAG_HARVEST_MAX_ORDER
++ * so a near-free order-9 block is never broken) and hands them out
++ * (marie_defrag_alloc_target / marie_defrag_free_target, mirroring compaction_alloc/free).
++ * Evacuees thus fill existing holes -- the source blocks free into order-9
++ * blocks, the harvested-from blocks get denser, and no high-order block is
++ * split. DROP of cold-dead clean file is still deferred to step 4; this step
++ * MOVES every occupant.
++ */
++
++/*
++ * Cumulative diagnostic counters, exposed ONLY via the /sys .../defrag_stats
++ * read while the debug flag (marie_defrag_stats) is on -- for an A/B test vs
++ * stock compaction (read totals before and after a window, diff). No per-run
++ * dmesg output. Maintained unconditionally (a few atomics per run) so the A/B
++ * window does not depend on when the flag was flipped.
++ */
++static unsigned int marie_defrag_stats;		/* debug flag: gates the stats read */
++static atomic_long_t marie_defrag_tot_runs, marie_defrag_tot_move,
++		     marie_defrag_tot_migrated, marie_defrag_tot_dropped,
++		     marie_defrag_tot_freed, marie_defrag_tot_restamped;
++/*
++ * Master switch (sysfs /sys/kernel/mm/lru_marie/defrag): 1 = Marie defrag
++ * REPLACES stock compaction on both kcompactd paths (DEFAULT -- the build
++ * already opted in via CONFIG_LRU_MARIE_DEFRAG, so an installed defrag kernel
++ * is active out of the box); 0 = stock kernel compaction, Marie dormant.
++ */
++static unsigned int marie_defrag_enabled = 1;
++static atomic_long_t marie_defrag_fires;	/* proactive replacements done (stat) */
++
++/* Cap harvested hole order so we never break a near-pageblock free block. */
++#define MARIE_DEFRAG_HARVEST_MAX_ORDER	3
++
++/*
++ * Age neutrality across migration. The generic migrate path re-adds the
++ * destination via folio_add_lru() -> marie_folio_install(), which installs at
++ * the HEAD (youngest) gen -- rejuvenating a folio that defrag merely relocated.
++ * To undo that, after migration we move each dst off head back to the SOURCE
++ * folio's own gen, so a cold source stays cold and a warm source stays warm:
++ * the age *distribution* survives the relocation, not just its coldest end.
++ *
++ * The source gen is absolute, but head advances while the (possibly long)
++ * MIGRATE_SYNC runs (the run's own dst installs drive the install-cadence
++ * clock). Because gens are a mod-N ring, a source gen the advancing head has
++ * LAPPED past ("beyond tail" -- its slot no longer exists) is indistinguishable
++ * by number from a still-valid old gen, and replaying it could land at/ahead of
++ * head and pin the head-advance gate (gen_occupied[next] != 0) into an
++ * OOM-livelock. So the restamp keeps the absolute source gen ONLY while it
++ * still lies within the current occupied arc [oldest .. head] (age <= oldest's
++ * age); once lapped it falls back to the current oldest -- frame-relative, so it
++ * can never pin the gate. See marie_defrag_restamp_target().
++ *
++ * TIER is preserved from the dst's own byte (migration copies PG_active /
++ * PG_workingset, which install reads); only the GEN is corrected. Capturing the
++ * source gen needs a side channel: folio_isolate_lru clears the source byte, and
++ * the src<->dst pairing is first visible in alloc_target -- so isolation records
++ * (src pfn, gen) into @srcmap (sorted, bsearch'd by alloc_target) and alloc_target
++ * records (dst pfn, that gen) into @restamp for the tail to apply. pfn fits in
++ * u32: Marie requires max_pfn < 2^32 (MARIE_MAX_SUPPORTED_PFN).
++ *
++ * Both tables are PRE-ALLOCATED once at init (marie_defrag_scratch_alloc), never
++ * on the defrag path: defrag runs under memory pressure, where a per-run kvmalloc
++ * could fail and silently drop the age correction. They are shared, so a single
++ * owner runs at a time (marie_defrag_busy trylock in lru_marie_defrag_pgdat); a
++ * concurrent caller skips (best-effort).
++ */
++
++/* Target free-page pool, harvested from partial blocks (compaction-style). */
++struct marie_defrag_freectx {
++	struct list_head freepages[NR_PAGE_ORDERS];
++	unsigned long	 nr;		/* order-0-equivalent pages available now */
++	unsigned long	 scan_cursor;	/* next block to harvest holes from */
++	unsigned long	 harvested;	/* cumulative pages harvested (stats) */
++	/*
++	 * Age-neutrality scratch: borrowed pointers into the pre-allocated
++	 * global tables (NULL = init alloc failed -> fall back to head install).
++	 * @srcmap: (src pfn, gen) captured at isolation, sorted by pfn.
++	 * @restamp: (dst pfn, intended gen) recorded at alloc_target.
++	 * Both bounded by @cap (the worst-case run occupancy).
++	 */
++	struct marie_defrag_pg	*srcmap;
++	unsigned int		 srcmap_n;
++	struct marie_defrag_pg	*restamp;
++	unsigned int		 restamp_n;
++	unsigned int		 cap;
++};
++
++/* A refill grabs at least this many pages per scan, to amortise the walk. */
++#define MARIE_DEFRAG_HARVEST_BATCH	64
++
++static void marie_defrag_harvest_refill(struct marie_defrag_freectx *fc, unsigned long min_pages);
++
++static void marie_defrag_freectx_init(struct marie_defrag_freectx *fc)
++{
++	int o;
++
++	for (o = 0; o < NR_PAGE_ORDERS; o++)
++		INIT_LIST_HEAD(&fc->freepages[o]);
++	fc->nr = 0;
++	fc->scan_cursor = 0;
++	fc->harvested = 0;
++	/*
++	 * Borrow the pre-allocated scratch (single-owner via marie_defrag_busy).
++	 * If the init alloc failed both stay NULL and the run degrades to the
++	 * plain head install -- no age correction, but no per-run alloc either.
++	 */
++	fc->srcmap = marie_defrag_srcmap;
++	fc->restamp = marie_defrag_restamp;
++	fc->cap = (marie_defrag_srcmap && marie_defrag_restamp) ?
++			(unsigned int)marie_defrag_scratch_cap : 0;
++	fc->srcmap_n = fc->restamp_n = 0;
++}
++
++/* Sort key for @srcmap so alloc_target can binary-search a migrating src's gen. */
++static int marie_defrag_pg_cmp(const void *a, const void *b)
++{
++	u32 pa = ((const struct marie_defrag_pg *)a)->pfn;
++	u32 pb = ((const struct marie_defrag_pg *)b)->pfn;
++
++	return (pa > pb) - (pa < pb);
++}
++
++/*
++ * Look up the gen captured at isolation for source @pfn. @srcmap is sorted by
++ * pfn (marie_defrag_topn sorts it before migration starts). Returns the gen, or
++ * MARIE_DEFRAG_GEN_NONE if not found (the caller then falls back to oldest).
++ */
++static u8 marie_defrag_srcmap_gen(struct marie_defrag_freectx *fc, unsigned long pfn)
++{
++	int lo = 0, hi = (int)fc->srcmap_n - 1;
++	u32 key = (u32)pfn;
++
++	while (lo <= hi) {
++		int mid = (lo + hi) >> 1;
++		u32 mp = fc->srcmap[mid].pfn;
++
++		if (mp == key)
++			return fc->srcmap[mid].gen;
++		if (mp < key)
++			lo = mid + 1;
++		else
++			hi = mid - 1;
++	}
++	return MARIE_DEFRAG_GEN_NONE;
++}
++
++/*
++ * Where to restamp a migrated dst, given its captured source gen and the CURRENT
++ * ring (@head, @oldest for the dst's type). Keep the absolute source gen while
++ * it still lies within the occupied arc [oldest .. head] -- i.e. its head-relative
++ * age has not passed the oldest's age. Once the advancing head has lapped it
++ * ("beyond tail", or an unknown source), promote to @oldest: frame-relative, so
++ * it tracks head and can never re-populate the head-advance gate slot. Worst case
++ * is thus either a benign install at head (a genuinely young source) or at oldest
++ * (== the old always-oldest behaviour) -- never a gate pin.
++ */
++static int marie_defrag_restamp_target(u8 src_gen, u8 head, int oldest)
++{
++	unsigned int mask = MARIE_PFN_NR_GENS - 1;
++	unsigned int age_src, age_oldest;
++
++	if (src_gen == MARIE_DEFRAG_GEN_NONE)
++		return oldest;
++	src_gen &= mask;
++	age_src = (head - src_gen) & mask;
++	age_oldest = (head - (u8)oldest) & mask;
++	return age_src <= age_oldest ? (int)src_gen : oldest;
++}
++
++/*
++ * get_new_folio for migrate_pages: hand out a target from the harvested pool,
++ * split down to the source folio's order. Mirrors compaction_alloc(): when the
++ * pool runs dry it refills by scanning FORWARD for more partial blocks to
++ * harvest holes from (marie_defrag_harvest_refill), so a drained pool selects new
++ * destinations and continues instead of failing the rest of the batch. NULL is
++ * returned only when no holes remain anywhere -- migrate_pages then puts the
++ * source folio back.
++ */
++static struct folio *marie_defrag_alloc_target(struct folio *src, unsigned long data)
++{
++	struct marie_defrag_freectx *fc = (struct marie_defrag_freectx *)data;
++	int order = folio_order(src);
++	struct page *freepage;
++	unsigned long size;
++	int so;
++
++	for (so = order; so < NR_PAGE_ORDERS; so++)
++		if (!list_empty(&fc->freepages[so]))
++			break;
++	if (so == NR_PAGE_ORDERS) {
++		marie_defrag_harvest_refill(fc, max_t(unsigned long, 1UL << order,
++					     MARIE_DEFRAG_HARVEST_BATCH));
++		for (so = order; so < NR_PAGE_ORDERS; so++)
++			if (!list_empty(&fc->freepages[so]))
++				break;
++		if (so == NR_PAGE_ORDERS)
++			return NULL;
++	}
++
++	freepage = list_first_entry(&fc->freepages[so], struct page, lru);
++	size = 1UL << so;
++	list_del(&freepage->lru);
++	while (so > order) {
++		so--;
++		size >>= 1;
++		list_add(&freepage[size].lru, &fc->freepages[so]);
++		set_page_private(&freepage[size], so);
++	}
++	fc->nr -= 1UL << order;
++
++	/*
++	 * Turn the harvested raw free page into a refcounted allocation. Since
++	 * 6.14 post_alloc_hook() no longer sets the refcount, so this must be
++	 * paired with set_page_refcounted() (marie_defrag_prep_allocated); a
++	 * refcount-0 dst here would be freed mid-migration by folio_add_lru()
++	 * (bad_page + live-anon corruption). See defrag_compat.h.
++	 */
++	marie_defrag_prep_allocated(freepage, order);
++	if (order)
++		prep_compound_page(freepage, order);
++
++	/*
++	 * Age neutrality: pair this dst with its source's gen (looked up from
++	 * @srcmap by the src pfn). After migration installs the dst at head,
++	 * marie_defrag_topn moves it back to that gen (see restamp_target), so
++	 * the relocation does not rejuvenate it. A dst whose migration later
++	 * fails is freed without ever being installed, so its byte is not TRACKED
++	 * and the restamp simply skips it; a source missing from @srcmap yields
++	 * MARIE_DEFRAG_GEN_NONE and falls back to oldest.
++	 */
++	if (fc->restamp && fc->restamp_n < fc->cap) {
++		fc->restamp[fc->restamp_n].pfn = (u32)page_to_pfn(freepage);
++		fc->restamp[fc->restamp_n].gen =
++			marie_defrag_srcmap_gen(fc, folio_pfn(src));
++		fc->restamp_n++;
++	}
++
++	return page_rmappable_folio(freepage);
++}
++
++/* put_new_folio: return an unused target to the pool. Mirrors compaction_free(). */
++static void marie_defrag_free_target(struct folio *dst, unsigned long data)
++{
++	struct marie_defrag_freectx *fc = (struct marie_defrag_freectx *)data;
++	int order = folio_order(dst);
++	struct page *page = &dst->page;
++
++	if (folio_put_testzero(dst)) {
++		free_pages_prepare(page, order);
++		list_add(&page->lru, &fc->freepages[order]);
++		fc->nr += 1UL << order;
++	}
++}
++
++/* Return leftover (unused) pool pages to the buddy. Mirrors release_free_list(). */
++static void marie_defrag_freectx_release(struct marie_defrag_freectx *fc)
++{
++	int order;
++
++	for (order = 0; order < NR_PAGE_ORDERS; order++) {
++		struct page *page, *next;
++
++		list_for_each_entry_safe(page, next, &fc->freepages[order], lru) {
++			list_del(&page->lru);
++			/*
++			 * Mirror release_free_list()/mark_allocated(): __free_pages()'s
++			 * put_page_testzero() needs the refcount at 1 to actually free,
++			 * so prep the page the same way as a handed-out target (else the
++			 * pool leaks on 6.14+). See defrag_compat.h.
++			 */
++			marie_defrag_prep_allocated(page, order);
++			__free_pages(page, order);
++		}
++	}
++	fc->nr = 0;
++	/* Scratch is pre-allocated global state; nothing to free here. */
++}
++
++/*
++ * Harvest sub-pageblock free holes from one block into the pool (until the pool
++ * reaches @want). Mirrors isolate_freepages_block: under zone->lock, small
++ * PageBuddy free runs are removed via __isolate_free_page. Free runs larger
++ * than MARIE_DEFRAG_HARVEST_MAX_ORDER are skipped, so a near-free order-9 block is never
++ * broken -- the whole point of the smart-target step.
++ */
++static void marie_defrag_harvest_block(struct marie_defrag_freectx *fc, unsigned long blk,
++			      unsigned long want)
++{
++	unsigned long start = blk << pageblock_order;
++	unsigned long pfn, end = start + (1UL << pageblock_order);
++	struct zone *zone;
++	unsigned long flags;
++
++	if (fc->nr >= want || !pfn_valid(start))
++		return;
++	zone = page_zone(pfn_to_page(start));
++	/*
++	 * Gate the whole pageblock exactly as stock isolate_freepages() does via
++	 * pageblock_pfn_to_page(): it rejects an offline/invalid start or end
++	 * and -- the corruption guard -- a block that STRADDLES a zone boundary
++	 * (a zone may end mid-pageblock). __isolate_free_page() below derives the
++	 * target from page_zone(page) INTERNALLY, so every page we hand it under
++	 * @zone->lock must belong to @zone; a straddling page would corrupt the
++	 * neighbouring zone's free_area unlocked. @zone is only a tentative guess
++	 * here (an offline start could make it stale), but pageblock_pfn_to_page()
++	 * re-derives via pfn_to_online_page() and bails on any mismatch.
++	 */
++	if (!pageblock_pfn_to_page(start, end, zone))
++		return;
++
++	spin_lock_irqsave(&zone->lock, flags);
++	for (pfn = start; pfn < end && fc->nr < want; pfn++) {
++		struct page *page = pfn_to_page(pfn);
++		unsigned int order;
++
++		if (!PageBuddy(page))
++			continue;
++		order = buddy_order(page);
++		if (order > MARIE_DEFRAG_HARVEST_MAX_ORDER ||
++		    !__isolate_free_page(page, order)) {
++			pfn += (1UL << order) - 1;	/* skip this free run */
++			continue;
++		}
++		set_page_private(page, order);
++		list_add_tail(&page->lru, &fc->freepages[order]);
++		fc->nr += 1UL << order;
++		fc->harvested += 1UL << order;
++		pfn += (1UL << order) - 1;
++	}
++	spin_unlock_irqrestore(&zone->lock, flags);
++}
++
++/*
++ * Refill the target pool by scanning FORWARD from fc->scan_cursor for more
++ * partial movable blocks to harvest holes from (compaction's isolate_freepages
++ * analogue) until the pool holds @min_pages or the blocks are exhausted. occ==0
++ * blocks are skipped: that covers genuinely-free blocks AND just-emptied source
++ * blocks, whose own free pages must stay free to coalesce into the freed
++ * order-9 rather than be re-consumed as targets.
++ */
++static void marie_defrag_harvest_refill(struct marie_defrag_freectx *fc, unsigned long min_pages)
++{
++	while (fc->nr < min_pages && fc->scan_cursor < marie_defrag_nr_blocks) {
++		unsigned long b = fc->scan_cursor++;
++		unsigned long pfn = b << pageblock_order;
++
++		if (marie_defrag_block_occupancy(&marie_defrag_hist[b]) == 0)
++			continue;
++		if (!pfn_valid(pfn) ||
++		    get_pageblock_migratetype(pfn_to_page(pfn)) != MIGRATE_MOVABLE)
++			continue;
++		marie_defrag_harvest_block(fc, b, min_pages);
++	}
++}
++
++/*
++ * Isolate every tracked movable folio of one block into @movelist (the standard
++ * lock-free folio_try_get + folio_isolate_lru; isolate fails -- skipped -- for a
++ * folio another path already claimed, incl. a Marie folio mid-reclaim). Returns
++ * the count isolated.
++ */
++/*
++ * A cold-dead, clean, unmapped FILE folio is DROPPED (reclaimed) rather than
++ * moved: near-free -- no target page, no copy, no TLB (design §5 rung 1). @s is
++ * the per-PFN byte read just before isolation (so it still carries the gen).
++ * Conservative gate: only the oldest MARIE_DEFRAG_DROP_BAND gens (head-relative), and
++ * only clean + unmapped + file -- exactly the folios Marie's own swappiness=1
++ * reclaim would drop first, so the refault risk is the normal cold-cache one.
++ * anon is never dropped (that would need swap, defeating "near-free"); the
++ * per-gen learned p_refault crossover (design §8.2) is a later refinement of
++ * this static band.
++ */
++static bool marie_defrag_droppable(struct folio *folio, u8 s, u8 head_file)
++{
++	int gen, age;
++
++	if (!(s & MARIE_PFN_TYPE_FILE))
++		return false;
++	if (folio_test_dirty(folio) || folio_test_writeback(folio))
++		return false;
++	if (folio_mapped(folio) || folio_test_unevictable(folio))
++		return false;
++	gen = (s & MARIE_PFN_GEN_MASK) >> MARIE_PFN_GEN_SHIFT;
++	age = (head_file - gen) & (MARIE_PFN_NR_GENS - 1);
++	return age >= MARIE_PFN_NR_GENS - MARIE_DEFRAG_DROP_BAND;
++}
++
++/*
++ * How many pages of clean file cache Marie defrag may DROP before breaching the
++ * clean_min_ratio floor -- the same reserve Marie's reclaim protects via
++ * marie_file_floor_protect (NR_FILE_DIRTY excluded: dirty pages are not
++ * droppable and must not count toward the reserve). LONG_MAX when the floor is
++ * disabled (ratio 0). Used as a running budget so Marie defrag drops cold file down to,
++ * but never below, the floor; folios past the budget fall through to MOVE.
++ *
++ * Desktop/global-only: computed for the first online node. (NUMA-per-node
++ * budgeting is a refinement; Marie's own floor is likewise node-scoped.)
++ */
++static long marie_defrag_drop_budget(struct pglist_data *pgdat)
++{
++	unsigned int ratio = READ_ONCE(marie_clean_min_ratio);
++	unsigned long file, dirty, file_min;
++
++	if (!ratio)
++		return LONG_MAX;
++	file = node_page_state(pgdat, NR_ACTIVE_FILE) +
++	       node_page_state(pgdat, NR_INACTIVE_FILE);
++	dirty = node_page_state(pgdat, NR_FILE_DIRTY);
++	file = file > dirty ? file - dirty : 0;
++	file_min = pgdat->node_present_pages * ratio / 100;
++	return file > file_min ? (long)(file - file_min) : 0;
++}
++
++/*
++ * Isolate every tracked movable folio of one block, classifying each as a DROP
++ * (cold-dead clean file -> @drop_list) or a MOVE (-> @move_list). The standard
++ * lock-free folio_try_get + folio_isolate_lru; isolate fails (skipped) for a
++ * folio another path already claimed. The droppable test reads the per-PFN byte
++ * BEFORE folio_isolate_lru clears it.
++ */
++static void marie_defrag_isolate_block(struct marie_defrag_freectx *fc, unsigned long blk,
++			      struct list_head *move_list,
++			      struct list_head *drop_list, u8 head_file,
++			      bool may_drop, long *drop_budget,
++			      int *n_move, int *n_drop)
++{
++	unsigned long start = blk << pageblock_order;
++	unsigned long pfn, end = start + (1UL << pageblock_order);
++
++	if (end > marie_state_size)
++		end = marie_state_size;
++
++	for (pfn = start; pfn < end; pfn++) {
++		struct folio *folio;
++		long nr;
++		bool drop;
++		u8 s = READ_ONCE(marie_state[pfn]);
++
++		if (!(s & MARIE_PFN_TRACKED) || !pfn_valid(pfn))
++			continue;
++		folio = pfn_folio(pfn);
++		nr = folio_nr_pages(folio);
++		if (folio_test_large(folio) && nr >= (1UL << pageblock_order))
++			continue;	/* compound fills block: already contiguous */
++		if (!folio_try_get(folio))
++			continue;
++		/*
++		 * @may_drop reflects the request's urgency. Urgent/direct
++		 * compaction (an allocation is blocked) drops cold-dead clean
++		 * file to free a block with no target -- a refault is cheaper
++		 * than the allocation failing. Background/proactive compaction
++		 * has no blocked requester, so it MOVES everything and sacrifices
++		 * no cache. @drop_budget caps drops at the clean_min_ratio floor;
++		 * a droppable folio past the budget falls through to MOVE, so the
++		 * protected clean-file reserve is never breached.
++		 */
++		drop = may_drop && *drop_budget >= nr &&
++		       marie_defrag_droppable(folio, s, head_file);
++		if (folio_isolate_lru(folio)) {
++			if (drop) {
++				list_add(&folio->lru, drop_list);
++				(*n_drop)++;
++				*drop_budget -= nr;
++			} else {
++				list_add(&folio->lru, move_list);
++				(*n_move)++;
++				/*
++				 * Age neutrality: record this source's (pfn, gen)
++				 * so its migrated dst is restamped back to this
++				 * gen. @s was read above, before folio_isolate_lru
++				 * cleared the byte. folio_pfn (the head pfn) is the
++				 * key alloc_target will look up via folio_pfn(src).
++				 */
++				if (fc->srcmap && fc->srcmap_n < fc->cap) {
++					fc->srcmap[fc->srcmap_n].pfn =
++						(u32)folio_pfn(folio);
++					fc->srcmap[fc->srcmap_n].gen =
++						(s & MARIE_PFN_GEN_MASK) >>
++							MARIE_PFN_GEN_SHIFT;
++					fc->srcmap_n++;
++				}
++			}
++		}
++		folio_put(folio);
++	}
++}
++
++/*
++ * Compact the @n cheapest movable source blocks (capped at MARIE_DEFRAG_TOPK): isolate
++ * all their folios, harvest an equal number of target holes from OTHER partial
++ * movable blocks, then migrate into the harvested pool.
++ */
++static void marie_defrag_topn(unsigned int n, bool may_drop)
++{
++	struct marie_defrag_cand top[MARIE_DEFRAG_TOPK];
++	struct marie_defrag_freectx fc;
++	LIST_HEAD(move_list);
++	LIST_HEAD(drop_list);
++	u8 head_file;
++	long drop_budget;
++	unsigned int blocks = 0, migrated = 0, dropped = 0, freed = 0, restamped = 0;
++	int collected, i, n_move = 0, n_drop = 0, nr_succeeded = 0;
++
++	if (!marie_defrag_hist)
++		return;
++	collected = marie_defrag_collect(top, NULL, NULL);
++	if (n > (unsigned int)collected)
++		n = collected;
++	if (!n)
++		return;
++	atomic_long_inc(&marie_defrag_tot_runs);
++
++	/*
++	 * Borrow the pre-allocated age-neutrality scratch (no per-run alloc on
++	 * this under-pressure path). isolation fills @srcmap, alloc_target reads
++	 * it and fills @restamp; the tail applies each restamp.
++	 */
++	marie_defrag_freectx_init(&fc);
++
++	/*
++	 * Isolate every source folio, splitting into DROP (cold-dead clean file)
++	 * and MOVE. This already decremented the source histograms, so the source
++	 * blocks read occupancy 0 below.
++	 */
++	head_file = (u8)atomic_read(&marie_head_gen[1]);
++	drop_budget = may_drop ?
++		marie_defrag_drop_budget(NODE_DATA(first_online_node)) : 0;
++	for (i = 0; i < (int)n; i++) {
++		marie_defrag_isolate_block(&fc, top[i].blk, &move_list, &drop_list,
++				  head_file, may_drop, &drop_budget, &n_move, &n_drop);
++		blocks++;
++		cond_resched();
++	}
++	if (!n_move && !n_drop) {
++		marie_defrag_freectx_release(&fc);
++		return;
++	}
++
++	/* Sort @srcmap by pfn so alloc_target can binary-search each src's gen. */
++	if (fc.srcmap && fc.srcmap_n)
++		sort(fc.srcmap, fc.srcmap_n, sizeof(*fc.srcmap),
++		     marie_defrag_pg_cmp, NULL);
++
++	/*
++	 * Only MOVE folios need a target hole; DROP folios are reclaimed in
++	 * place. marie_defrag_alloc_target harvests holes ON DEMAND from OTHER partial
++	 * movable blocks as the pool drains (the cursor scans forward), so a
++	 * drained pool selects new destinations and continues instead of failing
++	 * the rest of the batch. MIGRATE_SYNC (not _LIGHT) so file pages with
++	 * buffer_heads and pages under writeback are actually moved, not skipped.
++	 */
++	if (!list_empty(&move_list)) {
++		migrate_pages(&move_list, marie_defrag_alloc_target, marie_defrag_free_target,
++			      (unsigned long)&fc, MIGRATE_SYNC,
++			      MR_COMPACTION, &nr_succeeded);
++		migrated = nr_succeeded;
++		if (!list_empty(&move_list))
++			putback_movable_pages(&move_list);
++	}
++
++	/*
++	 * Age neutrality: move each migrated dst off the head gen (where the
++	 * generic folio_add_lru install landed it) back to its SOURCE folio's gen
++	 * (marie_defrag_restamp_target: keep the absolute gen while it is still in
++	 * the occupied arc; fall back to the current oldest once head has lapped
++	 * it), preserving tier -- migration is a relocation, not an access, so it
++	 * must not shift the folio's age. Done BEFORE freectx_release: a dst whose
++	 * migration FAILED was returned to the pool (marie_defrag_free_target),
++	 * never installed, so its byte is not TRACKED and the read below skips it.
++	 * Successful dsts are TRACKED at head and get relocated cleanly (the move
++	 * updates byte + bitmap + gen_occupied + per-block histogram coherently, so
++	 * the Sigma_blocks hist == gen_occupied invariant holds).
++	 *
++	 * head/oldest are snapshot once per type here (post-migration): the arc
++	 * test needs one consistent frame, and our moves only add into [oldest ..
++	 * head] so they never create a new oldest mid-loop.
++	 */
++	if (fc.restamp) {
++		u8 head[ANON_AND_FILE];
++		int oldest[ANON_AND_FILE];
++		unsigned int j;
++
++		for (i = 0; i < ANON_AND_FILE; i++) {
++			head[i] = (u8)atomic_read(&marie_head_gen[i]);
++			oldest[i] = marie_find_oldest_occupied_mlv(i);
++		}
++
++		for (j = 0; j < fc.restamp_n; j++) {
++			unsigned long dpfn = fc.restamp[j].pfn;
++			int type, target;
++			u8 s;
++
++			if (dpfn >= marie_state_size)
++				continue;
++			s = READ_ONCE(marie_state[dpfn]);
++			if (!(s & MARIE_PFN_TRACKED))
++				continue;	/* failed dst: never installed */
++			type = (s & MARIE_PFN_TYPE_FILE) ? 1 : 0;
++			if (oldest[type] < 0)
++				continue;	/* only head occupied: nowhere older */
++			target = marie_defrag_restamp_target(fc.restamp[j].gen,
++							     head[type], oldest[type]);
++			marie_state_move_to_gen(dpfn, (u8)target,
++				(s & MARIE_PFN_TIER_MASK) >> MARIE_PFN_TIER_SHIFT);
++			restamped++;
++		}
++	}
++
++	marie_defrag_freectx_release(&fc);
++
++	/*
++	 * DROP: reclaim the cold-dead clean file folios. reclaim_pages() drops the
++	 * clean ones (no I/O, no target) and puts back any that resisted. The
++	 * source-histogram decrement already happened at isolation, so a dropped
++	 * folio simply never re-installs.
++	 */
++	if (!list_empty(&drop_list))
++		dropped = reclaim_pages(&drop_list);
++
++	for (i = 0; i < (int)n; i++)
++		if (marie_defrag_block_occupancy(&marie_defrag_hist[top[i].blk]) == 0)
++			freed++;
++
++	/* Cumulative diagnostics (read via .../defrag_stats when its flag is on). */
++	atomic_long_add(n_move, &marie_defrag_tot_move);
++	atomic_long_add(migrated, &marie_defrag_tot_migrated);
++	atomic_long_add(dropped, &marie_defrag_tot_dropped);
++	atomic_long_add(freed, &marie_defrag_tot_freed);
++	atomic_long_add(restamped, &marie_defrag_tot_restamped);
++	(void)blocks;
++}
++
++/*
++ * /sys/kernel/mm/lru_marie/defrag_stats -- A/B / debug node.
++ *   write 0/1  : the debug flag (default 0). 1 enables the diagnostic read.
++ *   read       : while the flag is on, the cumulative defrag counters (runs,
++ *                folios moved/migrated/dropped, blocks freed, dsts restamped,
++ *                kcompactd replace fires) plus the histogram completeness
++ *                invariant (Sigma_blocks hist == gen_occupied). Off => "disabled".
++ *
++ * For an A/B vs stock compaction: enable, read totals, run the workload window,
++ * read again, diff -- compare migrated/freed against the kernel's compact_*
++ * vmstat from a defrag=0 run. No per-run dmesg, no manual trigger.
++ */
++static ssize_t marie_defrag_stats_show(struct kobject *kobj, struct kobj_attribute *attr,
++			    char *buf)
++{
++	int len;
++
++	if (!READ_ONCE(marie_defrag_stats))
++		return sysfs_emit(buf, "disabled\n");
++
++	len = sysfs_emit(buf,
++		"runs %ld move %ld migrated %ld dropped %ld freed %ld restamped %ld fires %ld\n"
++		"nr_blocks %lu\n",
++		atomic_long_read(&marie_defrag_tot_runs),
++		atomic_long_read(&marie_defrag_tot_move),
++		atomic_long_read(&marie_defrag_tot_migrated),
++		atomic_long_read(&marie_defrag_tot_dropped),
++		atomic_long_read(&marie_defrag_tot_freed),
++		atomic_long_read(&marie_defrag_tot_restamped),
++		atomic_long_read(&marie_defrag_fires),
++		marie_defrag_nr_blocks);
++	if (marie_defrag_hist)
++		len = marie_defrag_invariant_report(buf, len, PAGE_SIZE);
++	return len;
++}
++
++static ssize_t marie_defrag_stats_store(struct kobject *kobj, struct kobj_attribute *attr,
++			     const char *buf, size_t count)
++{
++	unsigned int v;
++	int err = kstrtouint(buf, 10, &v);
++
++	if (err)
++		return err;
++	WRITE_ONCE(marie_defrag_stats, !!v);
++	return count;
++}
++
++static struct kobj_attribute marie_defrag_stats_attr =
++	__ATTR(defrag_stats, 0644, marie_defrag_stats_show, marie_defrag_stats_store);
++
++/*
++ * ---------------------------------------------------------------------
++ * Master switch + kcompactd replacement.
++ * ---------------------------------------------------------------------
++ *
++ * /sys/kernel/mm/lru_marie/defrag selects WHO performs kcompactd's defrag:
++ *   0           -- stock kernel compaction; Marie dormant.
++ *   1 (default) -- Marie defrag REPLACES stock compaction on BOTH kcompactd
++ *                  paths. mm/compaction.c gates each swap on
++ *                  lru_marie_defrag_active():
++ *                    - demand (kcompactd_do_work; a high-order allocation is
++ *                      blocked) -> lru_marie_defrag_pgdat(pgdat, may_drop=true):
++ *                      URGENT, so MOVE + DROP cold-dead clean file -- Marie's
++ *                      cheapest, highest-value rung (the clean_min_ratio floor
++ *                      still bounds DROP).
++ *                    - proactive (background timer) -> may_drop=false: MOVE
++ *                      only, no DROP -- no allocation is waiting, so sacrificing
++ *                      cache would be pure loss. The proactive loop's
++ *                      fragmentation_score-progress defer applies to Marie's
++ *                      result identically.
++ *
++ * may_drop is decided by the PATH (urgency), per the design (commit 95e36ac58f):
++ * urgent/direct compaction may sacrifice cold cache to free a block target-free;
++ * background must not. Runs in the kcompactd kthread context (sleeping allowed,
++ * off the allocation hot path). The .../defrag_run node still triggers a manual
++ * one-shot (+N urgent / -N background) regardless of the switch, for testing.
++ */
++#define MARIE_DEFRAG_BATCH	16		/* source blocks per kcompactd wake */
++
++/*
++ * lru_marie_defrag_active - is the .../defrag switch on, i.e. should Marie
++ * defrag replace stock compaction in kcompactd? Read by both compaction.c
++ * paths. True only when Marie is enabled, the switch is on, and the histogram
++ * exists.
++ */
++bool lru_marie_defrag_active(void)
++{
++	return lru_marie_enabled() && READ_ONCE(marie_defrag_enabled) &&
++	       marie_defrag_hist;
++}
++EXPORT_SYMBOL_GPL(lru_marie_defrag_active);
++
++/*
++ * Run one Marie defrag pass for @pgdat. @may_drop is set by the caller from the
++ * kcompactd path's urgency: demand=true (MOVE + DROP), proactive=false (MOVE only).
++ */
++void lru_marie_defrag_pgdat(struct pglist_data *pgdat, bool may_drop)
++{
++	if (!marie_defrag_hist)
++		return;
++	/*
++	 * Single owner: the age-neutrality scratch (srcmap/restamp) is shared
++	 * pre-allocated state, and topn walks the global hist/gen ring. A
++	 * concurrent caller -- NUMA multi-node kcompactd, or a future manual
++	 * trigger -- skips; defrag is best-effort and overlapping runs would only
++	 * duplicate work. Also caps the latent NUMA double-run.
++	 */
++	if (atomic_cmpxchg(&marie_defrag_busy, 0, 1) != 0)
++		return;
++	/*
++	 * Global scan (desktop/single-node). On NUMA this over-triggers across
++	 * nodes; per-node Marie defrag is a refinement matching Marie's global posture.
++	 */
++	atomic_long_inc(&marie_defrag_fires);
++	marie_defrag_topn(MARIE_DEFRAG_BATCH, may_drop);
++	atomic_set(&marie_defrag_busy, 0);
++}
++
++static ssize_t marie_defrag_enabled_show(struct kobject *kobj, struct kobj_attribute *attr,
++			     char *buf)
++{
++	return sysfs_emit(buf, "%u\n", READ_ONCE(marie_defrag_enabled));
++}
++
++static ssize_t marie_defrag_enabled_store(struct kobject *kobj, struct kobj_attribute *attr,
++			      const char *buf, size_t count)
++{
++	unsigned int v;
++	int err = kstrtouint(buf, 10, &v);
++
++	if (err)
++		return err;
++	WRITE_ONCE(marie_defrag_enabled, !!v);
++	return count;
++}
++
++static struct kobj_attribute marie_defrag_switch_attr =
++	__ATTR(defrag, 0644, marie_defrag_enabled_show, marie_defrag_enabled_store);
++
++int __init marie_defrag_init(struct kobject *parent)
++{
++	int err = marie_defrag_hist_alloc();
++
++	if (err)
++		return err;
++
++	marie_defrag_scratch_alloc();
++
++	err = sysfs_create_file(parent, &marie_defrag_switch_attr.attr);
++	if (err)
++		pr_warn("failed to create sysfs defrag node: %d\n", err);
++	err = sysfs_create_file(parent, &marie_defrag_stats_attr.attr);
++	if (err)
++		pr_warn("failed to create sysfs defrag_stats node: %d\n", err);
++	return 0;
++}
+diff --git a/mm/lru_marie/defrag.h b/mm/lru_marie/defrag.h
+new file mode 100644
+index 0000000000..dab315dae0
+--- /dev/null
++++ b/mm/lru_marie/defrag.h
+@@ -0,0 +1,85 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_DEFRAG_H
++#define _MM_LRU_MARIE_DEFRAG_H
++
++/*
++ * Marie defragmentation -- Step 1: per-pageblock occupancy
++ * histogram (the sufficient-statistic input to the future cost-scored block
++ * selector). See mm/lru_marie/defrag_design.md.
++ *
++ * This header exposes only the two hot-path maintenance hooks
++ * (marie_defrag_hist_inc/dec). They are tapped from Marie's single gen-occupancy
++ * choke-point marie_gen_occ_inc/dec (state.h), so every per-PFN gen
++ * transition that moves marie_gen_occupied moves the per-pageblock mirror in
++ * lockstep -- the completeness invariant being
++ *
++ *     Sigma_blocks count[gen][type] == marie_gen_occupied[gen][type]
++ *
++ * which defrag.c verifies via the read-only /sys/kernel/mm/lru_marie/marie_defrag node.
++ *
++ * Step 1 is observability ONLY: no migration, no reclaim, no policy change.
++ * Gated by CONFIG_LRU_MARIE_DEFRAG; when n the hooks are empty inlines
++ * and the kernel image is byte-identical to plain Marie.
++ */
++
++#include <linux/types.h>
++
++#ifdef CONFIG_LRU_MARIE_DEFRAG
++
++#include <linux/atomic.h>
++#include <linux/mmzone.h>
++#include <linux/pageblock-flags.h>	/* pageblock_order */
++
++struct kobject;
++
++/*
++ * One atomic count per (gen, type) class, per order-9 pageblock.
++ * MARIE_DEFRAG_NGENS x MARIE_DEFRAG_NTYPES = 8 x 2 = 16 classes = 64 bytes = exactly one
++ * cache line per block. class index = gen * MARIE_DEFRAG_NTYPES + type. The
++ * MARIE_PFN_NR_GENS == MARIE_DEFRAG_NGENS coupling is asserted in defrag.c
++ * (BUILD_BUG_ON), so this header needs no state.h dependency.
++ */
++#define MARIE_DEFRAG_NGENS	8
++#define MARIE_DEFRAG_NTYPES	2
++#define MARIE_DEFRAG_NCLASS	(MARIE_DEFRAG_NGENS * MARIE_DEFRAG_NTYPES)
++
++struct marie_defrag_block_hist {
++	atomic_t count[MARIE_DEFRAG_NCLASS];
++};
++
++extern struct marie_defrag_block_hist *marie_defrag_hist;	/* NULL until marie_defrag_init() */
++extern unsigned long marie_defrag_nr_blocks;
++
++static inline void marie_defrag_hist_inc(unsigned long pfn, int gen, int type)
++{
++	unsigned long blk;
++
++	if (!marie_defrag_hist)
++		return;
++	blk = pfn >> pageblock_order;
++	if (blk < marie_defrag_nr_blocks)
++		atomic_inc(&marie_defrag_hist[blk].count[gen * MARIE_DEFRAG_NTYPES + type]);
++}
++
++static inline void marie_defrag_hist_dec(unsigned long pfn, int gen, int type)
++{
++	unsigned long blk;
++
++	if (!marie_defrag_hist)
++		return;
++	blk = pfn >> pageblock_order;
++	if (blk < marie_defrag_nr_blocks)
++		atomic_dec(&marie_defrag_hist[blk].count[gen * MARIE_DEFRAG_NTYPES + type]);
++}
++
++/* One-shot init from marie_init(): allocate the array + create the sysfs node. */
++int marie_defrag_init(struct kobject *parent);
++
++#else /* !CONFIG_LRU_MARIE_DEFRAG */
++
++static inline void marie_defrag_hist_inc(unsigned long pfn, int gen, int type) { }
++static inline void marie_defrag_hist_dec(unsigned long pfn, int gen, int type) { }
++
++#endif /* CONFIG_LRU_MARIE_DEFRAG */
++
++#endif /* _MM_LRU_MARIE_DEFRAG_H */
+diff --git a/mm/lru_marie/defrag_compat.h b/mm/lru_marie/defrag_compat.h
+new file mode 100644
+index 0000000000..6978b5e9a3
+--- /dev/null
++++ b/mm/lru_marie/defrag_compat.h
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _MM_LRU_MARIE_DEFRAG_COMPAT_H
++#define _MM_LRU_MARIE_DEFRAG_COMPAT_H
++
++/*
++ * Per-kernel-version adaptation layer for the defragmenter (defrag.c).
++ *
++ * Marie's core sources are meant to be byte-identical across every kernel it is
++ * ported to (currently 6.12 / 6.18 / 7.0 / 7.1 / 7.2).  The only defrag code
++ * that genuinely has to differ per version is the free-page allocation
++ * contract that changed in 6.14; it is isolated here behind a uniform name so a
++ * per-version patch never has to touch defrag.c itself.
++ *
++ * Include AFTER "../internal.h" (and the usual mm headers): the wrappers are
++ * static inline and need post_alloc_hook()/set_page_refcounted() +
++ * __GFP_MOVABLE declared.
++ *
++ * Version boundary below matches the supported targets; revisit when adding a
++ * new target kernel.
++ */
++
++#include <linux/version.h>
++
++/*
++ * marie_defrag_prep_allocated - turn a harvested raw free page (refcount 0,
++ * removed from the buddy allocator via __isolate_free_page()) into a
++ * fully-allocated, refcounted page.  This is the free-pool analogue of stock
++ * compaction's mark_allocated() and the post_alloc_hook() sequence in
++ * compaction_alloc(): both the migration-target handout (alloc_target) and the
++ * leftover-return-to-buddy path (freectx_release) need it.
++ *
++ * Up to 6.13 post_alloc_hook() itself set the refcount to 1.  6.14 moved that
++ * to the callers (upstream: set_page_refcounted() split out of
++ * post_alloc_hook(); compaction_alloc()/mark_allocated() gained an explicit
++ * call).  On >= 6.14 we must therefore add set_page_refcounted(); on <= 6.13
++ * doing so would double-set it and trip VM_BUG_ON_PAGE(page_ref_count) under
++ * CONFIG_DEBUG_VM -- hence the gate.
++ *
++ * A refcount-0 page escaping this helper is not benign: as a migration target
++ * it is freed mid-migration by folio_add_lru() (bad_page on a still-locked /
++ * just-remapped folio, refcount underflow, live-anon corruption); on the
++ * release path __free_pages()' put_page_testzero() never fires, leaking the
++ * pool back-pressure.
++ */
++static inline void marie_defrag_prep_allocated(struct page *page, unsigned int order)
++{
++	post_alloc_hook(page, order, __GFP_MOVABLE);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 14, 0)
++	set_page_refcounted(page);
++#endif
++}
++
++#endif /* _MM_LRU_MARIE_DEFRAG_COMPAT_H */
 diff --git a/mm/lru_marie/pfn_install.h b/mm/lru_marie/pfn_install.h
 new file mode 100644
-index 0000000000..35e1741b4e
+index 0000000000..da36e7a8e2
 --- /dev/null
 +++ b/mm/lru_marie/pfn_install.h
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,139 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_PFN_INSTALL_H
 +#define _MM_LRU_MARIE_PFN_INSTALL_H
@@ -2776,8 +4146,9 @@ index 0000000000..35e1741b4e
 + *   - marie_state[pfn]: TRACKED | (gen) | (tier) | (type) | (zone)
 + *   - marie_track_bm[type][gen][tier]: scan bit for this PFN (a single
 + *     global per-(type,gen,tier) plane)
-+ *   - marie_gen_occ_inc(gen, type): the single gen-occupancy choke-point
-+ *     (state.h), shared with every other transition site
++ *   - marie_gen_occ_inc(pfn, gen, type): the single gen-occupancy choke-point
++ *     (state.h), shared with every other transition site; @pfn also drives
++ *     the Marie defrag per-pageblock occupancy mirror
 + *
 + * What it deliberately does NOT touch:
 + *   - folio->flags (PG_active / PG_lru) -- the install path flips these
@@ -2807,8 +4178,8 @@ index 0000000000..35e1741b4e
 +		(tier << MARIE_PFN_TIER_SHIFT) |
 +		(type ? MARIE_PFN_TYPE_FILE : 0) |
 +		marie_pfn_zone_bits(zone);
-+	marie_bm_set(&marie_track_bm[type][gen][tier], pfn);
-+	marie_gen_occ_inc(gen, type);
++	if (marie_bm_set(&marie_track_bm[type][gen][tier], pfn))
++		marie_gen_occ_inc(pfn, gen, type);
 +}
 +
 +/*
@@ -3984,10 +5355,10 @@ index 0000000000..71f8eff7e5
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..fc6e18da14
+index 0000000000..7d71a9277b
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2832 @@
+@@ -0,0 +1,2860 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -4316,7 +5687,7 @@ index 0000000000..fc6e18da14
 +/*
 + * Oldest gen (walking out from the global head) where the node has live folios.
 + */
-+static int marie_find_oldest_occupied_mlv(int type)
++int marie_find_oldest_occupied_mlv(int type)
 +{
 +	int head = atomic_read(&marie_head_gen[type]);
 +	int i;
@@ -4812,8 +6183,8 @@ index 0000000000..fc6e18da14
 +	tier = (s & MARIE_PFN_TIER_MASK) >> MARIE_PFN_TIER_SHIFT;
 +	type_bit = (s & MARIE_PFN_TYPE_MASK) ? 1 : 0;
 +
-+	marie_bm_clear(&marie_track_bm[type_bit][g][tier], pfn);
-+	marie_gen_occ_dec(g, type_bit);
++	if (marie_bm_clear(&marie_track_bm[type_bit][g][tier], pfn))
++		marie_gen_occ_dec(pfn, g, type_bit);
 +}
 +EXPORT_SYMBOL_GPL(marie_state_drop_pfn);
 +
@@ -4929,16 +6300,14 @@ index 0000000000..fc6e18da14
 +	/*
 +	 * The reclaim isolate path (marie_evict_counters_only) already retired
 +	 * this PFN's scan-bitmap slot + gen_occupied at isolate, leaving only
-+	 * the TRACKED byte (wiped just above). Test before clearing so that
-+	 * common path does NOT double-decrement l2_count / gen_occupied below
-+	 * zero. The clear still fires for the residual-race case -- a TRACKED
-+	 * folio reaching free without having gone through isolate -- whose
-+	 * scan slot is genuinely still live. Safe to test-then-clear here:
-+	 * the page is at refcount 0 with no concurrent Marie op on this PFN.
++	 * the TRACKED byte (wiped just above). The atomic clear returns false on
++	 * the common path (evict already retired the slot) so gen_occupied is NOT
++	 * double-decremented below zero; it returns true only for the residual
++	 * case -- a TRACKED folio reaching free without having gone through isolate
++	 * -- whose scan slot is genuinely still live, gating the decrement on it.
 +	 */
-+	if (marie_bm_test(&marie_track_bm[type_bit][g][tier], pfn)) {
-+		marie_bm_clear(&marie_track_bm[type_bit][g][tier], pfn);
-+		marie_gen_occ_dec(g, type_bit);
++	if (marie_bm_clear(&marie_track_bm[type_bit][g][tier], pfn)) {
++		marie_gen_occ_dec(pfn, g, type_bit);
 +		/*
 +		 * A TRACKED folio reached buddy free with its scan slot still
 +		 * live -- it never went through Marie's evict. The common escape
@@ -5008,19 +6377,22 @@ index 0000000000..fc6e18da14
 +	tier = (s & MARIE_PFN_TIER_MASK) >> MARIE_PFN_TIER_SHIFT;
 +	type_bit = (s & MARIE_PFN_TYPE_MASK) ? 1 : 0;
 +
-+	/* exactly-once gate: a clear scan bit means evict already debited. */
-+	if (!marie_bm_test(&marie_track_bm[type_bit][g][tier], pfn))
++	/*
++	 * exactly-once gate: atomically claim (retire) the scan slot. bm_clear
++	 * returns false when the bit is already clear -- evict debited upstream,
++	 * so nothing is owed and the whole debit below is skipped. Winning the
++	 * atomic clear owns the entire debit (gen_occupied + nr_folios + lru_size),
++	 * so it can never double-debit even against a concurrent retirer.
++	 */
++	if (!marie_bm_clear(&marie_track_bm[type_bit][g][tier], pfn))
 +		return;
++	marie_gen_occ_dec(pfn, g, type_bit);
 +
 +	zone = (s & MARIE_PFN_ZONE_MASK) >> MARIE_PFN_ZONE_SHIFT;
 +	lru = type_bit ? LRU_INACTIVE_FILE : LRU_INACTIVE_ANON;
 +	nr = folio_nr_pages(folio);
 +
 +	lv = mem_cgroup_lruvec(memcg, folio_pgdat(folio));
-+
-+	/* retire the scan slot (mirrors the free-hook escape branch). */
-+	marie_bm_clear(&marie_track_bm[type_bit][g][tier], pfn);
-+	marie_gen_occ_dec(g, type_bit);
 +
 +	/* same wind-down as marie_account_evict_isolate, IRQ-context tolerant. */
 +	local_irq_save(flags);
@@ -5055,6 +6427,7 @@ index 0000000000..fc6e18da14
 +			     u8 target_gen, u8 target_tier)
 +{
 +	u8 cur, type, old_gen, old_tier, new_byte;
++	bool set_new, clr_old;
 +
 +	if (pfn >= marie_state_size)
 +		return;
@@ -5081,14 +6454,21 @@ index 0000000000..fc6e18da14
 +	if (old_gen == target_gen && old_tier == target_tier)
 +		return;
 +
-+	/* publish on new (type, gen, tier) first */
-+	marie_bm_set(&marie_track_bm[type][target_gen][target_tier], pfn);
++	/*
++	 * publish on new (type, gen, tier) first, then un-publish old. Gate each
++	 * gen_occupied update on the atomic bit transition it owns (bm_set 0->1 /
++	 * bm_clear 1->0), so a concurrent reclaim isolate retiring the old slot on
++	 * this same folio can never make both paths dec the old gen -- gen_occupied
++	 * stays == popcount(bits in gen) >= 0.
++	 */
++	set_new = marie_bm_set(&marie_track_bm[type][target_gen][target_tier], pfn);
++	clr_old = marie_bm_clear(&marie_track_bm[type][old_gen][old_tier], pfn);
 +	if (old_gen != target_gen) {
-+		marie_gen_occ_inc(target_gen, type);
-+		marie_gen_occ_dec(old_gen, type);
++		if (set_new)
++			marie_gen_occ_inc(pfn, target_gen, type);
++		if (clr_old)
++			marie_gen_occ_dec(pfn, old_gen, type);
 +	}
-+	/* un-publish old (type, gen, tier) */
-+	marie_bm_clear(&marie_track_bm[type][old_gen][old_tier], pfn);
 +}
 +EXPORT_SYMBOL_GPL(marie_state_move_to_gen);
 +
@@ -5137,8 +6517,8 @@ index 0000000000..fc6e18da14
 +		goto retry;
 +
 +	type = (cur & MARIE_PFN_TYPE_MASK) ? 1 : 0;
-+	marie_bm_set(&marie_track_bm[type][target_gen][target_tier], pfn);
-+	marie_gen_occ_inc(target_gen, type);
++	if (marie_bm_set(&marie_track_bm[type][target_gen][target_tier], pfn))
++		marie_gen_occ_inc(pfn, target_gen, type);
 +}
 +
 +/*
@@ -5200,16 +6580,23 @@ index 0000000000..fc6e18da14
 +		}
 +	} while (!try_cmpxchg(&marie_state[pfn], &cur, new));
 +
-+	/* State byte committed; bitmaps/occupancy best-effort (scanner re-validates). */
++	/*
++	 * State byte committed. The bitmap moves are best-effort (the scanner
++	 * re-validates each bit against the byte), but each gen_occupied update is
++	 * gated on the atomic bit transition it owns (bm_set 0->1 / bm_clear 1->0):
++	 * if a concurrent reclaim isolate retires the old (gen, tier) slot first,
++	 * our bm_clear returns false and we skip the dec, so gen_occupied stays
++	 * == popcount(bits in gen) >= 0 -- the double-dec underflow cannot happen.
++	 */
 +	gen = (cur & MARIE_PFN_GEN_MASK) >> MARIE_PFN_GEN_SHIFT;
 +	if (!roll) {
 +		marie_bm_set(&marie_track_bm[type][gen][new_tier], pfn);
 +		marie_bm_clear(&marie_track_bm[type][gen][t], pfn);
 +	} else {
-+		marie_bm_set(&marie_track_bm[type][head][0], pfn);
-+		marie_bm_clear(&marie_track_bm[type][gen][t], pfn);
-+		marie_gen_occ_dec(gen, type);
-+		marie_gen_occ_inc(head, type);
++		if (marie_bm_set(&marie_track_bm[type][head][0], pfn))
++			marie_gen_occ_inc(pfn, head, type);
++		if (marie_bm_clear(&marie_track_bm[type][gen][t], pfn))
++			marie_gen_occ_dec(pfn, gen, type);
 +	}
 +}
 +
@@ -5479,8 +6866,20 @@ index 0000000000..fc6e18da14
 +	 * call. mem_cgroup_swappiness returns the effective value (memcg own
 +	 * value on cgroup v1 non-root, vm_swappiness otherwise) and is
 +	 * a plain READ_ONCE under the hood.
++	 *
++	 * low_swappiness_mode (default on) clamps the effective value to at
++	 * most 1 (MARIE_PICK_FILE_THEN_ANON), Marie's recommended policy,
++	 * regardless of the higher values vm.swappiness / memory.swappiness
++	 * udev rules, tuning daemons, or distro defaults have installed. It
++	 * only ever LOWERS swappiness, so the special "never swap" value 0
++	 * (MARIE_PICK_FILE_STRICT: OOM rather than touch anon) is preserved --
++	 * an operator who deliberately set 0 still gets 0. Clear the knob to
++	 * honour the configured value verbatim. See the rationale at the top
++	 * of core.c.
 +	 */
-+	u8 swappiness = (u8)mem_cgroup_swappiness(memcg);
++	u8 configured = (u8)mem_cgroup_swappiness(memcg);
++	u8 swappiness = (READ_ONCE(marie_low_swappiness_mode) && configured > 1) ?
++			1 : configured;
 +	enum marie_pick_kind pick_kind;
 +	int type_order[2];
 +	int type_count;
@@ -6590,8 +7989,8 @@ index 0000000000..fc6e18da14
 +					MARIE_PFN_TIER_SHIFT;
 +				u8 tb = (s & MARIE_PFN_TYPE_MASK) ? 1 : 0;
 +
-+				marie_bm_clear(&marie_track_bm[tb][g][tr], pfn);
-+				marie_gen_occ_dec(g, tb);
++				if (marie_bm_clear(&marie_track_bm[tb][g][tr], pfn))
++					marie_gen_occ_dec(pfn, g, tb);
 +			}
 +		}
 +	}
@@ -6822,16 +8221,17 @@ index 0000000000..fc6e18da14
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..c64598117f
+index 0000000000..d0e9f7a92b
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,961 @@
+@@ -0,0 +1,976 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
 +
 +#include <linux/percpu_counter.h>
 +#include "bitmap.h"	/* struct marie_bitmap, MARIE_L2_BITS, marie_bm_* */
++#include "defrag.h"		/* marie_defrag_hist_inc/dec -- per-pageblock occupancy mirror */
 +
 +/* Swappiness/pick diagnostics, surfaced in /sys/kernel/mm/lru_marie/stats. */
 +extern atomic_long_t marie_dbg_pick[5];
@@ -7088,23 +8488,28 @@ index 0000000000..c64598117f
 + * (publish_at_gen, move_to_gen, inc_tier, drop_pfn, drop_pfn_at_free,
 + * evict_counters_only, uncharge_backstop). Keeping it a single choke-point
 + * means a new transition site cannot forget to update the counter -- and
-+ * gives a future per-pageblock occupancy mirror (MDC compaction) one hook to
-+ * tap, with Sigma_blocks(mirror) == Sigma(marie_gen_occupied) as its
-+ * completeness invariant.
++ * gives the per-pageblock occupancy mirror (Marie defrag compaction, marie_defrag_hist_inc/dec)
++ * one hook to tap, with Sigma_blocks(mirror) == Sigma(marie_gen_occupied) as
++ * its completeness invariant. @pfn is threaded through purely so the mirror
++ * can locate the folio's pageblock; the marie_gen_occupied bump ignores it.
++ * When CONFIG_LRU_MARIE_DEFRAG=n the marie_defrag hooks are empty inlines and the
++ * emitted code is identical to a bare atomic_long_inc/dec.
 + *
 + * static inline in the header (was state.c-private) precisely so the
 + * install-side publisher in pfn_install.h shares this path instead of
 + * bumping marie_gen_occupied directly. Desktop/global-only: a single global
 + * per-(gen, type) counter, so these take no carrier.
 + */
-+static inline void marie_gen_occ_inc(int gen, int type)
++static inline void marie_gen_occ_inc(unsigned long pfn, int gen, int type)
 +{
 +	atomic_long_inc(&marie_gen_occupied[gen][type]);
++	marie_defrag_hist_inc(pfn, gen, type);
 +}
 +
-+static inline void marie_gen_occ_dec(int gen, int type)
++static inline void marie_gen_occ_dec(unsigned long pfn, int gen, int type)
 +{
 +	atomic_long_dec(&marie_gen_occupied[gen][type]);
++	marie_defrag_hist_dec(pfn, gen, type);
 +}
 +
 +/* Global aging epoch (bumped per walker pass per type); see state.c. */
@@ -7124,6 +8529,15 @@ index 0000000000..c64598117f
 + */
 +extern unsigned long marie_gen_growth_live[2 /* ANON_AND_FILE */];
 +void marie_recompute_growth_threshold(int type);
++
++/*
++ * Oldest live gen for @type (walking out from the global head), or -1 if none.
++ * The single placement primitive for "make this folio cold now": demote /
++ * lazyfree (state.c) and Marie defrag's post-migration restamp all target it so
++ * a folio lands at the current tail, frame-relative -- never a stale absolute
++ * gen that head has since recycled. See marie_find_oldest_occupied_mlv.
++ */
++int marie_find_oldest_occupied_mlv(int type);
 +
 +/* Global anon-vs-file proportional pick bias; see marie_swap_pick_type. */
 +extern atomic64_t marie_swap_bias;
@@ -7889,7 +9303,7 @@ index 0000000000..4d07cedd9c
 +#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..668025f001
+index 0000000000..431132bf59
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -7912,7 +9326,7 @@ index 0000000000..668025f001
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.6.5"
++#define MARIE_VERSION	"0.7.6"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
@@ -9047,7 +10461,7 @@ index 749c128b4f..12756d8863 100644
  	}
  
 diff --git a/mm/mm_init.c b/mm/mm_init.c
-index f9f8e1af92..5855f9ef89 100644
+index f9f8e1af92..aae01205e5 100644
 --- a/mm/mm_init.c
 +++ b/mm/mm_init.c
 @@ -1395,6 +1395,9 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
@@ -9055,13 +10469,238 @@ index f9f8e1af92..5855f9ef89 100644
  
  	init_waitqueue_head(&pgdat->kswapd_wait);
 +#if defined(CONFIG_LRU_MARIE) && defined(CONFIG_SWAP)
-+	init_waitqueue_head(&pgdat->kcompmari_wait);
++	init_waitqueue_head(&pgdat->kcompressd_wait);
 +#endif
  	init_waitqueue_head(&pgdat->pfmemalloc_wait);
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
+diff --git a/mm/oom_kill.c b/mm/oom_kill.c
+index 5f372f6e26..aaf1b7dc26 100644
+--- a/mm/oom_kill.c
++++ b/mm/oom_kill.c
+@@ -45,6 +45,9 @@
+ #include <linux/mmu_notifier.h>
+ #include <linux/cred.h>
+ #include <linux/nmi.h>
++#include <linux/vmstat.h>
++#include <linux/psi.h>
++#include <linux/math64.h>
+ 
+ #include <asm/tlb.h>
+ #include "internal.h"
+@@ -1255,3 +1258,210 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
+ 	return -ENOSYS;
+ #endif /* CONFIG_MMU */
+ }
++
++/*
++ * Thrash-livelock watchdog.
++ *
++ * With RAM-backed swap (zram/zswap) a machine whose active working set
++ * exceeds RAM settles into a stable treadmill: reclaim keeps "succeeding"
++ * (there is always apparently-free swap and something evictable), but
++ * everything it evicts is faulted straight back, both CPUs end up in
++ * try_to_unmap()/compression/decompression, and every userspace touch of a
++ * cold page waits many seconds behind the storm. Allocations still succeed
++ * eventually, so neither the no-progress OOM path nor the watermark OOM
++ * path ever fires — the box is user-dead for hours with oom_kill=0. This
++ * was reproduced against both lru_marie and stock MGLRU (browser-like
++ * working set + `tail /dev/zero`, 8G RAM, zram-only swap): interaction
++ * latency scaled to 30+ seconds while the kernel considered itself making
++ * progress throughout.
++ *
++ * Detect the treadmill directly from its defining ratio: pages stolen by
++ * reclaim at storm volume AND workingset refaults running at >= half the
++ * steal rate, sustained over consecutive windows. Genuine one-off refault
++ * bursts (app switch, service restart) don't sustain the ratio for
++ * THRASH_WD_WINDOWS consecutive windows at storm volume; healthy cold-page
++ * reclaim has near-zero refaults. When the condition holds the working set
++ * provably does not fit in RAM and no LRU policy can fix that — the only
++ * useful action is the same one swap-exhaustion would eventually take:
++ * kill the top badness task. Fires via the same path as sysrq-f, then
++ * backs off before re-arming so one kill gets a chance to drain the storm.
++ */
++#define THRASH_WD_INTERVAL	(2 * HZ)
++#define THRASH_WD_WINDOWS	8	/* 16s: refault-ratio path (PSI off) */
++#define THRASH_WD_BACKOFF	30	/* 60s hold-off after firing */
++
++#ifdef CONFIG_PSI
++/*
++ * Direct-signal path, used when PSI is runtime-enabled. The treadmill's
++ * defining symptom is that userspace constantly stalls on memory; PSI measures
++ * that directly. Fire when the box spends >= THRASH_WD_PSI_PCT of wall-clock
++ * with at least one task stalled on memory ("some") over THRASH_WD_PSI_WINDOWS
++ * windows. "some" rather than "full": on a many-core box some cores keep doing
++ * non-memory work even while the desktop is unusable, so "full" (every task
++ * stalled) under-reads. Two independent confirmations (this AND free <= 2*high)
++ * let the window be shorter than a PSI-only killer's (systemd-oomd 30s /
++ * facebook oomd 15s), which have no free-headroom cross-check.
++ */
++#define THRASH_WD_PSI_WINDOWS	5			/* 10s sustained */
++#define THRASH_WD_PSI_PCT	80
++#define THRASH_WD_WINDOW_NS	((u64)(THRASH_WD_INTERVAL / HZ) * NSEC_PER_SEC)
++#endif
++
++static void thrash_wd_fn(struct work_struct *work);
++static DECLARE_DELAYED_WORK(thrash_wd_work, thrash_wd_fn);
++
++/*
++ * Memory-pressure gate for the treadmill detector.
++ *
++ * The livelock this watchdog exists for is defined by reclaim being unable to
++ * build any free headroom: free memory stays pinned near the watermarks while
++ * both CPUs churn compression/decompression and every userspace touch waits
++ * behind the storm. The steal+refault ratio alone does not distinguish that
++ * from a merely busy large-RAM box, where a heavy but healthy workload (game
++ * download, build, browser) streams page cache -- and, under lru_marie/MGLRU
++ * proactive reclaim, racks up high steal+refault counts -- while gigabytes
++ * stay free. Firing there is a false positive: with free far above the high
++ * watermark no allocation is anywhere near the OOM path, so killing a task is
++ * pure collateral damage.
++ *
++ * Only arm the detector when the system genuinely cannot keep free above its
++ * high watermark. In a real treadmill free oscillates between min and high
++ * (kswapd stops reclaiming at high, allocations immediately eat back down), so
++ * free never climbs to a multiple of high; requiring free <= 2 * high keeps
++ * the original 8G zram repro firing while suppressing the large-RAM churn case
++ * (free measured >= ~4x high in every false-positive dump). Summed globally to
++ * match the global steal/refault counters above.
++ */
++static bool thrash_wd_mem_pressured(void)
++{
++	struct zone *zone;
++	unsigned long free = 0, high = 0;
++
++	for_each_populated_zone(zone) {
++		if (!managed_zone(zone))
++			continue;
++		free += zone_page_state(zone, NR_FREE_PAGES);
++		high += high_wmark_pages(zone);
++	}
++
++	return free <= high * 2;
++}
++
++static void thrash_wd_fn(struct work_struct *work)
++{
++	static unsigned long last_refaults, last_steals;
++	static unsigned int hot_windows, backoff;
++#ifdef CONFIG_PSI
++	static u64 psi_ring[THRASH_WD_PSI_WINDOWS];
++	static unsigned int psi_cursor, psi_filled;
++#endif
++	bool fire = false;
++	char reason[80];
++
++	if (backoff) {
++		backoff--;
++		goto resched;
++	}
++
++#ifdef CONFIG_PSI
++	if (!static_branch_likely(&psi_disabled)) {
++		/*
++		 * Direct path: PSI memory-"some" is the ns of wall-clock during
++		 * which at least one task was stalled on memory (reclaim /
++		 * refault / swapin). Compare the stall accumulated over the last
++		 * THRASH_WD_PSI_WINDOWS windows against that span: a ring of the
++		 * per-window totals makes this robust to the ~2s PSI aggregation
++		 * cadence drifting against our timer. Still gated on real memory
++		 * pressure so an abundant-free box is never touched.
++		 */
++		u64 some = psi_system.total[PSI_AVGS][PSI_MEM_SOME];
++		u64 oldest = psi_ring[psi_cursor];
++
++		psi_ring[psi_cursor] = some;
++		psi_cursor = (psi_cursor + 1) % THRASH_WD_PSI_WINDOWS;
++
++		if (psi_filled < THRASH_WD_PSI_WINDOWS) {
++			psi_filled++;		/* warming the ring */
++		} else if (thrash_wd_mem_pressured() &&
++			   some - oldest >= THRASH_WD_WINDOW_NS *
++					    THRASH_WD_PSI_WINDOWS *
++					    THRASH_WD_PSI_PCT / 100) {
++			unsigned long stall_ms = div_u64(some - oldest,
++							 NSEC_PER_MSEC);
++
++			scnprintf(reason, sizeof(reason),
++				  "PSI mem-some stalled %lums/%ums",
++				  stall_ms, (unsigned int)(THRASH_WD_PSI_WINDOWS *
++				  (THRASH_WD_INTERVAL / HZ) * 1000));
++			fire = true;
++		}
++	} else
++#endif
++	{
++		/*
++		 * Fallback (PSI compiled out or runtime-disabled): infer the
++		 * treadmill from vm counters. Storm volume: reclaim moving >=
++		 * totalram/512 pages per window (~8MB/s per 8G RAM). Treadmill
++		 * ratio: at least half of it faults straight back as recently-
++		 * evicted working set. Gate on real memory pressure (free pinned
++		 * near the watermarks) so a busy-but-healthy large-RAM box
++		 * streaming page cache with gigabytes free is not mistaken for a
++		 * livelock -- see thrash_wd_mem_pressured().
++		 */
++		unsigned long refaults, steals, dr, ds;
++
++		steals = global_node_page_state(PGSTEAL_KSWAPD) +
++			 global_node_page_state(PGSTEAL_DIRECT) +
++			 global_node_page_state(PGSTEAL_KHUGEPAGED);
++		refaults = global_node_page_state(WORKINGSET_REFAULT_ANON) +
++			   global_node_page_state(WORKINGSET_REFAULT_FILE);
++
++		dr = refaults - last_refaults;
++		ds = steals - last_steals;
++		last_refaults = refaults;
++		last_steals = steals;
++
++		if (ds >= totalram_pages() / 512 && dr * 2 >= ds &&
++		    thrash_wd_mem_pressured())
++			hot_windows++;
++		else
++			hot_windows = 0;
++
++		if (hot_windows >= THRASH_WD_WINDOWS) {
++			scnprintf(reason, sizeof(reason),
++				  "refault %lu vs %lu steals, %us sustained",
++				  dr, ds, (unsigned int)(THRASH_WD_WINDOWS *
++				  (THRASH_WD_INTERVAL / HZ)));
++			fire = true;
++		}
++	}
++
++	if (fire) {
++		struct oom_control oc = {
++			.zonelist = node_zonelist(first_memory_node, GFP_KERNEL),
++			.gfp_mask = GFP_KERNEL,	/* !__GFP_FS shortcuts out_of_memory */
++			.order = -1,
++		};
++
++		pr_warn("thrash livelock: %s, invoking OOM\n", reason);
++		if (mutex_trylock(&oom_lock)) {
++			out_of_memory(&oc);
++			mutex_unlock(&oom_lock);
++		}
++		hot_windows = 0;
++		backoff = THRASH_WD_BACKOFF;
++#ifdef CONFIG_PSI
++		psi_filled = 0;		/* re-warm after the backoff gap */
++#endif
++	}
++
++resched:
++	schedule_delayed_work(&thrash_wd_work, THRASH_WD_INTERVAL);
++}
++
++static int __init thrash_wd_init(void)
++{
++	schedule_delayed_work(&thrash_wd_work, THRASH_WD_INTERVAL);
++	return 0;
++}
++late_initcall(thrash_wd_init);
 diff --git a/mm/page_alloc.c b/mm/page_alloc.c
-index 23c7298d3b..4c94344e78 100644
+index 23c7298d3b..31d110475b 100644
 --- a/mm/page_alloc.c
 +++ b/mm/page_alloc.c
 @@ -16,6 +16,7 @@
@@ -9101,9 +10740,65 @@ index 23c7298d3b..4c94344e78 100644
  	if (memcg_kmem_online() && PageMemcgKmem(page))
  		__memcg_kmem_uncharge_page(page, order);
  
-@@ -4595,6 +4618,64 @@ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
- 	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
+@@ -4576,25 +4599,97 @@ bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
+ static inline bool
+ should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+ 		     struct alloc_context *ac, int alloc_flags,
+-		     bool did_some_progress, int *no_progress_loops)
++		     unsigned long nr_progress, int *no_progress_loops)
+ {
+ 	struct zone *zone;
+ 	struct zoneref *z;
+ 	bool ret = false;
++	unsigned long refaults, refault_delta;
++
++	/*
++	 * Thrash-aware progress accounting.
++	 *
++	 * "Reclaimed something" is not forward progress when the system is a
++	 * refault treadmill: every page reclaimed is somebody's working set
++	 * and gets pulled straight back in, evicting another working-set page
++	 * in turn. With a RAM-backed swap device (zram/zswap) this state is
++	 * stable indefinitely -- swap slots stay plentiful (zero-filled pages
++	 * are stored for free), so anon keeps counting as reclaimable, every
++	 * retry frees a few pages, no_progress_loops keeps resetting, and the
++	 * OOM killer never engages while userspace is completely starved.
++	 * This is the "browser + tail /dev/zero on zram" hard freeze.
++	 *
++	 * Detect the treadmill from the global workingset refault counters:
++	 * if the refaults that happened while we ran this retry loop exceed
++	 * a small multiple of what the loop actually reclaimed, the reclaim
++	 * was net-negative for everyone else and does not count as progress.
++	 * MAX_RECLAIM_RETRIES consecutive treadmill loops mean this
++	 * allocation is starving with no way out; let it fall through to the
++	 * regular OOM path regardless of how much nominal swap headroom the
++	 * backend advertises. Genuine cold-page reclaim (refaults ~0) and
++	 * bursty-but-recovering loads reset the counter as before.
++	 */
++	refaults = global_node_page_state(WORKINGSET_REFAULT_ANON) +
++		   global_node_page_state(WORKINGSET_REFAULT_FILE);
++	refault_delta = refaults - ac->last_refaults;
++	ac->last_refaults = refaults;
+ 
+ 	/*
+ 	 * Costly allocations might have made a progress but this doesn't mean
+ 	 * their order will become available due to high fragmentation so
+ 	 * always increment the no progress counter for them
+ 	 */
+-	if (did_some_progress && order <= PAGE_ALLOC_COSTLY_ORDER)
++	if (nr_progress && order <= PAGE_ALLOC_COSTLY_ORDER &&
++	    refault_delta <= 4 * nr_progress + SWAP_CLUSTER_MAX)
+ 		*no_progress_loops = 0;
+ 	else
+ 		(*no_progress_loops)++;
+ 
+-	if (*no_progress_loops > MAX_RECLAIM_RETRIES)
++	if (*no_progress_loops > MAX_RECLAIM_RETRIES) {
++		if (nr_progress && refault_delta > 4 * nr_progress)
++			pr_warn_ratelimited("reclaim thrash livelock: %lu refaults vs %lu reclaimed in final retry, invoking OOM\n",
++					    refault_delta, nr_progress);
  		goto out;
++	}
  
 +#ifdef CONFIG_LRU_MARIE
 +	/*
@@ -9121,12 +10816,11 @@ index 23c7298d3b..4c94344e78 100644
 +	 * tolerates a handful of transient failures (concurrent ZRAM ops, brief
 +	 * retry windows).
 +	 *
-+	 * The free+swap exhaustion case needs no early watermark here: the pick
-+	 * driver and the legacy drain both withhold file reclaim at the
-+	 * clean_min_ratio floor (marie_file_floor_protect), so once file is at
-+	 * the floor and anon is unreclaimable reclaim returns no progress and
-+	 * the stock no_progress_loops path OOMs promptly — mirroring le9uo's
-+	 * reliance on the no-progress path at any floor size.
++	 * The RAM-backed-swap (zram/zswap) thrash case — where nominal swap
++	 * capacity keeps anon counting as reclaimable so the retry loop never
++	 * OOMs while userspace starves — is handled generically above by the
++	 * thrash-aware refault accounting (LRU-independent), not by any
++	 * Marie-specific free watermark here.
 +	 *
 +	 * Skipped for reserve / OOM-victim allocations (ALLOC_OOM,
 +	 * ALLOC_NO_WATERMARKS, tsk_is_oom_victim): those contexts exist to let a
@@ -9139,34 +10833,15 @@ index 23c7298d3b..4c94344e78 100644
 +	    likely(!tsk_is_oom_victim(current))) {
 +		long swap_fail_delta = atomic_long_read(&nr_swap_write_failed) -
 +				       ac->initial_swap_write_failed;
-+		unsigned int oom_free_ratio;
 +
 +		if (swap_fail_delta > MAX_SWAP_WRITE_FAIL_RETRIES)
-+			goto out;
-+
-+		/*
-+		 * RAM-backed swap (zram/zswap) thrash guard. We are here after a
-+		 * reclaim pass that failed to satisfy the allocation. marie_non_anon
-+		 * _freeable_pages() is the memory we can free WITHOUT swapping anon
-+		 * (free + clean file above the clean_min_ratio floor). Once that is
-+		 * below marie_oom_free_ratio% of totalram, the only reclaim left is
-+		 * anon -> RAM-backed swap, which cannot net-free memory when RAM is
-+		 * full, yet nominal swap capacity keeps anon counting as reclaimable
-+		 * so the retry loop never OOMs -- the box thrashes on compression
-+		 * forever. Give up here, before descending into another swap cycle.
-+		 * Ignores nominal swap capacity, so it holds at any zram disksize.
-+		 */
-+		oom_free_ratio = READ_ONCE(marie_oom_free_ratio);
-+		if (oom_free_ratio &&
-+		    marie_non_anon_freeable_pages() <
-+		    totalram_pages() * oom_free_ratio / 100)
 +			goto out;
 +	}
 +#endif
  
  	/*
  	 * Keep reclaiming pages while there is a chance this will lead
-@@ -4718,6 +4799,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+@@ -4718,6 +4813,20 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
  		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
  	}
  
@@ -9187,8 +10862,27 @@ index 23c7298d3b..4c94344e78 100644
  restart:
  	compaction_retries = 0;
  	no_progress_loops = 0;
+@@ -4725,6 +4834,9 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+ 	compact_priority = DEF_COMPACT_PRIORITY;
+ 	cpuset_mems_cookie = read_mems_allowed_begin();
+ 	zonelist_iter_cookie = zonelist_iter_begin();
++	/* baseline for should_reclaim_retry's thrash detection */
++	ac->last_refaults = global_node_page_state(WORKINGSET_REFAULT_ANON) +
++			    global_node_page_state(WORKINGSET_REFAULT_FILE);
+ 
+ 	/*
+ 	 * For costly allocations, try direct compaction first, as it's likely
+@@ -4881,7 +4993,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
+ 		goto restart;
+ 
+ 	if (should_reclaim_retry(gfp_mask, order, ac, alloc_flags,
+-				 did_some_progress > 0, &no_progress_loops))
++				 did_some_progress, &no_progress_loops))
+ 		goto retry;
+ 
+ 	/*
 diff --git a/mm/page_io.c b/mm/page_io.c
-index 70cea9e24d..a3d533a7b9 100644
+index 70cea9e24d..34930ac397 100644
 --- a/mm/page_io.c
 +++ b/mm/page_io.c
 @@ -25,8 +25,19 @@
@@ -9259,32 +10953,32 @@ index 70cea9e24d..a3d533a7b9 100644
 +
 +#ifdef CONFIG_LRU_MARIE
 +/*
-+ * kcompmari_store() - Off-load folio compression to kcompmari
++ * kcompressd_store() - Off-load folio compression to kcompressd
 + * @folio: The folio to compress
 + *
 + * This function attempts to off-load the compression of the folio to
-+ * kcompmari. If kcompmari is not available or the folio cannot be
++ * kcompressd. If kcompressd is not available or the folio cannot be
 + * compressed, it falls back to synchronous write.
 + *
 + * Returns true if the folio was successfully queued for compression,
 + * false otherwise.
 + */
-+static bool kcompmari_store(struct folio *folio, struct swap_iocb **swap_plug)
++static bool kcompressd_store(struct folio *folio, struct swap_iocb **swap_plug)
 +{
 +	pg_data_t *pgdat = NODE_DATA(numa_node_id());
 +	unsigned int ret;
 +	struct folio *head = NULL;
 +
-+	/* Only kswapd can use kcompmari */
++	/* Only kswapd can use kcompressd */
 +	if (!current_is_kswapd())
 +		return false;
 +
 +	/* Mode 0, or mode 1 with Marie off — short-circuit on the static branches. */
-+	if (!kcompmari_active())
++	if (!kcompressd_active())
 +		return false;
 +
 +	/* kthread must be running */
-+	if (unlikely(!pgdat->kcompmari))
++	if (unlikely(!pgdat->kcompressd))
 +		return false;
 +
 +	/* We can only off-load anon folios */
@@ -9311,15 +11005,15 @@ index 70cea9e24d..a3d533a7b9 100644
 +		return false;
 +
 +	/*
-+	 * The kfifo backing storage is sized at KCOMPMARI_FIFO_SIZE (the
-+	 * compile-time max). The effective queue depth is |vm_kcompmari|;
++	 * The kfifo backing storage is sized at KCOMPRESSD_FIFO_SIZE (the
++	 * compile-time max). The effective queue depth is |vm_kcompressd|;
 +	 * when current depth meets or exceeds that, treat the queue as
 +	 * full and swap out the head folio synchronously to make space.
 +	 */
-+	scoped_guard(spinlock_irqsave, &pgdat->kcompmari_fifo_lock)
-+		if (kfifo_len(&pgdat->kcompmari_fifo) >=
-+			abs(READ_ONCE(vm_kcompmari)) * sizeof(struct folio *) &&
-+			unlikely(!kfifo_out(&pgdat->kcompmari_fifo,
++	scoped_guard(spinlock_irqsave, &pgdat->kcompressd_fifo_lock)
++		if (kfifo_len(&pgdat->kcompressd_fifo) >=
++			abs(READ_ONCE(vm_kcompressd)) * sizeof(struct folio *) &&
++			unlikely(!kfifo_out(&pgdat->kcompressd_fifo,
 +					&head, sizeof(folio))))
 +			return false;
 +
@@ -9327,10 +11021,10 @@ index 70cea9e24d..a3d533a7b9 100644
 +	folio_get(folio);
 +
 +	/* Enqueue the folio for compression */
-+	ret = kfifo_in(&pgdat->kcompmari_fifo, &folio, sizeof(folio));
++	ret = kfifo_in(&pgdat->kcompressd_fifo, &folio, sizeof(folio));
 +	if (likely(ret))
-+		/* We successfully enqueued the folio. wake up kcompmari */
-+		wake_up_interruptible(&pgdat->kcompmari_wait);
++		/* We successfully enqueued the folio. wake up kcompressd */
++		wake_up_interruptible(&pgdat->kcompressd_wait);
 +	else
 +		/* Enqueue failed, so we must cancel the reference count */
 +		folio_put(folio);
@@ -9344,7 +11038,7 @@ index 70cea9e24d..a3d533a7b9 100644
 +	return ret;
 +}
 +#else  /* !CONFIG_LRU_MARIE */
-+static inline bool kcompmari_store(struct folio *folio,
++static inline bool kcompressd_store(struct folio *folio,
 +				   struct swap_iocb **swap_plug)
 +{
 +	return false;
@@ -9363,7 +11057,7 @@ index 70cea9e24d..a3d533a7b9 100644
 +	 * of both file and anon pages, try to do compression async
 +	 * if possible
 +	 */
-+	if (kcompmari_store(folio, swap_plug))
++	if (kcompressd_store(folio, swap_plug))
 +		return 0;
 +
  	if (zswap_store(folio)) {
@@ -9375,19 +11069,19 @@ index 70cea9e24d..a3d533a7b9 100644
  
 +#ifdef CONFIG_LRU_MARIE
 +/*
-+ * kcompmari() - Kernel thread for compressing folios
++ * kcompressd() - Kernel thread for compressing folios
 + * @p: Pointer to pg_data_t structure
 + *
 + * This function runs in a kernel thread and waits for folios to be
 + * queued for compression. It processes the folios by calling do_swapout()
 + * on them, which handles the actual writing to swap space.
 + */
-+int kcompmari(void *p)
++int kcompressd(void *p)
 +{
 +	pg_data_t *pgdat = (pg_data_t *)p;
 +	struct folio *folio;
 +
-+	/* * kcompmari runs with PF_MEMALLOC and PF_KSWAPD flags set to
++	/* * kcompressd runs with PF_MEMALLOC and PF_KSWAPD flags set to
 +	 * allow it to allocate memory for compression without being
 +	 * restricted by the current memory allocation context.
 +	 * Also PF_KSWAPD prevents Intel Graphics driver from crashing
@@ -9396,13 +11090,13 @@ index 70cea9e24d..a3d533a7b9 100644
 +	current->flags |= PF_MEMALLOC | PF_KSWAPD;
 +
 +	while (!kthread_should_stop()) {
-+		wait_event_interruptible(pgdat->kcompmari_wait,
-+				!kfifo_is_empty(&pgdat->kcompmari_fifo));
++		wait_event_interruptible(pgdat->kcompressd_wait,
++				!kfifo_is_empty(&pgdat->kcompressd_fifo));
 +
-+		while (kfifo_out_locked(&pgdat->kcompmari_fifo,
-+				&folio, sizeof(folio), &pgdat->kcompmari_fifo_lock))
++		while (kfifo_out_locked(&pgdat->kcompressd_fifo,
++				&folio, sizeof(folio), &pgdat->kcompressd_fifo_lock))
 +			/*
-+			 * kcompmari is async reclaim writeback; pass a NULL
++			 * kcompressd is async reclaim writeback; pass a NULL
 +			 * swap_plug so __swap_writepage submits each folio's
 +			 * bio immediately rather than batching it on a plug
 +			 * the caller would have to unplug.
@@ -9842,7 +11536,7 @@ index 5cc44f0de9..5696ddebbd 100644
  }
  
 diff --git a/mm/swap.h b/mm/swap.h
-index a77016f242..7f499ac84c 100644
+index a77016f242..fc816e14de 100644
 --- a/mm/swap.h
 +++ b/mm/swap.h
 @@ -227,6 +227,10 @@ static inline void swap_read_unplug(struct swap_iocb *plug)
@@ -9851,13 +11545,13 @@ index a77016f242..7f499ac84c 100644
  void __swap_writepage(struct folio *folio, struct swap_iocb **swap_plug);
 +#ifdef CONFIG_LRU_MARIE
 +/* CONFIG_SWAP is implied by this branch (mm/swap.h's CONFIG_SWAP gate). */
-+int kcompmari(void *p);
++int kcompressd(void *p);
 +#endif
  
  /* linux/mm/swap_state.c */
  extern struct address_space swap_space __read_mostly;
 diff --git a/mm/vmscan.c b/mm/vmscan.c
-index bd1b1aa125..a70002d863 100644
+index bd1b1aa125..975007fa9f 100644
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
 @@ -39,6 +39,7 @@
@@ -9903,27 +11597,7 @@ index bd1b1aa125..a70002d863 100644
  #ifdef ARCH_HAS_PREFETCHW
  #define prefetchw_prev_lru_folio(_folio, _base, _field)			\
  	do {								\
-@@ -197,8 +226,19 @@ struct scan_control {
- 
- /*
-  * From 0 .. MAX_SWAPPINESS.  Higher means more swappy.
-+ *
-+ * CONFIG_LRU_MARIE=y: default 1. Under Marie's per-PFN reclaim
-+ * driver this maps to MARIE_PICK_FILE_THEN_ANON -- anon is fully
-+ * protected until clean_min_ratio is breached, matching the
-+ * ZRAM-era assumption that file pagecache is cheaper to refault
-+ * than anon is to swap. See the storage-tier rationale at the top
-+ * of mm/lru_marie/core.c.
-  */
-+#ifdef CONFIG_LRU_MARIE
-+int vm_swappiness = 1;
-+#else
- int vm_swappiness = 60;
-+#endif
- 
- #ifdef CONFIG_MEMCG
- 
-@@ -458,6 +498,44 @@ static int reclaimer_offset(struct scan_control *sc)
+@@ -458,6 +487,44 @@ static int reclaimer_offset(struct scan_control *sc)
  	return PGSTEAL_DIRECT - PGSTEAL_KSWAPD;
  }
  
@@ -9968,7 +11642,7 @@ index bd1b1aa125..a70002d863 100644
  /*
   * We detected a synchronous write error writing a folio out.  Probably
   * -ENOSPC.  We need to propagate that into the address_space for a subsequent
-@@ -877,10 +955,7 @@ static enum folio_references folio_check_references(struct folio *folio,
+@@ -877,10 +944,7 @@ static enum folio_references folio_check_references(struct folio *folio,
  		return FOLIOREF_ACTIVATE;
  
  	/*
@@ -9980,7 +11654,7 @@ index bd1b1aa125..a70002d863 100644
  	 */
  	if (referenced_ptes == -1)
  		return FOLIOREF_KEEP;
-@@ -894,6 +969,30 @@ static enum folio_references folio_check_references(struct folio *folio,
+@@ -894,6 +958,30 @@ static enum folio_references folio_check_references(struct folio *folio,
  
  	referenced_folio = folio_test_clear_referenced(folio);
  
@@ -10011,7 +11685,7 @@ index bd1b1aa125..a70002d863 100644
  	if (referenced_ptes) {
  		/*
  		 * All mapped folios start out with page table
-@@ -1053,9 +1152,13 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
+@@ -1053,9 +1141,13 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
  }
  
  /*
@@ -10027,7 +11701,7 @@ index bd1b1aa125..a70002d863 100644
  		struct pglist_data *pgdat, struct scan_control *sc,
  		struct reclaim_stat *stat, bool ignore_references,
  		struct mem_cgroup *memcg)
-@@ -1916,7 +2019,29 @@ static unsigned int move_folios_to_lru(struct list_head *list)
+@@ -1916,7 +2008,29 @@ static unsigned int move_folios_to_lru(struct list_head *list)
  			continue;
  		}
  
@@ -10058,7 +11732,7 @@ index bd1b1aa125..a70002d863 100644
  		nr_pages = folio_nr_pages(folio);
  		nr_moved += nr_pages;
  		if (folio_test_active(folio))
-@@ -5307,6 +5432,55 @@ static bool drain_evictable(struct lruvec *lruvec)
+@@ -5307,6 +5421,55 @@ static bool drain_evictable(struct lruvec *lruvec)
  	return true;
  }
  
@@ -10114,7 +11788,7 @@ index bd1b1aa125..a70002d863 100644
  static void lru_gen_change_state(bool enabled)
  {
  	static DEFINE_MUTEX(state_mutex);
-@@ -5827,7 +6001,15 @@ void lru_gen_init_lruvec(struct lruvec *lruvec)
+@@ -5827,7 +5990,15 @@ void lru_gen_init_lruvec(struct lruvec *lruvec)
  	struct lru_gen_mm_state *mm_state = get_mm_state(lruvec);
  
  	lrugen->max_seq = MIN_NR_GENS + 1;
@@ -10131,7 +11805,7 @@ index bd1b1aa125..a70002d863 100644
  
  	for (i = 0; i <= MIN_NR_GENS + 1; i++)
  		lrugen->timestamps[i] = jiffies;
-@@ -5927,7 +6109,23 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+@@ -5927,7 +6098,23 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
  	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
  	bool proportional_reclaim;
  	struct blk_plug plug;
@@ -10155,7 +11829,7 @@ index bd1b1aa125..a70002d863 100644
  	if ((lru_gen_enabled() || lru_gen_switching()) && !root_reclaim(sc)) {
  		lru_gen_shrink_lruvec(lruvec, sc);
  
-@@ -5938,6 +6136,29 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
+@@ -5938,6 +6125,29 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
  
  	get_scan_count(lruvec, sc, nr);
  
@@ -10185,7 +11859,7 @@ index bd1b1aa125..a70002d863 100644
  	/* Record the original scan target for proportional adjustments later */
  	memcpy(targets, nr, sizeof(nr));
  
-@@ -6193,14 +6414,32 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
+@@ -6193,14 +6403,32 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
  	struct lruvec *target_lruvec;
  	bool reclaimable = false;
  
@@ -10219,7 +11893,7 @@ index bd1b1aa125..a70002d863 100644
  
  	target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat);
  
-@@ -6469,6 +6708,17 @@ static void snapshot_refaults(struct mem_cgroup *target_memcg, pg_data_t *pgdat)
+@@ -6469,6 +6697,17 @@ static void snapshot_refaults(struct mem_cgroup *target_memcg, pg_data_t *pgdat)
  	struct lruvec *target_lruvec;
  	unsigned long refaults;
  
@@ -10237,7 +11911,7 @@ index bd1b1aa125..a70002d863 100644
  	if (lru_gen_enabled() && !lru_gen_switching())
  		return;
  
-@@ -6859,6 +7109,21 @@ static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
+@@ -6859,6 +7098,21 @@ static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
  	struct mem_cgroup *memcg;
  	struct lruvec *lruvec;
  
@@ -10259,7 +11933,7 @@ index bd1b1aa125..a70002d863 100644
  	if (lru_gen_enabled() || lru_gen_switching()) {
  		lru_gen_age_node(pgdat, sc);
  
-@@ -7632,6 +7897,9 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
+@@ -7632,6 +7886,9 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
  void __meminit kswapd_run(int nid)
  {
  	pg_data_t *pgdat = NODE_DATA(nid);
@@ -10269,30 +11943,30 @@ index bd1b1aa125..a70002d863 100644
  
  	pgdat_kswapd_lock(pgdat);
  	if (!pgdat->kswapd) {
-@@ -7645,7 +7913,32 @@ void __meminit kswapd_run(int nid)
+@@ -7645,7 +7902,32 @@ void __meminit kswapd_run(int nid)
  		} else {
  			wake_up_process(pgdat->kswapd);
  		}
 +#if defined(CONFIG_LRU_MARIE) && defined(CONFIG_SWAP)
-+		ret = kfifo_alloc(&pgdat->kcompmari_fifo,
-+				KCOMPMARI_FIFO_SIZE * sizeof(struct folio *),
++		ret = kfifo_alloc(&pgdat->kcompressd_fifo,
++				KCOMPRESSD_FIFO_SIZE * sizeof(struct folio *),
 +				GFP_KERNEL);
 +		if (ret) {
 +			pr_err("%s: fail to kfifo_alloc\n", __func__);
 +			goto out;
 +		}
 +
-+		pr_info("kcompmari (forked from kcompressd-unofficial by Masahito Suzuki, originally Kcompressd by Qun-Wei Lin from MediaTek)\n");
-+		spin_lock_init(&pgdat->kcompmari_fifo_lock);
-+		pgdat->kcompmari = kthread_create_on_node(kcompmari, pgdat, nid,
-+				"kcompmari%d", nid);
-+		if (IS_ERR(pgdat->kcompmari)) {
-+			pr_err("Failed to start kcompmari on node %d，ret=%ld\n",
-+					nid, PTR_ERR(pgdat->kcompmari));
-+			pgdat->kcompmari = NULL;
-+			kfifo_free(&pgdat->kcompmari_fifo);
++		pr_info("kcompressd (forked from kcompressd-unofficial by Masahito Suzuki, originally Kcompressd by Qun-Wei Lin from MediaTek)\n");
++		spin_lock_init(&pgdat->kcompressd_fifo_lock);
++		pgdat->kcompressd = kthread_create_on_node(kcompressd, pgdat, nid,
++				"kcompressd%d", nid);
++		if (IS_ERR(pgdat->kcompressd)) {
++			pr_err("Failed to start kcompressd on node %d，ret=%ld\n",
++					nid, PTR_ERR(pgdat->kcompressd));
++			pgdat->kcompressd = NULL;
++			kfifo_free(&pgdat->kcompressd_fifo);
 +		} else {
-+			wake_up_process(pgdat->kcompmari);
++			wake_up_process(pgdat->kcompressd);
 +		}
 +#endif
  	}
@@ -10302,15 +11976,15 @@ index bd1b1aa125..a70002d863 100644
  	pgdat_kswapd_unlock(pgdat);
  }
  
-@@ -7664,16 +7957,52 @@ void __meminit kswapd_stop(int nid)
+@@ -7664,16 +7946,52 @@ void __meminit kswapd_stop(int nid)
  		kthread_stop(kswapd);
  		pgdat->kswapd = NULL;
  	}
 +#if defined(CONFIG_LRU_MARIE) && defined(CONFIG_SWAP)
-+	if (pgdat->kcompmari) {
-+		kthread_stop(pgdat->kcompmari);
-+		pgdat->kcompmari = NULL;
-+		kfifo_free(&pgdat->kcompmari_fifo);
++	if (pgdat->kcompressd) {
++		kthread_stop(pgdat->kcompressd);
++		pgdat->kcompressd = NULL;
++		kfifo_free(&pgdat->kcompressd_fifo);
 +	}
 +#endif
  	pgdat_kswapd_unlock(pgdat);
