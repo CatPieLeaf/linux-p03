@@ -1,7 +1,7 @@
-From 6e79d2a069041de4ac85f964c396dc8613d74d14 Mon Sep 17 00:00:00 2001
+From 781c580b033d8d14121be6739173bee70d734ff9 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Fri, 10 Jul 2026 06:29:44 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.7.6
+Date: Mon, 13 Jul 2026 01:28:36 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.7.7
 
 ---
  include/linux/lru_marie.h      |  493 ++++++
@@ -18,7 +18,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.7.6
  mm/lru_marie/account.h         |  106 ++
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  221 +++
- mm/lru_marie/core.c            | 1230 ++++++++++++++
+ mm/lru_marie/core.c            | 1268 ++++++++++++++
  mm/lru_marie/defrag.c          | 1088 ++++++++++++
  mm/lru_marie/defrag.h          |   85 +
  mm/lru_marie/defrag_compat.h   |   53 +
@@ -30,23 +30,23 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.7.6
  mm/lru_marie/simd_x86_avx2.S   |  152 ++
  mm/lru_marie/simd_x86_avx512.S |  199 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 2860 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  976 +++++++++++
- mm/lru_marie/state_compat.h    |   94 ++
+ mm/lru_marie/state.c           | 3014 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  987 +++++++++++
+ mm/lru_marie/state_compat.h    |   94 +
  mm/lru_marie/version.h         |   22 +
- mm/lru_marie/walker.c          |  969 +++++++++++
+ mm/lru_marie/walker.c          |  969 ++++++++++
  mm/lru_marie/walker_compat.h   |   82 +
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
  mm/mm_init.c                   |    3 +
- mm/oom_kill.c                  |  210 +++
+ mm/oom_kill.c                  |  305 ++++
  mm/page_alloc.c                |  120 +-
- mm/page_io.c                   |  187 +++
+ mm/page_io.c                   |  187 ++
  mm/rmap.c                      |    6 +
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  336 +++-
- 42 files changed, 11076 insertions(+), 28 deletions(-)
+ 42 files changed, 11374 insertions(+), 28 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -1642,10 +1642,10 @@ index 0000000000..e55cccd321
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..d168fa00d0
+index 0000000000..e2feeee275
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1230 @@
+@@ -0,0 +1,1268 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -2397,7 +2397,9 @@ index 0000000000..d168fa00d0
 +			  "nr_folios %lld\n"
 +			  "pick file_strict %ld anon_strict %ld file_then_anon %ld anon_first %ld file_first %ld\n"
 +			  "reclaimed anon %ld file %ld\n"
-+			  "gen_growth_live anon %lu file %lu\n",
++			  "gen_growth_live anon %lu file %lu\n"
++			  "concede_pressure_mode %u\n"
++			  "concede floor %ld free %ld refault %ld memcg %ld\n",
 +			  percpu_counter_sum(&marie_nr_folios),
 +			  atomic_long_read(&marie_dbg_pick[0]),
 +			  atomic_long_read(&marie_dbg_pick[1]),
@@ -2407,7 +2409,12 @@ index 0000000000..d168fa00d0
 +			  atomic_long_read(&marie_dbg_reclaimed[0]),
 +			  atomic_long_read(&marie_dbg_reclaimed[1]),
 +			  READ_ONCE(marie_gen_growth_live[0]),
-+			  READ_ONCE(marie_gen_growth_live[1]));
++			  READ_ONCE(marie_gen_growth_live[1]),
++			  READ_ONCE(marie_concede_pressure_mode),
++			  atomic_long_read(&marie_dbg_concede[0]),
++			  atomic_long_read(&marie_dbg_concede[1]),
++			  atomic_long_read(&marie_dbg_concede[2]),
++			  atomic_long_read(&marie_dbg_concede[3]));
 +}
 +
 +static struct kobj_attribute marie_stats_attr = __ATTR_RO(stats);
@@ -2485,6 +2492,36 @@ index 0000000000..d168fa00d0
 +
 +static struct kobj_attribute marie_low_swappiness_mode_attr =
 +	__ATTR_RW(low_swappiness_mode);
++
++/*
++ * concede_pressure_mode — which pressure signal engages the FILE_THEN_ANON
++ * concede-to-anon (runtime A/B). Bitmask: 1=FREE (free<=2*high), 2=REFAULT
++ * (file-refault feedback), 3=both (default), 0=floor-only (pre-fix baseline,
++ * reproduces the premature OOM). See marie_file_refaulting() in state.c.
++ */
++static ssize_t concede_pressure_mode_show(struct kobject *kobj,
++					  struct kobj_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%u\n", READ_ONCE(marie_concede_pressure_mode));
++}
++
++static ssize_t concede_pressure_mode_store(struct kobject *kobj,
++					   struct kobj_attribute *attr,
++					   const char *buf, size_t count)
++{
++	unsigned int v;
++	int err = kstrtouint(buf, 10, &v);
++
++	if (err)
++		return err;
++	if (v > (MARIE_CONCEDE_FREE | MARIE_CONCEDE_REFAULT))
++		return -EINVAL;
++	WRITE_ONCE(marie_concede_pressure_mode, v);
++	return count;
++}
++
++static struct kobj_attribute marie_concede_pressure_mode_attr =
++	__ATTR_RW(concede_pressure_mode);
 +
 +#ifdef CONFIG_SWAP
 +/*
@@ -2777,6 +2814,7 @@ index 0000000000..d168fa00d0
 +	&marie_stats_attr.attr,
 +	&marie_clean_min_ratio_attr.attr,
 +	&marie_low_swappiness_mode_attr.attr,
++	&marie_concede_pressure_mode_attr.attr,
 +#ifdef CONFIG_SWAP
 +	&marie_kcompressd_attr.attr,
 +#endif
@@ -5355,10 +5393,10 @@ index 0000000000..71f8eff7e5
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..7d71a9277b
+index 0000000000..4acf8318d6
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,2860 @@
+@@ -0,0 +1,3014 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -5382,8 +5420,10 @@ index 0000000000..7d71a9277b
 +#include <linux/bitmap.h>
 +#include <linux/bitops.h>
 +#include <linux/init.h>
++#include <linux/jiffies.h>
 +#include <linux/log2.h>
 +#include <linux/jump_label.h>
++#include <linux/spinlock.h>
 +#include <linux/list.h>
 +#include <linux/lru_marie.h>
 +#include <linux/memblock.h>
@@ -6707,6 +6747,27 @@ index 0000000000..7d71a9277b
 +atomic_long_t marie_dbg_reclaimed[2];
 +
 +/*
++ * Concede pressure-signal selector (runtime A/B), and the trigger breakdown.
++ *
++ * The FILE_THEN_ANON tail concedes to anon on: the clean_min_ratio floor, a
++ * memcg no-file-progress pass, and a "pressure" term selected here. Bitmask:
++ *   FREE (0x1)    -- marie_node_under_pressure(): free <= 2*high (the committed
++ *                    default; a level proxy).
++ *   REFAULT (0x2) -- marie_file_refaulting(): the file we keep dropping faults
++ *                    straight back (refault feedback; measures the pathology).
++ * 0 = neither (floor-only) reproduces the pre-fix premature-OOM as an A/B
++ * baseline. Default FREE|REFAULT (both): the free-level proxy catches acute
++ * pressure and the refault feedback catches a hot-file treadmill earlier;
++ * concede fires on either. Set to 1 for the free-only (8e684cda2f) behaviour.
++ * Knob: /sys/kernel/mm/lru_marie/concede_pressure_mode (0..3).
++ */
++unsigned int marie_concede_pressure_mode =
++	MARIE_CONCEDE_FREE | MARIE_CONCEDE_REFAULT;
++
++/* Concede-trigger attribution: [0]=floor [1]=free-pressure [2]=refault [3]=memcg. */
++atomic_long_t marie_dbg_concede[4];
++
++/*
 + * GLOBAL anon-vs-file proportional pick bias (desktop/global-only). Signed:
 + * < 0 favours FILE, >= 0 favours ANON. A single node-wide controller drives
 + * every reclaim pass.
@@ -6816,6 +6877,110 @@ index 0000000000..7d71a9277b
 +		anon_occupied += atomic_long_read(&marie_gen_occupied[g][0]);
 +
 +	return anon_occupied > 0;
++}
++
++/*
++ * marie_node_under_pressure - is this node failing to hold free above its
++ * watermarks?
++ *
++ * The FILE_THEN_ANON tail (swappiness=1, Marie's default) concedes to anon
++ * only once clean file has drained BELOW the clean_min_ratio floor. That DEFER
++ * assumes successive file-only calls DRAIN clean file to the floor. A workload
++ * that refills clean file above the floor faster than the batch-capped sweep
++ * drains it -- a compile streaming its object cache, dozens of mmap'd binaries
++ * whose text re-faults the moment it is dropped -- holds the floor forever
++ * unreached: the aged FILE ring keeps depleting (fresh reads land in the young
++ * head gen), the FILE pass falls short every time it drains it, yet the DEFER
++ * fires because the total file LEVEL is still above the floor. Free stays
++ * pinned at the watermarks while GBs of swappable anon -- including swap-backed
++ * shmem (tmpfs, memfd/ZGC heaps) -- are never offered to swap: the box thrashes
++ * on the file refill treadmill and OOMs with swap free.
++ *
++ * When free has actually fallen to the watermarks the file level is moot: the
++ * allocator cannot build headroom, so offer anon to swap now regardless of the
++ * floor. Same free <= 2*high gate the thrash watchdog uses
++ * (thrash_wd_mem_pressured in oom_kill.c), applied here one layer earlier so
++ * anon reaches swap as pressure builds rather than only after the watchdog's
++ * multi-second stall. A busy-but-healthy large-RAM box streaming page cache
++ * keeps free well above the watermarks (the FILE pass also meets its target
++ * from the abundant cache and never reaches this tail), so this stays false
++ * and file-first is preserved.
++ */
++static bool marie_node_under_pressure(struct pglist_data *pgdat)
++{
++	unsigned long free = 0, high = 0;
++	int z;
++
++	for (z = 0; z < MAX_NR_ZONES; z++) {
++		struct zone *zone = &pgdat->node_zones[z];
++
++		if (!managed_zone(zone))
++			continue;
++		free += zone_page_state(zone, NR_FREE_PAGES);
++		high += high_wmark_pages(zone);
++	}
++
++	return free <= high * 2;
++}
++
++/*
++ * marie_file_refaulting - is reclaim evicting FILE that comes straight back?
++ *
++ * The refault-feedback pressure signal (concede_pressure_mode & REFAULT).
++ * WORKINGSET_REFAULT_FILE counts file pages faulted back in that carried an
++ * eviction shadow -- pages we dropped and that returned. When that runs at
++ * >= half of Marie's own file reclaim rate over the sample window, the
++ * "clean" file we keep dropping IS the working set (hot; a refill/refault
++ * treadmill), so file-first is futile -- concede to anon regardless of the
++ * clean_min_ratio floor or the free level. Unlike free<=2*high this measures
++ * the pathology (are the evicted pages actually cold?) directly, and fires as
++ * file goes hot rather than only after free has cratered.
++ *
++ * Sampled globally (Marie is desktop/global-only) at most ~4x/s under a
++ * trylock; concurrent reclaimers read the cached boolean. First refresh only
++ * seeds the baseline (no bogus cumulative delta). The 2x weight mirrors the
++ * thrash watchdog's refault:steal ratio in mm/oom_kill.c.
++ */
++static DEFINE_SPINLOCK(marie_rf_lock);
++static unsigned long marie_rf_next;			/* jiffies of next refresh */
++static unsigned long marie_rf_last_rf, marie_rf_last_st;	/* file refault / reclaim */
++static bool marie_rf_primed;
++static bool marie_rf_file_hot;
++
++static bool marie_file_refaulting(void)
++{
++	unsigned long now = jiffies, rf, st, drf, dst;
++
++	if (time_before(now, READ_ONCE(marie_rf_next)))
++		return READ_ONCE(marie_rf_file_hot);
++	if (!spin_trylock(&marie_rf_lock))
++		return READ_ONCE(marie_rf_file_hot);
++	if (time_before(now, marie_rf_next)) {		/* lost the refresh race */
++		spin_unlock(&marie_rf_lock);
++		return READ_ONCE(marie_rf_file_hot);
++	}
++
++	rf = global_node_page_state(WORKINGSET_REFAULT_FILE);
++	st = atomic_long_read(&marie_dbg_reclaimed[1]);		/* type 1 == file */
++	WRITE_ONCE(marie_rf_next, now + HZ / 4);
++
++	if (unlikely(!marie_rf_primed)) {
++		marie_rf_last_rf = rf;
++		marie_rf_last_st = st;
++		marie_rf_primed = true;
++		spin_unlock(&marie_rf_lock);
++		return false;
++	}
++
++	drf = rf - marie_rf_last_rf;
++	dst = st - marie_rf_last_st;
++	marie_rf_last_rf = rf;
++	marie_rf_last_st = st;
++	/* >= half of the file reclaimed this window faulted straight back. */
++	WRITE_ONCE(marie_rf_file_hot, dst && drf * 2 >= dst);
++	spin_unlock(&marie_rf_lock);
++
++	return READ_ONCE(marie_rf_file_hot);
 +}
 +
 +/*
@@ -7632,13 +7797,40 @@ index 0000000000..7d71a9277b
 +				 *   anon is the OOM-with-swap-free safety. Reaching
 +				 *   FILE_THEN_ANON proved anon is reclaimable, so swap
 +				 *   capacity exists by construction.
++				 *
++				 *   node under acute free pressure (free <= 2*high) ->
++				 *   CONCEDE regardless of the file level. The DEFER above
++				 *   assumes file-only calls drain clean file to the floor;
++				 *   a workload refilling clean file above the floor faster
++				 *   than the batch-capped sweep drains it holds the floor
++				 *   forever unreached, so this tail fires every time the
++				 *   aged FILE ring depletes while free stays pinned at the
++				 *   watermarks and GBs of swappable anon (incl. swap-backed
++				 *   shmem) never reach swap -> premature OOM with swap free.
++				 *   Once free is at the watermarks the file level is moot;
++				 *   offer anon now. See marie_node_under_pressure().
++				 *
++				 * Equivalent original terms retained: floor_protect, and the
++				 * memcg-targeted no-file-progress concede; the pressure term
++				 * is the added early treadmill escape.
 +				 */
-+				bool concede = !(!marie_file_floor_protect(pgdat) &&
-+						 (total_reclaimed > 0 ||
-+						  !sc_cgroup_reclaim(sc)));
++				unsigned int cmode =
++					READ_ONCE(marie_concede_pressure_mode);
++				bool floor  = marie_file_floor_protect(pgdat);
++				bool freep  = (cmode & MARIE_CONCEDE_FREE) &&
++					      marie_node_under_pressure(pgdat);
++				bool refp   = (cmode & MARIE_CONCEDE_REFAULT) &&
++					      marie_file_refaulting();
++				bool memcgp = sc_cgroup_reclaim(sc) &&
++					      !total_reclaimed;
++				bool concede = floor || freep || refp || memcgp;
 +
 +				if (!concede)
 +					goto done;
++
++				/* A/B attribution (priority floor>free>refault>memcg). */
++				atomic_long_inc(&marie_dbg_concede[
++					floor ? 0 : freep ? 1 : refp ? 2 : 3]);
 +
 +				/*
 +				 * Engage the ANON pass NOW. If a final FILE batch
@@ -8221,10 +8413,10 @@ index 0000000000..7d71a9277b
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..d0e9f7a92b
+index 0000000000..585bea9c8e
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,976 @@
+@@ -0,0 +1,987 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -8236,6 +8428,17 @@ index 0000000000..d0e9f7a92b
 +/* Swappiness/pick diagnostics, surfaced in /sys/kernel/mm/lru_marie/stats. */
 +extern atomic_long_t marie_dbg_pick[5];
 +extern atomic_long_t marie_dbg_reclaimed[2];
++
++/*
++ * Concede pressure-signal selector (runtime A/B) + trigger breakdown. Bitmask:
++ * FREE = marie_node_under_pressure() (free<=2*high level proxy); REFAULT =
++ * file-refault feedback. Default FREE|REFAULT (both, =3); 1 = free-only
++ * (8e684cda2f); 0 = floor-only (pre-fix) baseline. See marie_file_refaulting().
++ */
++#define MARIE_CONCEDE_FREE	0x1
++#define MARIE_CONCEDE_REFAULT	0x2
++extern unsigned int marie_concede_pressure_mode;
++extern atomic_long_t marie_dbg_concede[4];	/* [floor,free,refault,memcg] */
 +
 +/*
 + * Marie per-PFN state array — paradigm specification.
@@ -9303,7 +9506,7 @@ index 0000000000..4d07cedd9c
 +#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..431132bf59
+index 0000000000..8edb82807a
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -9326,7 +9529,7 @@ index 0000000000..431132bf59
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.7.6"
++#define MARIE_VERSION	"0.7.7"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
@@ -10475,20 +10678,57 @@ index f9f8e1af92..aae01205e5 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/oom_kill.c b/mm/oom_kill.c
-index 5f372f6e26..aaf1b7dc26 100644
+index 5f372f6e26..7020c0861f 100644
 --- a/mm/oom_kill.c
 +++ b/mm/oom_kill.c
-@@ -45,6 +45,9 @@
+@@ -45,6 +45,10 @@
  #include <linux/mmu_notifier.h>
  #include <linux/cred.h>
  #include <linux/nmi.h>
 +#include <linux/vmstat.h>
 +#include <linux/psi.h>
 +#include <linux/math64.h>
++#include <linux/lru_marie.h>	/* lru_marie_enabled(): gate the fast watchdog */
  
  #include <asm/tlb.h>
  #include "internal.h"
-@@ -1255,3 +1258,210 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
+@@ -56,6 +60,19 @@
+ static int sysctl_panic_on_oom;
+ static int sysctl_oom_kill_allocating_task;
+ static int sysctl_oom_dump_tasks = 1;
++/*
++ * Thrash-watchdog detector select. 0 = classic (PSI 10s / refault-ratio 16s
++ * sustained window). 1 = fast net-progress path (default): no PSI ring warm-up
++ * and a severity-weighted fire so a severe treadmill OOMs in ~1 window while a
++ * marginal one still takes the classic 16s. Set to 0 to restore the classic
++ * detector. Knob: /proc/sys/vm/thrash_wd_mode.
++ *
++ * The fast path is applied ONLY while Marie is the active reclaim policy
++ * (lru_marie_enabled()). With Marie off (MGLRU / legacy) the classic detector
++ * runs regardless of this value, so the knob never alters non-Marie behaviour
++ * -- the watchdog itself is LRU-agnostic, but this tuning is scoped to Marie.
++ */
++static int sysctl_thrash_wd_mode = 1;
+ 
+ /*
+  * Serializes oom killer invocations (out_of_memory()) from all contexts to
+@@ -720,6 +737,15 @@ static const struct ctl_table vm_oom_kill_table[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= proc_dointvec,
+ 	},
++	{
++		.procname	= "thrash_wd_mode",
++		.data		= &sysctl_thrash_wd_mode,
++		.maxlen		= sizeof(sysctl_thrash_wd_mode),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
+ };
+ #endif
+ 
+@@ -1255,3 +1281,282 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
  	return -ENOSYS;
  #endif /* CONFIG_MMU */
  }
@@ -10523,6 +10763,7 @@ index 5f372f6e26..aaf1b7dc26 100644
 +#define THRASH_WD_INTERVAL	(2 * HZ)
 +#define THRASH_WD_WINDOWS	8	/* 16s: refault-ratio path (PSI off) */
 +#define THRASH_WD_BACKOFF	30	/* 60s hold-off after firing */
++#define THRASH_WD_SCORE		8	/* mode 1: severity-weighted fire threshold */
 +
 +#ifdef CONFIG_PSI
 +/*
@@ -10584,6 +10825,7 @@ index 5f372f6e26..aaf1b7dc26 100644
 +static void thrash_wd_fn(struct work_struct *work)
 +{
 +	static unsigned long last_refaults, last_steals;
++	static unsigned long last_free, last_wd_jiffies;	/* mode 1 baseline */
 +	static unsigned int hot_windows, backoff;
 +#ifdef CONFIG_PSI
 +	static u64 psi_ring[THRASH_WD_PSI_WINDOWS];
@@ -10597,6 +10839,76 @@ index 5f372f6e26..aaf1b7dc26 100644
 +		goto resched;
 +	}
 +
++	if (lru_marie_enabled() && READ_ONCE(sysctl_thrash_wd_mode) == 1) {
++		/*
++		 * Fast net-progress path -- Marie-scoped (lru_marie_enabled());
++		 * MGLRU/legacy fall through to the classic detector below, so
++		 * this tuning never changes non-Marie OOM behaviour. Same
++		 * treadmill ingredients as the fallback below -- storm volume,
++		 * >= half refault, real memory
++		 * pressure -- but no PSI ring (warm-up is one window, not five)
++		 * and a severity-WEIGHTED accumulator rather than a flat window
++		 * count: each treadmill window adds w in [1..THRASH_WD_SCORE]
++		 * scaled by how badly the box is losing, so a severe treadmill
++		 * (near-zero NET progress AND free in the reserves) reaches the
++		 * threshold in a single ~2s window, while a marginal one still
++		 * needs the full THRASH_WD_SCORE windows (== the classic 16s: no
++		 * regression at the mild end). Honest net-progress: any window
++		 * where reclaim actually lifted free (real headroom) resets the
++		 * score, so the OOM only follows sustained no-headroom churn. A
++		 * >2-interval gap (boot, post-backoff) reseeds instead of acting
++		 * on a stale multi-window delta.
++		 */
++		unsigned long now = jiffies, refaults, steals, dr, ds;
++		unsigned long free = 0, high = 0, min = 0;
++		struct zone *zone;
++		unsigned int w;
++
++		steals = global_node_page_state(PGSTEAL_KSWAPD) +
++			 global_node_page_state(PGSTEAL_DIRECT) +
++			 global_node_page_state(PGSTEAL_KHUGEPAGED);
++		refaults = global_node_page_state(WORKINGSET_REFAULT_ANON) +
++			   global_node_page_state(WORKINGSET_REFAULT_FILE);
++		for_each_populated_zone(zone) {
++			if (!managed_zone(zone))
++				continue;
++			free += zone_page_state(zone, NR_FREE_PAGES);
++			high += high_wmark_pages(zone);
++			min  += min_wmark_pages(zone);
++		}
++
++		if (time_after(now, last_wd_jiffies + THRASH_WD_INTERVAL * 2)) {
++			/* Initial / post-backoff gap: reseed the baseline only. */
++			last_refaults = refaults;
++			last_steals = steals;
++			hot_windows = 0;
++		} else {
++			dr = refaults - last_refaults;
++			ds = steals - last_steals;
++			last_refaults = refaults;
++			last_steals = steals;
++
++			if (ds < totalram_pages() / 512 || dr * 2 < ds ||
++			    free > high * 2 || free > last_free + (ds >> 2)) {
++				/* No treadmill, or free recovered: net progress. */
++				hot_windows = 0;
++			} else {
++				w = 1;
++				if (dr >= ds)		w += 3;	/* ~zero net progress */
++				if (free <= high)	w += 1;	/* below high wmark */
++				if (free <= min * 2)	w += 3;	/* into the reserves */
++				hot_windows += w;
++				if (hot_windows >= THRASH_WD_SCORE) {
++					scnprintf(reason, sizeof(reason),
++						  "net-progress %lu refault / %lu steal, free %lu",
++						  dr, ds, free);
++					fire = true;
++				}
++			}
++		}
++		last_free = free;
++		last_wd_jiffies = now;
++	} else
 +#ifdef CONFIG_PSI
 +	if (!static_branch_likely(&psi_disabled)) {
 +		/*
