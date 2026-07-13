@@ -54,6 +54,29 @@
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
  - And many more!
 
+---
+
+<br>
+
+<br>
+
+<div align="center">
+  <img src=".github/adopted-darkmode.png#gh-dark-mode-only" width="500">
+  <img src=".github/adopted-lightmode.png#gh-light-mode-only" width="500">
+</div>
+
+<div align="center">
+  <p><i>A massive thank you to <b><a href="https://rakuos.org/">RakuOS</a></b> for adopting this project as their default system kernel!<br><br>
+  Being chosen as the default kernel for an entire distribution is a huge honor. I am incredibly grateful to the RakuOS developers and community for their trust, valuable testing, and continuous support.</i></p>
+</div>
+
+<div align="center">
+  <img src=".github/stoatboat-darkmode.png#gh-dark-mode-only" width="500">
+  <img src=".github/stoatboat-lightmode.png#gh-light-mode-only" width="500">
+</div>
+
+<br>
+
 <div align="center">
   <h1>🔨</h1>
   <h4>B U I L D I N G</h4>
