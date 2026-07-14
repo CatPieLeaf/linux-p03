@@ -130,9 +130,6 @@ p "evdev-use-call-rcu.patch" \
 p "dm-crypt-async-queue.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/zen/0002-ZEN-dm-crypt-Disable-workqueues-for-crypto-ops.patch?ref_type=heads"
 
-p "mglru-workingset-protection.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/mm/0001-mm-Add-working-set-protection-for-anon-and-clean-fil.patch?ref_type=heads"
-
 p "tcp-skip-collapse.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/tcp/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch?ref_type=heads"
 
@@ -153,6 +150,9 @@ p "pci-missing-acs-overrides.patch" \
 
 p "allow-wake-up-pollfree-gpl.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/binder/0003-wait-allow-to-use-__wake_up_pollfree-from-GPL-module.patch?ref_type=heads"
+
+p "amd_hdmi_frl.patch" \
+  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0001-hdmi_frl.patch"
 
 # ==============================================================================
 # PATCHSET-NVIDIA
