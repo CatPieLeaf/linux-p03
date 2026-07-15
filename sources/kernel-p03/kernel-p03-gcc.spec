@@ -364,19 +364,16 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     # ---- Apply NVIDIA patches ------------------------------------------------
     mkdir -p %{_builddir}/nv-patches
     export QUILT_PATCHES=%{_builddir}/nv-patches
+
 %if !%{_local_patches_only}
-    # sources/patchset-nvidia/* — online patches from GitHub repo
-    while IFS= read -r p; do
-        cp "$p" "%{_builddir}/nv-patches/"
-        echo "$(basename "$p")" >> "%{_builddir}/nv-patches/series"
-    done < <(find "${_gh_tmp}/sources/patchset-nvidia" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+    find "${_gh_tmp}/sources/patchset-nvidia" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/nv-patches/" \; 2>/dev/null
 %endif
 
-    # SOURCES/local-patches-nvidia/* — for local test builds, applied last
+    find "%{_sourcedir}/local-patches-nvidia" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/nv-patches/" \; 2>/dev/null
+
     while IFS= read -r p; do
-        cp "$p" "%{_builddir}/nv-patches/"
         echo "$(basename "$p")" >> "%{_builddir}/nv-patches/series"
-    done < <(find "%{_sourcedir}/local-patches-nvidia" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+    done < <(find "%{_builddir}/nv-patches" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
 
     if [ -s "%{_builddir}/nv-patches/series" ]; then
         cd %{_builddir}/%{_nv_pkg}
@@ -450,30 +447,21 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     export QUILT_PATCHES=%{_builddir}/patches
 
 %if !%{_local_patches_only}
-    # sources/patchset/* — every .patch, alphanumeric order
-    while IFS= read -r p; do
-        cp "$p" "%{_builddir}/patches/"
-        echo "$(basename "$p")" >> "%{_builddir}/patches/series"
-    done < <(find "${_gh_tmp}/sources/patchset" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
-
-    # sources/patches-p03/* — same, applied after patchset
-    while IFS= read -r p; do
-        cp "$p" "%{_builddir}/patches/"
-        echo "$(basename "$p")" >> "%{_builddir}/patches/series"
-    done < <(find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+    find "${_gh_tmp}/sources/patchset" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+    find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
 %endif
 
-    # SOURCES/local-patches/* — for local test builds, applied last
-    while IFS= read -r p; do
-        cp "$p" "%{_builddir}/patches/"
-        echo "$(basename "$p")" >> "%{_builddir}/patches/series"
-    done < <(find "%{_sourcedir}/local-patches" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
+find "%{_sourcedir}/local-patches" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
 
-    if [ -s "%{_builddir}/patches/series" ]; then
-        quilt push -a --fuzz=2 --leave-rejects
-    fi
+while IFS= read -r p; do
+    echo "$(basename "$p")" >> "%{_builddir}/patches/series"
+done < <(find "%{_builddir}/patches" -maxdepth 1 -name "*.patch" 2>/dev/null | sort)
 
-    ./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
+if [ -s "%{_builddir}/patches/series" ]; then
+    quilt push -a --fuzz=2 --leave-rejects
+fi
+
+./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
 
 # --- Kconfig -----------------------------------------------------------------
 
