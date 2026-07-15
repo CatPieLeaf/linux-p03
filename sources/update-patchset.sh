@@ -154,6 +154,36 @@ p "allow-wake-up-pollfree-gpl.patch" \
 p "amd_hdmi_frl.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0001-hdmi_frl.patch"
 
+p "surface3.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0002-surface3.patch"
+
+p "mwifiex.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0003-mwifiex.patch"
+
+p "ath10k.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0004-ath10k.patch"
+
+p "surface-sam.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0007-surface-sam.patch"
+
+p "surface-sam-over-hid.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0008-surface-sam-over-hid.patch"
+
+p "surface-typecover.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0010-surface-typecover.patch"
+
+p "surface-shutdown.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0011-surface-shutdown.patch"
+
+p "surface-gpe.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0012-surface-gpe.patch"
+
+p "amd-gpio.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0014-amd-gpio.patch"
+
+p "hid-surface.patch" \
+  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0016-hid-surface.patch"
+
 # ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
