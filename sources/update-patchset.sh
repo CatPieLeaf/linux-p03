@@ -157,10 +157,10 @@ p "amd_hdmi_frl.patch" \
 p "surface3.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0002-surface3.patch"
 
-p "mwifiex.patch" \
+p "surface-mwifiex.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0003-mwifiex.patch"
 
-p "ath10k.patch" \
+p "surface-ath10k.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0004-ath10k.patch"
 
 p "surface-sam.patch" \
@@ -178,11 +178,8 @@ p "surface-shutdown.patch" \
 p "surface-gpe.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0012-surface-gpe.patch"
 
-p "amd-gpio.patch" \
+p "surface-amd-gpio.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0014-amd-gpio.patch"
-
-p "hid-surface.patch" \
-  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0016-hid-surface.patch"
 
 # ==============================================================================
 # PATCHSET-NVIDIA
