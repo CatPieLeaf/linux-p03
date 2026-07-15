@@ -48,6 +48,7 @@
  - ADIOS I/O Scheduler
  - Handheld support (ROG Ally, Steam Deck, etc)
  - VHBA and AUFS support
+ - Microsoft Surface support
  - Piece-Of-Cake (POC) CPU Selector
  - Dynamic PREEMPT (Lazy by default)
  - Passive intel_pstate and amd_pstate
@@ -221,6 +222,7 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
  - LRU-Marie patches from [Firelzrd/lru_marie](https://github.com/firelzrd/lru_marie)
  - Nap patches from [NikoMalik/nap](https://github.com/NikoMalik/nap/)
+ - Surface patches from [Linux-surface](https://github.com/linux-surface/linux-surface)
 
 ---
 
