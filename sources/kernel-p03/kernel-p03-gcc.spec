@@ -158,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   3
+%define _buildver   4
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -505,7 +505,9 @@ fi
     scripts/config --set-str IMA_DEFAULT_HASH "sha256"
     scripts/config -e  MODULE_SIG
     scripts/config -e  MODULE_SIG_ALL
-    scripts/config -e  MODULE_SIG_FORCE
+    scripts/config -d  MODULE_SIG_FORCE
+    # DO NOT ENABLE MODULE_SIG_FORCE. it causes DKMS not to load in some devices
+    # Including mok signed DKMS!
     scripts/config -e  MODULE_SIG_SHA512
     scripts/config --set-str MODULE_SIG_HASH sha512
     scripts/config -e  KEXEC_SIG
