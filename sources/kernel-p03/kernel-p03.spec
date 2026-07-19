@@ -158,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   1
+%define _buildver   2
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -513,7 +513,9 @@ fi
     scripts/config -e  KEXEC_SIG
     scripts/config -e  INTEGRITY_ASYMMETRIC_KEYS
     scripts/config -e  INTEGRITY_SIGNATURE
-    scripts/config -e  LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY
+    scripts/config -e  LOCK_DOWN_KERNEL_FORCE_NONE
+    # DO NOT CHANGE LOCKDOWN TO CONFIDENTIALITY OR INTEGRITY.
+    # it causes DKMS not to load in some devices. Including mok signed DKMS!
     scripts/config -e  SECURITY_LOCKDOWN_LSM
     scripts/config -e  SECURITY_LOCKDOWN_LSM_EARLY
     scripts/config -e  SYSTEM_EXTRA_CERTIFICATE
@@ -554,15 +556,12 @@ fi
   %endif
 %endif
 
-    scripts/config -e ZENIFY
-
 %if %{_set_nr_cpus}
     scripts/config -d CPUMASK_OFFSTACK
     scripts/config -d MAXSMP
     scripts/config --set-val NR_CPUS %{_nr_cpus}
 %endif
 
-    # Debug info
 %if %{_build_debug}
     scripts/config -d DEBUG_INFO_NONE
     scripts/config -e DEBUG_INFO
