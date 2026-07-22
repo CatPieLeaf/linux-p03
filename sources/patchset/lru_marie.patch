@@ -1,7 +1,7 @@
-From 2c2d75884c07712aec47e0c8c5edcb75b06cdb86 Mon Sep 17 00:00:00 2001
+From 8bcb8946c4991afa38c0b19950a73ffd45d29e97 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Sun, 19 Jul 2026 03:25:46 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.8.0
+Date: Tue, 21 Jul 2026 04:30:14 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.8.1
 
 ---
  include/linux/lru_marie.h      |  492 ++++++
@@ -24,13 +24,13 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.8.0
  mm/lru_marie/defrag_compat.h   |   53 +
  mm/lru_marie/pfn_install.h     |  139 ++
  mm/lru_marie/prefetch.h        |  111 ++
- mm/lru_marie/simd.h            |  109 ++
- mm/lru_marie/simd_generic.c    |   46 +
- mm/lru_marie/simd_x86.c        |  269 +++
+ mm/lru_marie/simd.h            |   73 +
+ mm/lru_marie/simd_generic.c    |   34 +
+ mm/lru_marie/simd_x86.c        |  243 +++
  mm/lru_marie/simd_x86_avx2.S   |  170 ++
  mm/lru_marie/simd_x86_avx512.S |  220 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 3014 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.c           | 3013 ++++++++++++++++++++++++++++++++
  mm/lru_marie/state.h           |  987 +++++++++++
  mm/lru_marie/state_compat.h    |   94 +
  mm/lru_marie/version.h         |   22 +
@@ -46,7 +46,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.8.0
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  336 +++-
- 42 files changed, 11311 insertions(+), 28 deletions(-)
+ 42 files changed, 11236 insertions(+), 28 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -1641,7 +1641,7 @@ index 0000000000..e55cccd321
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..4571d9800b
+index 0000000000..fedc6f63ee
 --- /dev/null
 +++ b/mm/lru_marie/core.c
 @@ -0,0 +1,1197 @@
@@ -1663,7 +1663,7 @@ index 0000000000..4571d9800b
 + *     no per-(lru, zone) shadow counter to bounce
 + *   - per-pgdat walker driven from kswapd, with rmap-fed bloom
 + *     feedback so PMD scans concentrate on hot regions
-+ *   - single global cycling per-type gen clock (MARIE_PFN_NR_GENS = 4)
++ *   - single global cycling per-type gen clock (MARIE_PFN_NR_GENS = 8)
 + *     encoded in the per-PFN byte, advanced by global install cadence
 + *     (marie_folio_install counts installs onto the head gen and
 + *     advances at marie_gen_growth_live[type])
@@ -1862,7 +1862,7 @@ index 0000000000..4571d9800b
 + *  generation lifecycle (helpers in mm/lru_marie/state.c)
 + * ---------------------------------------------------------------------
 + *
-+ * Marie keeps a cycling per-type gen ring of MARIE_PFN_NR_GENS (= 4)
++ * Marie keeps a cycling per-type gen ring of MARIE_PFN_NR_GENS (= 8)
 + * slots, encoded directly in the per-PFN state byte. Aging is driven
 + * by three signals:
 + *
@@ -4350,10 +4350,10 @@ index 0000000000..7f9a2eeb3d
 +#endif /* _MM_LRU_MARIE_PREFETCH_H */
 diff --git a/mm/lru_marie/simd.h b/mm/lru_marie/simd.h
 new file mode 100644
-index 0000000000..667b9f3b04
+index 0000000000..b89ab6c094
 --- /dev/null
 +++ b/mm/lru_marie/simd.h
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,73 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_SIMD_H
 +#define _MM_LRU_MARIE_SIMD_H
@@ -4361,21 +4361,15 @@ index 0000000000..667b9f3b04
 +/*
 + * Marie SIMD-accelerated PTE scan.
 + *
-+ * Two call modes:
++ * Single entry point:
 + *
-+ *   Batched (walker):
-+ *      lru_marie_simd_batch_begin();
-+ *      for_each(pmd in batch)
-+ *          lru_marie_simd_young_pte_mask_raw(pte_table, bitmap);
-+ *      lru_marie_simd_batch_end();
-+ *
-+ *   Single-shot (any non-batched caller):
 + *      lru_marie_simd_young_pte_mask(pte_table, bitmap);
 + *
-+ * On x86 batch_begin/end map to kernel_fpu_begin/end so the per-call
-+ * FPU save-restore is amortised across the batch. On every other arch
-+ * (including arm64) the generic scalar fallback is used and
-+ * batch_begin/end are no-ops.
++ * On x86 it wraps one PMD's scan in kernel_fpu_begin/end; per-PMD
++ * begin/end is effectively free (kthreads skip the FPU save, the restore
++ * is deferred to userspace return), so there is nothing to amortise
++ * across PMDs. On every other arch (including arm64) the scan is a plain
++ * scalar pte_young loop with no FPU state.
 + */
 +
 +#include <linux/types.h>
@@ -4422,53 +4416,23 @@ index 0000000000..667b9f3b04
 +#define MARIE_SIMD_PTE_BITMAP_LONGS	((512 + BITS_PER_LONG - 1) / BITS_PER_LONG)
 +
 +/**
-+ * lru_marie_simd_batch_begin - open a SIMD batch (FPU bracket on x86).
-+ *
-+ * Holds preempt-disabled until the matching batch_end. The caller is
-+ * responsible for keeping the bracketed region short -- batch a small
-+ * fixed number of _raw scans then close the batch and let
-+ * cond_resched() run before opening the next one.
-+ *
-+ * Calling _raw without an enclosing batch_begin is undefined on x86
-+ * (FPU registers will be corrupted relative to userspace state); on
-+ * scalar arches it is harmless because batch_begin/end are no-ops.
-+ */
-+void lru_marie_simd_batch_begin(void);
-+
-+/**
-+ * lru_marie_simd_batch_end - close a SIMD batch (kernel_fpu_end on x86).
-+ */
-+void lru_marie_simd_batch_end(void);
-+
-+/**
-+ * lru_marie_simd_young_pte_mask_raw - scan one PMD without opening a bracket.
++ * lru_marie_simd_young_pte_mask - scan one PMD's PTE array for young bits.
 + * @table:  pointer to the first pte_t in the PMD's PTE array (512 entries)
 + * @bitmap: output, MARIE_SIMD_PTE_BITMAP_LONGS unsigned longs.
 + *
-+ * Caller MUST hold an enclosing lru_marie_simd_batch_begin/end pair.
-+ * Used in the per-PMD walker hot path to amortise the FPU save/restore
-+ * cost across a batch of consecutive PMD scans.
-+ */
-+void lru_marie_simd_young_pte_mask_raw(const void *table, unsigned long *bitmap);
-+
-+/**
-+ * lru_marie_simd_young_pte_mask - single-shot scan (begin + raw + end).
-+ * @table:  pointer to the first pte_t in the PMD's PTE array (512 entries)
-+ * @bitmap: output, MARIE_SIMD_PTE_BITMAP_LONGS unsigned longs.
-+ *
-+ * Self-contained convenience wrapper for any non-batched caller. The
-+ * walker uses the batched path directly; this wrapper exists for
-+ * completeness and any future single-shot use.
++ * The sole entry point. On x86 it self-brackets the scan in
++ * kernel_fpu_begin/end (or runs the scalar loop when the simd knob is
++ * off); on other arches it is a plain scalar pte_young loop.
 + */
 +void lru_marie_simd_young_pte_mask(const void *table, unsigned long *bitmap);
 +
 +#endif /* _MM_LRU_MARIE_SIMD_H */
 diff --git a/mm/lru_marie/simd_generic.c b/mm/lru_marie/simd_generic.c
 new file mode 100644
-index 0000000000..0045098bfa
+index 0000000000..154dada0ea
 --- /dev/null
 +++ b/mm/lru_marie/simd_generic.c
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,34 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/simd_generic.c -- fallback PTE young-bit scan for arches
@@ -4477,11 +4441,11 @@ index 0000000000..0045098bfa
 + * Uses the arch-provided pte_young() helper so we don't need to know
 + * the accessed-bit name on every architecture.
 + *
-+ * batch_begin / batch_end are no-ops here because the scan is scalar
-+ * (no FPU state to preserve). Every arch other than x86 currently
-+ * lands on this file (including arm64, where a future NEON variant
-+ * could be slotted in once its FPSIMD save/restore cost has been
-+ * profiled against the per-pmd gain).
++ * There is no FPU bracket here because the scan is scalar (no FPU state
++ * to preserve). Every arch other than x86 currently lands on this file
++ * (including arm64, where a future NEON variant could be slotted in once
++ * its FPSIMD save/restore cost has been profiled against the per-pmd
++ * gain).
 + */
 +
 +#include <linux/bitmap.h>
@@ -4492,13 +4456,7 @@ index 0000000000..0045098bfa
 +
 +#define PTES_PER_PMD	512
 +
-+void lru_marie_simd_batch_begin(void) { }
-+EXPORT_SYMBOL_GPL(lru_marie_simd_batch_begin);
-+
-+void lru_marie_simd_batch_end(void) { }
-+EXPORT_SYMBOL_GPL(lru_marie_simd_batch_end);
-+
-+void lru_marie_simd_young_pte_mask_raw(const void *table, unsigned long *bitmap)
++void lru_marie_simd_young_pte_mask(const void *table, unsigned long *bitmap)
 +{
 +	const pte_t *pte = (const pte_t *)table;
 +	int i;
@@ -4508,19 +4466,13 @@ index 0000000000..0045098bfa
 +			__set_bit(i, bitmap);
 +	}
 +}
-+EXPORT_SYMBOL_GPL(lru_marie_simd_young_pte_mask_raw);
-+
-+void lru_marie_simd_young_pte_mask(const void *table, unsigned long *bitmap)
-+{
-+	lru_marie_simd_young_pte_mask_raw(table, bitmap);
-+}
 +EXPORT_SYMBOL_GPL(lru_marie_simd_young_pte_mask);
 diff --git a/mm/lru_marie/simd_x86.c b/mm/lru_marie/simd_x86.c
 new file mode 100644
-index 0000000000..562b6c937f
+index 0000000000..7f27ac7916
 --- /dev/null
 +++ b/mm/lru_marie/simd_x86.c
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,243 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/simd_x86.c -- x86-64 PTE young-bit scan dispatch.
@@ -4536,22 +4488,15 @@ index 0000000000..562b6c937f
 + * static call, so even if arch_initcall runs late the walker never
 + * falls back to the slower scalar path.
 + *
-+ * FPU bracket lifecycle is caller-driven:
-+ *   lru_marie_simd_batch_begin()   -> kernel_fpu_begin()
-+ *   lru_marie_simd_young_pte_mask_raw() x N
-+ *   lru_marie_simd_batch_end()     -> kernel_fpu_end()
-+ *
-+ * The walker uses the single-shot lru_marie_simd_young_pte_mask() below
-+ * (begin + one scan + end) so the FPU bracket wraps only the scan and
-+ * never spans PMDs or the heavy per-young-PTE work. Per-PMD begin/end is
-+ * effectively free: kernel_fpu_begin() skips the FPU save entirely for
-+ * kthreads (kswapd, where the walker runs) and at most once per kernel
-+ * entry otherwise, and kernel_fpu_end() defers the restore to the return
-+ * to userspace -- so repeated begin/end pairs cost only preempt +
-+ * bookkeeping, no XSAVE/XRSTOR per scan.
-+ *
-+ * The batch_begin/_raw/batch_end split is kept for any future caller that
-+ * wants to hand-bracket several scans.
++ * The single entry point lru_marie_simd_young_pte_mask() self-brackets
++ * one PMD scan in kernel_fpu_begin/end, so the FPU bracket wraps only the
++ * scan and never spans PMDs or the heavy per-young-PTE work. Per-PMD
++ * begin/end is effectively free: kernel_fpu_begin() skips the FPU save
++ * entirely for kthreads (kswapd, where the walker runs) and at most once
++ * per kernel entry otherwise, and kernel_fpu_end() defers the restore to
++ * the return to userspace -- so a per-PMD begin/end pair costs only
++ * preempt + bookkeeping, no XSAVE/XRSTOR per scan, and there is nothing
++ * to amortise by batching several scans under one bracket.
 + */
 +
 +#include <linux/init.h>
@@ -4623,8 +4568,8 @@ index 0000000000..562b6c937f
 + * call retpoline tax in the per-PMD walker hot path.
 + *
 + * The static call points DIRECTLY at the .S kernel -- no FPU-bracket
-+ * wrapper. Callers must hold an FPU bracket via
-+ * lru_marie_simd_batch_begin/end.
++ * wrapper. lru_marie_simd_young_pte_mask() supplies the enclosing
++ * kernel_fpu_begin/end around the call.
 + */
 +DEFINE_STATIC_CALL(marie_simd_scan, lru_marie_simd_scan_sse2);
 +
@@ -4760,34 +4705,15 @@ index 0000000000..562b6c937f
 +/* Public API                                                         */
 +/* ------------------------------------------------------------------ */
 +
-+void lru_marie_simd_batch_begin(void)
-+{
-+	if (static_branch_likely(&marie_simd_enabled_key))
-+		kernel_fpu_begin();
-+}
-+EXPORT_SYMBOL_GPL(lru_marie_simd_batch_begin);
-+
-+void lru_marie_simd_batch_end(void)
-+{
-+	if (static_branch_likely(&marie_simd_enabled_key))
-+		kernel_fpu_end();
-+}
-+EXPORT_SYMBOL_GPL(lru_marie_simd_batch_end);
-+
-+void lru_marie_simd_young_pte_mask_raw(const void *table, unsigned long *bitmap)
-+{
-+	if (static_branch_likely(&marie_simd_enabled_key))
-+		static_call(marie_simd_scan)((const pte_t *)table, bitmap);
-+	else
-+		marie_simd_scan_scalar((const pte_t *)table, bitmap);
-+}
-+EXPORT_SYMBOL_GPL(lru_marie_simd_young_pte_mask_raw);
-+
 +void lru_marie_simd_young_pte_mask(const void *table, unsigned long *bitmap)
 +{
-+	lru_marie_simd_batch_begin();
-+	lru_marie_simd_young_pte_mask_raw(table, bitmap);
-+	lru_marie_simd_batch_end();
++	if (static_branch_likely(&marie_simd_enabled_key)) {
++		kernel_fpu_begin();
++		static_call(marie_simd_scan)((const pte_t *)table, bitmap);
++		kernel_fpu_end();
++	} else {
++		marie_simd_scan_scalar((const pte_t *)table, bitmap);
++	}
 +}
 +EXPORT_SYMBOL_GPL(lru_marie_simd_young_pte_mask);
 diff --git a/mm/lru_marie/simd_x86_avx2.S b/mm/lru_marie/simd_x86_avx2.S
@@ -5358,10 +5284,10 @@ index 0000000000..b86381ab5f
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..4acf8318d6
+index 0000000000..e125f9c41d
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,3014 @@
+@@ -0,0 +1,3013 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -6757,7 +6683,7 @@ index 0000000000..4acf8318d6
 +			    unsigned long nr_reclaimed,
 +			    u8 swappiness)
 +{
-+	s64 cur, delta;
++	s64 delta;
 +
 +	/*
 +	 * Special values bypass the controller. The pick path does not
@@ -6783,8 +6709,7 @@ index 0000000000..4acf8318d6
 +	else
 +		delta = +(s64)nr_reclaimed * (s64)swappiness;
 +
-+	cur = atomic64_read(&marie_swap_bias);
-+	atomic64_set(&marie_swap_bias, cur + delta);
++	atomic64_add(delta, &marie_swap_bias);
 +}
 +
 +/*
@@ -9471,7 +9396,7 @@ index 0000000000..4d07cedd9c
 +#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..3851a6cffe
+index 0000000000..1faa237ba5
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -9494,12 +9419,12 @@ index 0000000000..3851a6cffe
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.8.0"
++#define MARIE_VERSION	"0.8.1"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
 new file mode 100644
-index 0000000000..308d1f05ce
+index 0000000000..798d25eb93
 --- /dev/null
 +++ b/mm/lru_marie/walker.c
 @@ -0,0 +1,923 @@
@@ -9511,7 +9436,7 @@ index 0000000000..308d1f05ce
 + * rate-limited via marie_walker_interval() (HZ/30..HZ depending on
 + * pressure), marie_walk_pgdat() snapshots the running mm_struct's,
 + * walks each page table to PMD granularity, and at every PMD invokes
-+ * lru_marie_simd_young_pte_mask_raw() to extract the young-bit bitmap
++ * lru_marie_simd_young_pte_mask() to extract the young-bit bitmap
 + * of the entire 512-PTE page in one SIMD pass (AVX-512F / AVX2 / SSE2
 + * on x86; scalar fallback on arm64 and other arches via the generic
 + * variant -- NEON acceleration is a future optimisation, see
