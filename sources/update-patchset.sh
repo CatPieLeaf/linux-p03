@@ -70,9 +70,6 @@ p "mm_lazy_rss_stat.patch" \
 p "openRGB.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.1/0014-OpenRGB.patch"
 
-p "optimize_harder_O3.patch" \
-  "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.1/0013-optimize_harder_O3.patch"
-
 p "misc-additions.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.1/0012-misc-additions.patch"
 

@@ -33,7 +33,7 @@ diff --git a/Makefile b/Makefile
 index 9e4052181..ca446ff83 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -924,16 +924,25 @@ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
+@@ -924,11 +924,20 @@ KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
  ifdef CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
  KBUILD_CFLAGS += -O2
  KBUILD_RUSTFLAGS += -Copt-level=2
@@ -54,12 +54,7 @@ index 9e4052181..ca446ff83 100644
  # Always set `debug-assertions` and `overflow-checks` because their default
  # depends on `opt-level` and `debug-assertions`, respectively.
  KBUILD_RUSTFLAGS += -Cdebug-assertions=$(if $(CONFIG_RUST_DEBUG_ASSERTIONS),y,n)
- KBUILD_RUSTFLAGS += -Coverflow-checks=$(if $(CONFIG_RUST_OVERFLOW_CHECKS),y,n)
- 
- # Tell gcc to never replace conditional load with a non-conditional one
- ifdef CONFIG_CC_IS_GCC
- # gcc-10 renamed --param=allow-store-data-races=0 to
-@@ -1136,11 +1161,6 @@ KBUILD_CFLAGS	+= -fno-strict-overflow
+@@ -1156,11 +1165,6 @@ KBUILD_CFLAGS	+= -fno-strict-overflow
  # Make sure -fstack-check isn't enabled (like gentoo apparently did)
  KBUILD_CFLAGS  += -fno-stack-check
  
