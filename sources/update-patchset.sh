@@ -34,9 +34,6 @@ p "dkms-clang.patch" \
 p "acpi-call.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-acpi-call.patch"
 
-p "bore.patch" \
-  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.1-rc1-bore-6.8.0-rc1.patch"
-
 p "adios.patch" \
   "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch"
 
@@ -57,9 +54,6 @@ p "sched-better-idle-balance.patch" \
 
 p "posted-msi-enable-by-default.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0010-posted-msi-enable-by-default.patch"
-
-p "bbr3.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/tcp/0001-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch?ref_type=heads"
 
 p "disable-split-lock.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0006-disable-split-lock.patch"
