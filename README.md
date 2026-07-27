@@ -9,7 +9,7 @@
 <div align="center">
   <img src=".github/title-darkmode.png#gh-dark-mode-only" width="450">
   <img src=".github/title-lightmode.png#gh-light-mode-only" width="450">
-  <p align="center">A zero-misplay kernel with CachyOS, TKG, XanMod, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
+  <p align="center">A zero-misplay kernel with Firelzrd, CachyOS, TKG, XanMod, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
 </div>
 
 <p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
