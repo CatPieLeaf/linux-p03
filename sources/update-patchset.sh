@@ -34,6 +34,9 @@ p "dkms-clang.patch" \
 p "acpi-call.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-acpi-call.patch"
 
+p "bore.patch" \
+  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.1.5-bore-6.8.0.patch"
+
 p "adios.patch" \
   "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch"
 
@@ -171,6 +174,15 @@ p "surface-gpe.patch" \
 
 p "surface-amd-gpio.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0014-amd-gpio.patch"
+
+p "cambyses.patch" \
+  "https://raw.githubusercontent.com/firelzrd/cambyses/refs/heads/main/patches/0001-6.12.74-cambyses-v0.6.0.patch"
+
+p "reflex.patch" \
+  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.2.patch"
+
+p "zram-ir.patch" \
+  "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch"
 
 # ==============================================================================
 # PATCHSET-NVIDIA
