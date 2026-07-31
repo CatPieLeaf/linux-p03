@@ -34,9 +34,6 @@ p "dkms-clang.patch" \
 p "acpi-call.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-acpi-call.patch"
 
-p "bore.patch" \
-  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.1.5-bore-6.8.0.patch"
-
 p "adios.patch" \
   "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch"
 

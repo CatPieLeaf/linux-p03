@@ -1,32 +1,31 @@
-From dd41869adebf06396a7732a017810f0252ef9991 Mon Sep 17 00:00:00 2001
+From 2540769875c0630da612de91d46f225b3d108190 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Tue, 28 Jul 2026 23:17:12 +0900
-Subject: [PATCH] linux7.1.5-bore-6.8.0
+Date: Sat, 27 Jun 2026 08:34:51 +0900
+Subject: [PATCH] linux7.1-rc1-bore-6.8.0-rc1
 
 ---
- include/linux/sched.h        |  28 +++
- include/linux/sched/bore.h   |  49 ++++
- init/Kconfig                 |  17 ++
- kernel/Kconfig.hz            |  17 ++
- kernel/exit.c                |   4 +
- kernel/fork.c                |  13 +
- kernel/futex/waitwake.c      |  11 +
- kernel/sched/Makefile        |   1 +
- kernel/sched/bore.c          | 466 +++++++++++++++++++++++++++++++++++
- kernel/sched/build_utility.c |   4 +
- kernel/sched/core.c          |  12 +
- kernel/sched/debug.c         |  61 +++++
- kernel/sched/fair.c          | 157 ++++++++++--
- kernel/sched/sched.h         |   9 +
- 14 files changed, 835 insertions(+), 14 deletions(-)
+ include/linux/sched.h      |  34 +++
+ include/linux/sched/bore.h |  46 ++++
+ init/Kconfig               |  17 ++
+ kernel/Kconfig.hz          |  17 ++
+ kernel/exit.c              |   4 +
+ kernel/fork.c              |  13 ++
+ kernel/futex/waitwake.c    |  11 +
+ kernel/sched/Makefile      |   1 +
+ kernel/sched/bore.c        | 466 +++++++++++++++++++++++++++++++++++++
+ kernel/sched/core.c        |  12 +
+ kernel/sched/debug.c       |  61 +++++
+ kernel/sched/fair.c        | 157 +++++++++++--
+ kernel/sched/sched.h       |   9 +
+ 13 files changed, 834 insertions(+), 14 deletions(-)
  create mode 100644 include/linux/sched/bore.h
  create mode 100644 kernel/sched/bore.c
 
 diff --git a/include/linux/sched.h b/include/linux/sched.h
-index ee06cba5c6..99a4351a57 100644
+index ee06cba5c6f5..3369fe816c21 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -817,6 +817,31 @@ struct kmap_ctrl {
+@@ -817,6 +817,37 @@ struct kmap_ctrl {
  #endif
  };
  
@@ -47,7 +46,13 @@ index ee06cba5c6..99a4351a57 100644
 +	u64				burst_time;
 +	u16				prev_penalty;
 +	u16				curr_penalty;
-+	u16				penalty;
++	union {
++		u16			penalty;
++		struct {
++			u8		_;
++			u8		score;
++		};
++	};
 +	bool			stop_update;
 +	bool			futex_waiting;
 +	struct bore_bc	subtree;
@@ -58,7 +63,7 @@ index ee06cba5c6..99a4351a57 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -875,6 +900,9 @@ struct task_struct {
+@@ -875,6 +906,9 @@ struct task_struct {
  #ifdef CONFIG_SCHED_CLASS_EXT
  	struct sched_ext_entity		scx;
  #endif
@@ -70,10 +75,10 @@ index ee06cba5c6..99a4351a57 100644
  #ifdef CONFIG_SCHED_CORE
 diff --git a/include/linux/sched/bore.h b/include/linux/sched/bore.h
 new file mode 100644
-index 0000000000..e7469c515e
+index 000000000000..76afe1d250d9
 --- /dev/null
 +++ b/include/linux/sched/bore.h
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,46 @@
 +#ifndef _KERNEL_SCHED_BORE_H
 +#define _KERNEL_SCHED_BORE_H
 +
@@ -87,7 +92,7 @@ index 0000000000..e7469c515e
 +#define SCHED_BORE_AUTHOR   "Masahito Suzuki"
 +#define SCHED_BORE_PROGNAME "BORE CPU Scheduler modification"
 +
-+#define SCHED_BORE_VERSION  "6.8.0"
++#define SCHED_BORE_VERSION  "6.8.0-rc1"
 +
 +extern u8   __read_mostly sched_bore;
 +DECLARE_STATIC_KEY_TRUE(sched_bore_key);
@@ -99,9 +104,6 @@ index 0000000000..e7469c515e
 +extern u8   __read_mostly sched_burst_protect_slice_lv;
 +DECLARE_STATIC_KEY_TRUE(sched_burst_protect_slice_cond_key);
 +DECLARE_STATIC_KEY_FALSE(sched_burst_protect_slice_prefer_key);
-+
-+static inline u8 bore_score(struct task_struct *p)
-+{ return p->bore.penalty >> 8; }
 +
 +extern u8   effective_prio_bore(struct task_struct *p);
 +extern void update_curr_bore(struct task_struct *p, u64 delta_exec);
@@ -124,7 +126,7 @@ index 0000000000..e7469c515e
 +
 +#endif /* _KERNEL_SCHED_BORE_H */
 diff --git a/init/Kconfig b/init/Kconfig
-index 826a7d768c..fc799fca9c 100644
+index 826a7d768ca3..fc799fca9cbc 100644
 --- a/init/Kconfig
 +++ b/init/Kconfig
 @@ -1466,6 +1466,23 @@ config CHECKPOINT_RESTORE
@@ -152,7 +154,7 @@ index 826a7d768c..fc799fca9c 100644
  	bool "Automatic process group scheduling"
  	select CGROUPS
 diff --git a/kernel/Kconfig.hz b/kernel/Kconfig.hz
-index ce1435cb08..9eee2005e2 100644
+index ce1435cb08b1..9eee2005e25f 100644
 --- a/kernel/Kconfig.hz
 +++ b/kernel/Kconfig.hz
 @@ -57,3 +57,20 @@ config HZ
@@ -177,7 +179,7 @@ index ce1435cb08..9eee2005e2 100644
 +	 an unnecessarily large base slice, resulting in high scheduling
 +	 latency and poor system responsiveness.
 diff --git a/kernel/exit.c b/kernel/exit.c
-index 7ba7966a23..88f463d585 100644
+index 7ba7966a23b9..88f463d585c9 100644
 --- a/kernel/exit.c
 +++ b/kernel/exit.c
 @@ -147,7 +147,11 @@ static void __unhash_process(struct release_task_post *post, struct task_struct
@@ -193,7 +195,7 @@ index 7ba7966a23..88f463d585 100644
  	}
  	list_del_rcu(&p->thread_node);
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 5a4623b058..ea20e5e1e6 100644
+index 5a4623b058a2..ea20e5e1e6c3 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -119,6 +119,10 @@
@@ -232,7 +234,7 @@ index 5a4623b058..ea20e5e1e6 100644
  			attach_pid(p, PIDTYPE_TGID);
  			attach_pid(p, PIDTYPE_PGID);
 diff --git a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
-index ceed9d8790..5545a968b2 100644
+index ceed9d879059..5545a968b21d 100644
 --- a/kernel/futex/waitwake.c
 +++ b/kernel/futex/waitwake.c
 @@ -4,6 +4,9 @@
@@ -262,7 +264,7 @@ index ceed9d8790..5545a968b2 100644
  	__set_current_state(TASK_RUNNING);
  }
 diff --git a/kernel/sched/Makefile b/kernel/sched/Makefile
-index b1f1a36703..f95a7b3d5a 100644
+index b1f1a367034f..f95a7b3d5a32 100644
 --- a/kernel/sched/Makefile
 +++ b/kernel/sched/Makefile
 @@ -40,3 +40,4 @@ obj-y += core.o
@@ -272,7 +274,7 @@ index b1f1a36703..f95a7b3d5a 100644
 +obj-$(CONFIG_SCHED_BORE) += bore.o
 diff --git a/kernel/sched/bore.c b/kernel/sched/bore.c
 new file mode 100644
-index 0000000000..373c6e893f
+index 000000000000..7587cbc78f0f
 --- /dev/null
 +++ b/kernel/sched/bore.c
 @@ -0,0 +1,466 @@
@@ -361,7 +363,7 @@ index 0000000000..373c6e893f
 +u8 effective_prio_bore(struct task_struct *p) {
 +	int prio = p->static_prio - MAX_RT_PRIO;
 +	if (static_branch_likely(&sched_bore_key))
-+		prio += bore_score(p);
++		prio += p->bore.score;
 +	prio &= ~(prio >> 31);
 +	s32 diff = prio - maxval_prio;
 +	prio -= (diff & ~(diff >> 31));
@@ -742,23 +744,8 @@ index 0000000000..373c6e893f
 +
 +#endif // CONFIG_SYSCTL
 +#endif /* CONFIG_SCHED_BORE */
-diff --git a/kernel/sched/build_utility.c b/kernel/sched/build_utility.c
-index e2cf3b08d4..aad2259302 100644
---- a/kernel/sched/build_utility.c
-+++ b/kernel/sched/build_utility.c
-@@ -54,6 +54,10 @@
- #include "stats.h"
- #include "autogroup.h"
- 
-+#ifdef CONFIG_SCHED_BORE
-+#include <linux/sched/bore.h>
-+#endif /* CONFIG_SCHED_BORE */
-+
- #include "clock.c"
- 
- #ifdef CONFIG_CGROUP_CPUACCT
 diff --git a/kernel/sched/core.c b/kernel/sched/core.c
-index 69c2aa8c62..465f6bb76f 100644
+index 69c2aa8c6246..465f6bb76f0a 100644
 --- a/kernel/sched/core.c
 +++ b/kernel/sched/core.c
 @@ -100,6 +100,10 @@
@@ -796,7 +783,7 @@ index 69c2aa8c62..465f6bb76f 100644
  
  #ifdef CONFIG_FAIR_GROUP_SCHED
 diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
-index 6f74bde684..9ba01141b1 100644
+index 6f74bde68437..b7555ec31960 100644
 --- a/kernel/sched/debug.c
 +++ b/kernel/sched/debug.c
 @@ -170,6 +170,53 @@ static const struct file_operations sched_feat_fops = {
@@ -886,7 +873,7 @@ index 6f74bde684..9ba01141b1 100644
  		SPLIT_NS(schedstat_val_or_zero(p->stats.sum_block_runtime)));
  
 +#ifdef CONFIG_SCHED_BORE
-+	SEQ_printf(m, " %2d", bore_score(p));
++	SEQ_printf(m, " %2d", p->bore.score);
 +#endif /* CONFIG_SCHED_BORE */
  #ifdef CONFIG_NUMA_BALANCING
  	SEQ_printf(m, "   %d      %d", task_node(p), task_numa_group_id(p));
@@ -896,13 +883,13 @@ index 6f74bde684..9ba01141b1 100644
  
  	P(se.load.weight);
 +#ifdef CONFIG_SCHED_BORE
-+	__PS("bore.score", bore_score(p));
++	P(bore.score);
 +#endif /* CONFIG_SCHED_BORE */
  	P(se.avg.load_sum);
  	P(se.avg.runnable_sum);
  	P(se.avg.util_sum);
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index abb76775aa..73d48e0052 100644
+index abb76775aa72..73d48e005266 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
 @@ -58,6 +58,10 @@
@@ -1249,7 +1236,7 @@ index abb76775aa..73d48e0052 100644
  	set_task_max_allowed_capacity(p);
  
 diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
-index 9f63b15d30..b1bd6ac190 100644
+index 9f63b15d309d..b1bd6ac190a4 100644
 --- a/kernel/sched/sched.h
 +++ b/kernel/sched/sched.h
 @@ -2238,7 +2238,11 @@ extern int group_balance_cpu(struct sched_group *sg);
@@ -1278,5 +1265,5 @@ index 9f63b15d30..b1bd6ac190 100644
  extern int sysctl_resched_latency_warn_ms;
  extern int sysctl_resched_latency_warn_once;
 -- 
-2.34.1
+2.53.0
 
