@@ -34,6 +34,9 @@ p "dkms-clang.patch" \
 p "acpi-call.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-acpi-call.patch"
 
+p "bore.patch" \
+  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.1.5-bore-6.8.0.patch"
+
 p "adios.patch" \
   "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch"
 
@@ -68,7 +71,7 @@ p "misc-additions.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.1/0012-misc-additions.patch"
 
 p "poc-selector.patch" \
-  "https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.1-rc1-poc-selector-v2.6.2r2.patch"
+  "https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.1-rc1-poc-selector-v2.6.3.patch"
 
 p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.1/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
