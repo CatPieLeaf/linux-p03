@@ -175,6 +175,12 @@ p "surface-gpe.patch" \
 p "surface-amd-gpio.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0014-amd-gpio.patch"
 
+p "reflex.patch" \
+  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.2.patch"
+
+p "zram-ir.patch" \
+  "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch"
+
 # ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
