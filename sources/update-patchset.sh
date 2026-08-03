@@ -175,6 +175,9 @@ p "surface-gpe.patch" \
 p "surface-amd-gpio.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0014-amd-gpio.patch"
 
+p "cambyses.patch" \
+  "https://raw.githubusercontent.com/firelzrd/cambyses/refs/heads/main/patches/0001-6.12.74-cambyses-v0.6.0.patch"
+
 p "reflex.patch" \
   "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.2.patch"
 
