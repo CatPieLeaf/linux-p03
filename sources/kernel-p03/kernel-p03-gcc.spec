@@ -94,7 +94,7 @@
 
 # NVIDIA open kernel modules.
 %define _build_nv 1
-%define _nv_ver   610.43.03
+%define _nv_ver   610.57.04
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
 # ==============================================================================
@@ -105,7 +105,7 @@
 # _koji_fc:    0 = auto-detect from {dist}, N = override (e.g. 45)
 
 %define _basekver   7.1
-%define _stablekver .5
+%define _stablekver .6
 %undefine _rel
 %define _koji_patch 201
 %define _koji_fc    44
@@ -158,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   10
+%define _buildver   11
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
