@@ -221,6 +221,9 @@ Version: %{_basekver}%{_stablekver}
 Release: %{_koji_rel_tag}%{_custom_tag}%{?_gccreltag}.%{_buildver}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
+Packager: CatPieLeaf <catpieleaf@proton.me>
+BuildRequires: curl
+BuildRequires: jq
 
 Requires: %{name}-core    = %{_rpmver}
 Requires: %{name}-modules = %{_rpmver}
@@ -1053,3 +1056,12 @@ Conflicts: akmod-nvidia
 
 # ==============================================================================
 %files
+
+%changelog
+%(
+json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/commits/main)
+sha=$(echo "$json" | jq -r '.sha[0:7]')
+msg=$(echo "$json" | jq -r '.commit.message | split("\n")[0]' | sed 's/%/%%/g')
+echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
+echo "- ${sha}: ${msg}"
+)
