@@ -107,7 +107,7 @@
 %define _basekver   7.2
 %define _stablekver .0
 %define _rel        6
-%define _koji_patch 51
+%define _koji_patch 52
 %define _koji_fc    45
 
 # Build mode:
