@@ -1,5 +1,5 @@
 diff --git a/block/bfq-iosched.c b/block/bfq-iosched.c
-index 141c602..50d8599 100644
+index 0f75301..7aeaaf3 100644
 --- a/block/bfq-iosched.c
 +++ b/block/bfq-iosched.c
 @@ -460,6 +460,21 @@ static struct bfq_io_cq *bfq_bic_lookup(struct request_queue *q)
@@ -49,7 +49,7 @@ index 141c602..50d8599 100644
  
  	if (bic) {
  		/*
-@@ -5301,6 +5327,18 @@ static struct request *bfq_dispatch_request(struct blk_mq_hw_ctx *hctx)
+@@ -5302,6 +5328,18 @@ static struct request *bfq_dispatch_request(struct blk_mq_hw_ctx *hctx)
  	struct bfq_queue *in_serv_queue;
  	bool waiting_rq, idle_timer_disabled = false;
  
@@ -68,7 +68,7 @@ index 141c602..50d8599 100644
  	spin_lock_irq(&bfqd->lock);
  
  	in_serv_queue = bfqd->in_service_queue;
-@@ -5312,6 +5350,7 @@ static struct request *bfq_dispatch_request(struct blk_mq_hw_ctx *hctx)
+@@ -5313,6 +5351,7 @@ static struct request *bfq_dispatch_request(struct blk_mq_hw_ctx *hctx)
  			waiting_rq && !bfq_bfqq_wait_request(in_serv_queue);
  	}
  
@@ -76,7 +76,7 @@ index 141c602..50d8599 100644
  	spin_unlock_irq(&bfqd->lock);
  	bfq_update_dispatch_stats(hctx->queue, rq,
  			idle_timer_disabled ? in_serv_queue : NULL,
-@@ -6233,10 +6272,9 @@ static inline void bfq_update_insert_stats(struct request_queue *q,
+@@ -6234,10 +6273,9 @@ static inline void bfq_update_insert_stats(struct request_queue *q,
  
  static struct bfq_queue *bfq_init_rq(struct request *rq);
  
@@ -88,7 +88,7 @@ index 141c602..50d8599 100644
  	struct bfq_data *bfqd = q->elevator->elevator_data;
  	struct bfq_queue *bfqq;
  	bool idle_timer_disabled = false;
-@@ -6298,7 +6336,7 @@ static void bfq_insert_requests(struct blk_mq_hw_ctx *hctx,
+@@ -6299,7 +6337,7 @@ static void bfq_insert_requests(struct blk_mq_hw_ctx *hctx,
  
  		rq = list_first_entry(list, struct request, queuelist);
  		list_del_init(&rq->queuelist);
@@ -97,16 +97,16 @@ index 141c602..50d8599 100644
  	}
  }
  
-@@ -7208,6 +7246,8 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_queue *eq)
+@@ -7206,6 +7244,8 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_queue *eq)
+ 	eq->elevator_data = bfqd;
  	q->elevator = eq;
- 	spin_unlock_irq(&q->queue_lock);
  
 +	spin_lock_init(&bfqd->lock);
 +
  	/*
  	 * Our fallback bfqq if bfq_find_alloc_queue() runs into OOM issues.
  	 * Grab a permanent reference to it, so that the normal code flow
-@@ -7325,8 +7365,6 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_queue *eq)
+@@ -7321,8 +7361,6 @@ static int bfq_init_queue(struct request_queue *q, struct elevator_queue *eq)
  	/* see comments on the definition of next field inside bfq_data */
  	bfqd->actuator_load_threshold = 4;
  
@@ -152,7 +152,7 @@ index 355a731..57ef248 100644
  	 * bic associated with the task issuing current bio for
  	 * merging. This and the next field are used as a support to
 diff --git a/block/mq-deadline.c b/block/mq-deadline.c
-index 95917a8..75cf004 100644
+index 824bfc1..3e8da39 100644
 --- a/block/mq-deadline.c
 +++ b/block/mq-deadline.c
 @@ -607,7 +607,19 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,

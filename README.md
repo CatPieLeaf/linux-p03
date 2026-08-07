@@ -35,12 +35,12 @@
  - Local Automatic Secureboot Signing and Key generation (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
- - LRU-Marie
+ - LRU-Marie and Zram-IR
  - Nap CPUIdle governor
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and v2)
  - 750hz tickrate
  - Built with LLVM + O3 + Polly Clang + Mimalloc
- - BORE scheduler
+ - BORE scheduler and Reflex CPU Governor
  - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
  - AMD HDMI-FRL Support
@@ -211,16 +211,13 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
 
  - P03 and Inscryption are property of Daniel Mullins Games and Devolver Digital. This kernel is a non-commercial fan project and not affiliated with or endorsed by the original creators.
  - Patches and configuration files from [Linux-TKG](https://github.com/Frogging-Family/linux-tkg)
+ - Patches from [Firelzrd](https://github.com/firelzrd)
  - Patches from [Mauri870's Custom Kernel](https://github.com/mauri870/linux-kernel/)
  - Patches from [babiulep's Custom Kernel](https://github.com/babiulep/my-kernel-patches)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Patches from [XanMod Kernel](https://gitlab.com/xanmod/linux-patches)
- - Bore patches from [Firelzrd](https://github.com/firelzrd/bore-scheduler)
- - ADIOS patches from [Firelzrd/adios](https://github.com/firelzrd/adios)
- - POC patches from [Firelzrd/poc-selector](https://github.com/firelzrd/poc-selector)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
  - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
- - LRU-Marie patches from [Firelzrd/lru_marie](https://github.com/firelzrd/lru_marie)
  - Nap patches from [NikoMalik/nap](https://github.com/NikoMalik/nap/)
  - Surface patches from [Linux-surface](https://github.com/linux-surface/linux-surface)
 

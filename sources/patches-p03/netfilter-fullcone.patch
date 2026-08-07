@@ -208,15 +208,18 @@ diff --git a/net/netfilter/Makefile b/net/netfilter/Makefile
 index 6bfc250e474f..babf25407790 100644
 --- a/net/netfilter/Makefile
 +++ b/net/netfilter/Makefile
-@@ -240,3 +240,8 @@ obj-$(CONFIG_IP_VS) += ipvs/
- 
+@@ -242,6 +242,11 @@ obj-$(CONFIG_IP_VS) += ipvs/
  # lwtunnel
  obj-$(CONFIG_LWTUNNEL) += nf_hooks_lwtunnel.o
-+
+ 
 +# Nftables/netfilter fullcone expression support
 +obj-$(CONFIG_NFT_FULLCONE) += \
 +	nf_nat_fullcone.o \
 +	nft_ext_fullcone.o
++
+ ifdef CONFIG_GCOV_PROFILE_NETFILTER
+ GCOV_PROFILE := y
+ endif
 diff --git a/net/netfilter/nf_nat_fullcone.c b/net/netfilter/nf_nat_fullcone.c
 new file mode 100644
 index 000000000000..57e4c20b64d4

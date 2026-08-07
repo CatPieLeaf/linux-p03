@@ -104,18 +104,18 @@
 # _koji_patch: 0 = latest available build, N = pin to exact patch number
 # _koji_fc:    0 = auto-detect from {dist}, N = override (e.g. 45)
 
-%define _basekver   7.1
-%define _stablekver .7
-%undefine _rel
-%define _koji_patch 200
-%define _koji_fc    44
+%define _basekver   7.2
+%define _stablekver .0
+%define _rel        6
+%define _koji_patch 51
+%define _koji_fc    45
 
 # Build mode:
 #   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
 #   0 = static:  use a pre-fetched SRPM as Source0 (RPM Fusion / offline builds)
 #                requires _koji_patch > 0
 #
-%define _koji_dynamic 0
+%define _koji_dynamic 1
 
 # Release field examples:
 #   stable, patch=205  →  205.p03.4.fc44
@@ -158,7 +158,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   12
+%define _buildver   13
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
