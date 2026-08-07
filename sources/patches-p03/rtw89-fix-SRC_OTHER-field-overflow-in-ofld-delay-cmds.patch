@@ -1,0 +1,94 @@
+From: CatPieLeaf <catpieleaf@proton.me>
+Date: Fri, 7 Aug 2026 20:30:00 -0300
+Subject: [PATCH] wifi: rtw89: fix RTW89_FW_CMD_OFLD_SRC_OTHER field overflow
+ in delay ofld commands
+
+GCC fails the build with:
+
+    ./include/linux/bitfield.h:233:17: error: call to '__field_overflow'
+    declared with attribute error: value doesn't fit into mask
+      233 |                 __field_overflow();
+    In function 'le32_encode_bits',
+        inlined from 'rtw89_fw_cmd_ofld_enqueue' at fw.c:11586:12,
+        inlined from 'rtw89_fw_cmd_ofld_udelay' at fw.c:11789:8
+    (and again inlined from rtw89_fw_cmd_ofld_mdelay at fw.c:11803:8)
+
+RTW89_H2C_CMD_OFLD_W0_SRC is a 2-bit wire field (GENMASK(1, 0), valid
+range 0-3), but enum rtw89_fw_cmd_ofld_arg_src has five values:
+
+    RTW89_FW_CMD_OFLD_SRC_BB       = 0
+    RTW89_FW_CMD_OFLD_SRC_RF       = 1
+    RTW89_FW_CMD_OFLD_SRC_MAC      = 2
+    RTW89_FW_CMD_OFLD_SRC_RF_DDIE  = 3
+    RTW89_FW_CMD_OFLD_SRC_OTHER    = 4   <- doesn't fit in 2 bits
+
+rtw89_fw_cmd_ofld_udelay()/_mdelay() both build a DELAY-type command
+with .src = RTW89_FW_CMD_OFLD_SRC_OTHER. GCC's inliner constant-folds
+the whole call chain down to the enqueue function and proves the
+resulting le32_encode_bits(4, GENMASK(1, 0)) call is out of range at
+compile time, hence the hard error via __field_overflow's
+attribute((error(...))). This does not reproduce with clang, which
+apparently doesn't perform the same depth of interprocedural constant
+propagation through the pointer-passed struct at the optimization
+level in use here - the underlying overflow is real either way, just
+silently truncated at runtime under clang instead of caught at
+compile time.
+
+Confirmed this is not kernel-p03-specific: current upstream
+torvalds/linux master has the identical enum/GENMASK mismatch as of
+this writing, so this is a latent, still-unfixed upstream bug that
+just happens to get surfaced by GCC's stricter checking here.
+
+rtw89_fw_cmd_ofld_enqueue()'s own validation only checks .src when
+.type != RTW89_FW_CMD_OFLD_DELAY:
+
+    if (cmd->type != RTW89_FW_CMD_OFLD_DELAY &&
+        cmd->src != RTW89_FW_CMD_OFLD_SRC_RF &&
+        cmd->src != RTW89_FW_CMD_OFLD_SRC_RF_DDIE &&
+        !IS_ALIGNED(cmd->offset, 4))
+            return -EFAULT;
+
+confirming .src is a don't-care for DELAY-type commands - nothing in
+this function or (by inference) the firmware side branches on its
+value for that command type. Use RTW89_FW_CMD_OFLD_SRC_BB (0) instead
+of SRC_OTHER in both delay helpers: it's in-range for the wire field
+and behaviorally identical, since the value is never actually
+consulted for DELAY commands.
+
+Signed-off-by: CatPieLeaf <catpieleaf@proton.me>
+---
+ drivers/net/wireless/realtek/rtw89/fw.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+--- a/drivers/net/wireless/realtek/rtw89/fw.c
++++ b/drivers/net/wireless/realtek/rtw89/fw.c
+@@ -11779,8 +11779,17 @@
+
+ static void rtw89_fw_cmd_ofld_udelay(struct rtw89_dev *rtwdev, u32 us)
+ {
++	/*
++	 * .src is a don't-care for DELAY-type ofld commands (see the
++	 * early-out in rtw89_fw_cmd_ofld_enqueue(), which only validates
++	 * .src when .type != RTW89_FW_CMD_OFLD_DELAY), but it still gets
++	 * encoded into the wire word via RTW89_H2C_CMD_OFLD_W0_SRC, a
++	 * 2-bit field (GENMASK(1, 0)). RTW89_FW_CMD_OFLD_SRC_OTHER is enum
++	 * value 4 and doesn't fit - use SRC_BB (0), any in-range value
++	 * works identically here.
++	 */
+ 	struct rtw89_fw_cmd_ofld_arg cmd = {
+-		.src = RTW89_FW_CMD_OFLD_SRC_OTHER,
++		.src = RTW89_FW_CMD_OFLD_SRC_BB,
+ 		.type = RTW89_FW_CMD_OFLD_DELAY,
+ 		.value = us,
+ 	};
+@@ -11793,8 +11802,9 @@
+
+ static void rtw89_fw_cmd_ofld_mdelay(struct rtw89_dev *rtwdev, u32 ms)
+ {
++	/* See rtw89_fw_cmd_ofld_udelay() comment. */
+ 	struct rtw89_fw_cmd_ofld_arg cmd = {
+-		.src = RTW89_FW_CMD_OFLD_SRC_OTHER,
++		.src = RTW89_FW_CMD_OFLD_SRC_BB,
+ 		.type = RTW89_FW_CMD_OFLD_DELAY,
+ 		.value = ms * 1000,
+ 	};
