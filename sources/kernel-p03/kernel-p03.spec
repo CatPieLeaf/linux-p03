@@ -110,6 +110,10 @@
 %define _koji_patch 52
 %define _koji_fc    45
 
+# %tag pins the exact linux-p03 release this build fetches the repo zip
+# from (see Sources below) - update.rhai bumps it to match the latest tag.
+%global tag 7.2.0-52.rc6.p03.15
+
 # Build mode:
 #   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
 #   0 = static:  use a pre-fetched SRPM as Source0 (RPM Fusion / offline builds)
@@ -158,7 +162,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   14
+%define _buildver   15
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -318,8 +322,15 @@ BuildRequires: koji
 # Sources
 # ==============================================================================
 
+# Fetches the repo zip / raw sources from the %tag pinned above; falls
+# back to the moving main branch if %tag is ever empty.
+%if "%{tag}" == ""
 %define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
+%else
+%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{tag}/sources
+%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{tag}.tar.gz
+%endif
 
 %if !%{_koji_dynamic}
 Source0: https://koji.fedoraproject.org/packages/kernel/%{_tarkver}/%{_static_koji_release}/src/%{_static_nvr}.src.rpm#/%{_static_nvr}.srpm
@@ -1058,6 +1069,7 @@ Conflicts: akmod-nvidia
 %files
 
 %changelog
+%if "%{tag}" == ""
 %(
 json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/commits/main)
 sha=$(echo "$json" | jq -r '.sha[0:7]')
@@ -1065,3 +1077,11 @@ msg=$(echo "$json" | jq -r '.commit.message | split("\n")[0]' | sed 's/%/%%/g')
 echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
 echo "- ${sha}: ${msg}"
 )
+%else
+%(
+json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/releases/tags/%{tag})
+desc=$(echo "$json" | jq -r '.body // .name // "%{tag}"' | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/%/%%/g' -e 's/[[:space:]]*$//')
+echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
+echo "- ${desc}"
+)
+%endif
