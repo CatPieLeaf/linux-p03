@@ -983,7 +983,6 @@ Summary: nvidia-open %{_nv_ver} kernel modules for %{name}
 License: MIT AND GPL-2.0-only
 
 Provides: installonlypkg(kernel-module)
-Provides: nvidia-kmod >= %{_nv_ver}
 
 Requires: kernel-uname-r = %{_kver}
 Requires: kmod
@@ -995,6 +994,8 @@ Requires: zstd
 %endif
 
 Conflicts: akmod-nvidia
+Conflicts: kmod-nvidia
+Conflicts: nvidia-kmod
 
 %description nvidia-open
     This package provides nvidia-open %{_nv_ver} kernel modules for %{name}.
