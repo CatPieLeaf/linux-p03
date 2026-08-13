@@ -76,7 +76,7 @@ p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
 
 p "lru_marie.patch" \
-  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.9.2.patch"
+  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.9.3.patch"
 
 p "nap.patch" \
   "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
