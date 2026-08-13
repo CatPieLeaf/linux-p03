@@ -106,13 +106,13 @@
 
 %define _basekver   7.2
 %define _stablekver .0
-%define _rel        6
-%define _koji_patch 52
+%define _rel        7
+%define _koji_patch 54
 %define _koji_fc    45
 
-# %tag pins the exact linux-p03 release this build fetches the repo zip
+# %%tag pins the exact linux-p03 release this build fetches the repo zip
 # from (see Sources below) - update.rhai bumps it to match the latest tag.
-%global tag 7.2.0-52.rc6.p03.15
+%global tag 7.2.0^54.rc7.p03.16
 
 # Build mode:
 #   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
@@ -162,7 +162,7 @@
 # ==============================================================================
 %define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   15
+%define _buildver   16
 %define _srcdir     linux-%{_tarkver}
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
@@ -221,8 +221,8 @@
 # ==============================================================================
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
-Version: %{_basekver}%{_stablekver}
-Release: %{_koji_rel_tag}%{_custom_tag}%{?_gccreltag}.%{_buildver}%{?dist}
+Version: %{_basekver}%{_stablekver}^%{_koji_rel_tag}%{_custom_tag}%{?_gccreltag}.%{_buildver}
+Release: 1%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 Packager: CatPieLeaf <catpieleaf@proton.me>
@@ -322,8 +322,8 @@ BuildRequires: koji
 # Sources
 # ==============================================================================
 
-# Fetches the repo zip / raw sources from the %tag pinned above; falls
-# back to the moving main branch if %tag is ever empty.
+# Fetches the repo zip / raw sources from the %%tag pinned above; falls
+# back to the moving main branch if %%tag is ever empty.
 %if "%{tag}" == ""
 %define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
