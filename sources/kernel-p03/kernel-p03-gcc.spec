@@ -105,10 +105,18 @@
 # _koji_fc:    0 = auto-detect from {dist}, N = override (e.g. 45)
 
 %define _basekver   7.1
-%define _stablekver .7
+%define _stablekver .8
 %undefine _rel
 %define _koji_patch 200
 %define _koji_fc    44
+
+# %%tag pins the exact linux-p03 release this build fetches the repo zip
+# from (see Sources below) — update.rhai bumps it to match the latest tag.
+%global tag 7.1.8-200.p03.12
+
+# 1 = fetch sources and changelog from %%tag above (default)
+# 0 = fetch from the moving main branch instead (useful for testing unreleased commits)
+%define _fetch_tag 1
 
 # Build mode:
 #   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
@@ -318,8 +326,15 @@ BuildRequires: koji
 # Sources
 # ==============================================================================
 
+# Fetches the repo zip / raw sources from the %%tag pinned above;
+# set _fetch_tag 0 to fetch from the moving main branch instead.
+%if !%{_fetch_tag}
 %define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
+%else
+%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{tag}/sources
+%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{tag}.tar.gz
+%endif
 
 %if !%{_koji_dynamic}
 Source0: https://koji.fedoraproject.org/packages/kernel/%{_tarkver}/%{_static_koji_release}/src/%{_static_nvr}.src.rpm#/%{_static_nvr}.srpm
@@ -972,7 +987,6 @@ Summary: nvidia-open %{_nv_ver} kernel modules for %{name}
 License: MIT AND GPL-2.0-only
 
 Provides: installonlypkg(kernel-module)
-Provides: nvidia-kmod >= %{_nv_ver}
 
 Requires: kernel-uname-r = %{_kver}
 Requires: kmod
@@ -983,7 +997,11 @@ Requires: nvidia-gpu-firmware
 Requires: zstd
 %endif
 
+# These are the real RPM Fusion package/capability names for the same role -
+# never let both be installed together.
 Conflicts: akmod-nvidia
+Conflicts: kmod-nvidia
+Conflicts: nvidia-kmod
 
 %description nvidia-open
     This package provides nvidia-open %{_nv_ver} kernel modules for %{name}.
@@ -1058,6 +1076,7 @@ Conflicts: akmod-nvidia
 %files
 
 %changelog
+%if !%{_fetch_tag}
 %(
 json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/commits/main)
 sha=$(echo "$json" | jq -r '.sha[0:7]')
@@ -1065,3 +1084,11 @@ msg=$(echo "$json" | jq -r '.commit.message | split("\n")[0]' | sed 's/%/%%/g')
 echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
 echo "- ${sha}: ${msg}"
 )
+%else
+%(
+json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/releases/tags/%{tag})
+desc=$(echo "$json" | jq -r '.body // .name // "%{tag}"' | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/%/%%/g' -e 's/[[:space:]]*$//')
+echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
+echo "- ${desc}"
+)
+%endif

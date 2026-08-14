@@ -145,9 +145,6 @@ p "pci-missing-acs-overrides.patch" \
 p "allow-wake-up-pollfree-gpl.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/binder/0003-wait-allow-to-use-__wake_up_pollfree-from-GPL-module.patch?ref_type=heads"
 
-p "amd_hdmi_frl.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.1/0001-hdmi_frl.patch"
-
 p "surface3.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0002-surface3.patch"
 
