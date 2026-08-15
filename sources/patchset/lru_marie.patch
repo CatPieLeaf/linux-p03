@@ -1,7 +1,7 @@
-From 3983f64c58f71a7d17f51bb60a553277fe8f26b6 Mon Sep 17 00:00:00 2001
+From 745166704c54c14ca642095d5e6efd1f6ac58a29 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Thu, 30 Jul 2026 02:15:44 +0900
-Subject: [PATCH] linux7.1-rc5-lru_marie-0.9.2
+Date: Fri, 7 Aug 2026 04:49:59 +0900
+Subject: [PATCH] linux7.1-rc5-lru_marie-0.9.3
 
 ---
  include/linux/lru_marie.h      |  498 +++++
@@ -18,7 +18,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.9.2
  mm/lru_marie/account.h         |  106 ++
  mm/lru_marie/bitmap.c          |  118 ++
  mm/lru_marie/bitmap.h          |  221 +++
- mm/lru_marie/core.c            | 1201 ++++++++++++
+ mm/lru_marie/core.c            | 1204 ++++++++++++
  mm/lru_marie/defrag.c          | 1199 ++++++++++++
  mm/lru_marie/defrag.h          |   85 +
  mm/lru_marie/defrag_compat.h   |   53 +
@@ -30,8 +30,8 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.9.2
  mm/lru_marie/simd_x86_avx2.S   |  170 ++
  mm/lru_marie/simd_x86_avx512.S |  220 +++
  mm/lru_marie/simd_x86_sse2.S   |  158 ++
- mm/lru_marie/state.c           | 3112 ++++++++++++++++++++++++++++++++
- mm/lru_marie/state.h           |  987 ++++++++++
+ mm/lru_marie/state.c           | 3175 ++++++++++++++++++++++++++++++++
+ mm/lru_marie/state.h           |  990 ++++++++++
  mm/lru_marie/state_compat.h    |   94 +
  mm/lru_marie/version.h         |   22 +
  mm/lru_marie/walker.c          |  923 ++++++++++
@@ -46,7 +46,7 @@ Subject: [PATCH] linux7.1-rc5-lru_marie-0.9.2
  mm/swap.c                      |  248 ++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  341 +++-
- 42 files changed, 11624 insertions(+), 28 deletions(-)
+ 42 files changed, 11693 insertions(+), 28 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -1666,10 +1666,10 @@ index 0000000000..e55cccd321
 +#endif	/* _MM_LRU_MARIE_BITMAP_H */
 diff --git a/mm/lru_marie/core.c b/mm/lru_marie/core.c
 new file mode 100644
-index 0000000000..1a16cdd12d
+index 0000000000..539ee5f423
 --- /dev/null
 +++ b/mm/lru_marie/core.c
-@@ -0,0 +1,1201 @@
+@@ -0,0 +1,1204 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * mm/lru_marie/core.c — Marie LRU.
@@ -2427,7 +2427,8 @@ index 0000000000..1a16cdd12d
 +			  "reclaimed anon %ld file %ld\n"
 +			  "gen_growth_live anon %lu file %lu\n"
 +			  "concede_pressure_mode %u\n"
-+			  "concede floor %ld free %ld refault %ld memcg %ld\n",
++			  "concede floor %ld free %ld refault %ld memcg %ld\n"
++			  "orphan_bit anon %ld file %ld\n",
 +			  percpu_counter_sum(&marie_nr_folios),
 +			  atomic_long_read(&marie_dbg_pick[0]),
 +			  atomic_long_read(&marie_dbg_pick[1]),
@@ -2442,7 +2443,9 @@ index 0000000000..1a16cdd12d
 +			  atomic_long_read(&marie_dbg_concede[0]),
 +			  atomic_long_read(&marie_dbg_concede[1]),
 +			  atomic_long_read(&marie_dbg_concede[2]),
-+			  atomic_long_read(&marie_dbg_concede[3]));
++			  atomic_long_read(&marie_dbg_concede[3]),
++			  atomic_long_read(&marie_dbg_orphan_bit[0]),
++			  atomic_long_read(&marie_dbg_orphan_bit[1]));
 +}
 +
 +static struct kobj_attribute marie_stats_attr = __ATTR_RO(stats);
@@ -5424,10 +5427,10 @@ index 0000000000..b86381ab5f
 +SYM_FUNC_END(lru_marie_simd_scan_sse2)
 diff --git a/mm/lru_marie/state.c b/mm/lru_marie/state.c
 new file mode 100644
-index 0000000000..d59d0b5fae
+index 0000000000..ea7876203c
 --- /dev/null
 +++ b/mm/lru_marie/state.c
-@@ -0,0 +1,3112 @@
+@@ -0,0 +1,3175 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Marie per-PFN state array — allocation, init, and global counters.
@@ -6241,8 +6244,60 @@ index 0000000000..d59d0b5fae
 +			}
 +
 +			s = READ_ONCE(marie_state[pfn]);
-+			if ((s & mask) != target)
++			if ((s & mask) != target) {
++				/*
++				 * Orphaned L1 bit: set at (type, oldest_gen, tier)
++				 * but this PFN's current state byte no longer
++				 * encodes that coordinate -- it moved (inc_tier /
++				 * move_to_gen / publish_at_gen) after this bit was
++				 * set, or the folio was dropped and the PFN reused.
++				 * The mutators are lock-free best-effort (the
++				 * bitmap move is not atomic with the byte CAS that
++				 * commits it -- see marie_state_move_to_gen /
++				 * __marie_state_inc_tier), so a bit can be left
++				 * behind pointing at a coordinate the byte has
++				 * since moved past.
++				 *
++				 * Previously this was a silent `continue`: the bit
++				 * stayed set and gen_occupied stayed incremented
++				 * for it forever, since nothing else ever revisits
++				 * a bit once its gen ages past reclaim. Under a
++				 * hot, fast, single-type burst (walker inc_tier and
++				 * reclaim isolate racing the same PFNs at maximum
++				 * rate -- exactly a `tail /dev/zero`-style anon
++				 * flood) enough of these accumulate in one gen that
++				 * marie_find_oldest_occupied_mlv() keeps returning
++				 * a gen that is now 100% orphaned bits: isolate
++				 * finds candidates, every one fails this check, and
++				 * the sweep returns 0 reclaimed forever -- reclaim
++				 * for that type wedges permanently despite
++				 * gen_occupied reading > 0 (confirmed live: pick
++				 * anon_strict climbed by millions during a burst
++				 * while reclaimed-anon and pswpout stayed exactly
++				 * flat).
++				 *
++				 * We hold this bit's L2 range trylock exclusively
++				 * (marie_bm_range_trylock above), so no other
++				 * scanner can be racing us to clear this same bit.
++				 * marie_bm_clear only returns true on a genuine
++				 * 1->0 transition, so gating the gen_occ_dec on it
++				 * cannot double-decrement a slot some other path
++				 * already retired -- same discipline as every other
++				 * gen_occupied mutation site. A concurrent mutator
++				 * winning a fresh, legitimate transition into this
++				 * exact coordinate between our read of @s and this
++				 * clear is the narrow residual case; it strands
++				 * that one folio invisibly (bounded, self-limiting,
++				 * no counter underflow) rather than the unbounded
++				 * whole-gen wedge this closes.
++				 */
++				if (marie_bm_clear(&marie_track_bm[type][oldest_gen]
++						    [tier & 0x3], pfn)) {
++					marie_gen_occ_dec(pfn, oldest_gen, type);
++					atomic_long_inc(&marie_dbg_orphan_bit[type]);
++				}
 +				continue;
++			}
 +			z = (s & MARIE_PFN_ZONE_MASK)
 +				>> MARIE_PFN_ZONE_SHIFT;
 +			if ((int)z > max_zone)
@@ -6847,6 +6902,17 @@ index 0000000000..d59d0b5fae
 +
 +/* Concede-trigger attribution: [0]=floor [1]=free-pressure [2]=refault [3]=memcg. */
 +atomic_long_t marie_dbg_concede[4];
++
++/*
++ * Orphaned-bit self-heal count, per type [0]=anon [1]=file. See the
++ * byte-mismatch branch in marie_state_isolate_scan_l2lock: counts L1 bits
++ * the scanner found set at a (type, gen, tier) the PFN's current state byte
++ * no longer encodes, and therefore cleared + retired from gen_occupied on
++ * the spot. A steadily climbing count during a hot single-type burst is the
++ * signature of the walker/isolate/putback race that produces these orphans;
++ * see the fix comment at the clear site for the full mechanism.
++ */
++atomic_long_t marie_dbg_orphan_bit[2];
 +
 +/*
 + * GLOBAL anon-vs-file proportional pick bias (desktop/global-only). Signed:
@@ -8542,10 +8608,10 @@ index 0000000000..d59d0b5fae
 +}
 diff --git a/mm/lru_marie/state.h b/mm/lru_marie/state.h
 new file mode 100644
-index 0000000000..585bea9c8e
+index 0000000000..96f464328c
 --- /dev/null
 +++ b/mm/lru_marie/state.h
-@@ -0,0 +1,987 @@
+@@ -0,0 +1,990 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _MM_LRU_MARIE_STATE_H
 +#define _MM_LRU_MARIE_STATE_H
@@ -8568,6 +8634,9 @@ index 0000000000..585bea9c8e
 +#define MARIE_CONCEDE_REFAULT	0x2
 +extern unsigned int marie_concede_pressure_mode;
 +extern atomic_long_t marie_dbg_concede[4];	/* [floor,free,refault,memcg] */
++
++/* Orphaned scan-bit self-heal count, per type [0]=anon [1]=file. */
++extern atomic_long_t marie_dbg_orphan_bit[2];
 +
 +/*
 + * Marie per-PFN state array — paradigm specification.
@@ -9635,7 +9704,7 @@ index 0000000000..4d07cedd9c
 +#endif /* _MM_LRU_MARIE_STATE_COMPAT_H */
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..7d3631898e
+index 0000000000..ffde9ba9a7
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -9658,7 +9727,7 @@ index 0000000000..7d3631898e
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.9.2"
++#define MARIE_VERSION	"0.9.3"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
