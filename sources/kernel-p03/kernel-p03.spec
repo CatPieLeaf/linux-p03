@@ -103,65 +103,73 @@
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
 # ==============================================================================
-# Build identification
+# Build identification — the only section you edit
 # ==============================================================================
-# _rel:        %%undefine = stable, 0 = rc0, N = release candidate rcN
-# _koji_patch: Fedora mode only. 0 = latest available build, N = pin to exact
-#              patch number. Purely an internal fetch-pin — never appears in
-#              the package version (see "Version strings" below).
-# _koji_fc:    Fedora mode only. 0 = auto-detect from {dist}, N = override (e.g. 45)
 
-%define _basekver   7.2
-%define _stablekver .0
-%define _rel        7
-%define _koji_patch 58
-%define _koji_fc    46
+# Paste the full Koji NVR for the kernel you want to build against.
+# Accepted formats:
+#   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
+#   kernel-7.2.0-0.rc7.54.fc45
+#   kernel-7.1.8-200.fc44
+%define _koji_nvr  kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 
-# %%tag pins the exact linux-p03 release this build fetches the repo zip
-# from (see Sources below) — update.rhai bumps it to match the latest tag.
-%global tag 7.2.0.rc7.p03.17
+# openSUSE only — paste the NVR from Kernel:HEAD OBS project:
+#   https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/
+# Formats (git hash suffix is always present):
+#   kernel-source-7.2~rc7-2.1.gaf18d8c     (RC)
+#   kernel-source-7.1.8-5.1.ga5cdd68       (stable)
+%define _suse_nvr  kernel-source-7.2~rc7-2.1.gaf18d8c
 
-# 1 = fetch sources and changelog from %%tag above (default)
-# 0 = fetch from the moving main branch instead (useful for testing unreleased commits)
+# p03 release tag — sets the version suffix and the GitHub source ref.
+# Must match an existing tag in the repo when _fetch_tag is 1.
+# Format: p03.N
+%define _tag_ver   p03.17
+
+# 1 = fetch GitHub sources from %%_tag_ver above (default; tagged releases)
+# 0 = fetch from the moving main branch (COPR/OBS bleeding edge)
 %define _fetch_tag 1
 
-# Build mode (Fedora/RHEL only — openSUSE always fetches directly from the
-# Kernel:HEAD OBS project, see %%prep):
-#   1 = dynamic: fetch Fedora kernel SRPM from Koji at prep time (COPR/local)
-#   0 = static:  use a pre-fetched SRPM as Source0 (RPM Fusion / offline builds)
-#                requires _koji_patch > 0
+# ==============================================================================
+# Version string derivation — do not edit below this line
+# ==============================================================================
+# Each distro parses its own NVR into the same RPM version string
+# (e.g. 7.2.0.rc7.p03.18). openSUSE's tilde (7.2~rc7) is normalized to
+# Fedora's dotted form (7.2.0).
 #
-%define _koji_dynamic 1
+%define _buildnum   %(echo "%{_tag_ver}" | sed -E 's/^p03\\.//')
 
-%if !%{_distro_suse} && !%{_koji_dynamic}
-  %if %{_koji_patch} == 0
-    %{error: static mode (_koji_dynamic 0) requires a pinned _koji_patch > 0}
-  %endif
-  %if "%{?_rel}" != ""
-    %define _static_koji_release 0.rc%{_rel}.%{_koji_patch}.fc%{_koji_fc}
-  %else
-    %define _static_koji_release %{_koji_patch}.fc%{_koji_fc}
-  %endif
-  %define _static_nvr kernel-%{_tarkver}-%{_static_koji_release}
+%if %{_distro_suse}
+%define _is_rc    %(echo "%{_suse_nvr}" | grep -cE -- '~rc[0-9]')
+%define _rcnum    %(echo "%{_suse_nvr}" | sed -nE 's/.*~rc([0-9]+).*/\\1/p')
+%define _kver_str %(echo "%{_suse_nvr}" | cut -d- -f3 | sed 's/~.*//;/^[0-9]*\\.[0-9]*$/s/$/.0/')
+%define _basekver %(echo "%{_suse_nvr}" | sed -E 's/^kernel-source-([0-9]+\\.[0-9]+).*/\\1/')
+%else
+%define _kver_str %(echo "%{_koji_nvr}" | cut -d- -f2)
+%define _krel_str %(echo "%{_koji_nvr}" | cut -d- -f3-)
+%define _is_rc    %(echo "%{_koji_nvr}" | grep -cE -- '-0\\.rc[0-9]')
+%define _rcnum    %(echo "%{_koji_nvr}" | sed -nE 's/.*-0\\.rc([0-9]+)\\..*/\\1/p')
+%define _basekver %(echo "%{_koji_nvr}" | sed -E 's/^kernel-([0-9]+\\.[0-9]+)\\..*/\\1/')
+%endif
+
+%if %{_is_rc} && "%{_rcnum}" == ""
+  %{error: could not parse the RC number from the pasted NVR}
 %endif
 
 %if %{_build_gcc}
-    %define _gccreltag .gcc
+    %define _gccreltag  .gcc
     %define _gccpacktag -gcc
 %endif
 
-# ==============================================================================
-# Version strings
-# ==============================================================================
-%define _tarkver    %{_basekver}%{_stablekver}
 %define _custom_tag p03
-%define _buildver   17
-%define _srcdir     linux-%{_tarkver}
+%define _srcdir     linux-%{_kver_str}
 
-# Distro-agnostic package version — Fedora's Koji patch number and
-# openSUSE's OBS release counter are internal fetch-pinning details (see
-# %%prep) and never leak in here, so both distro modes produce the same NVR.
-%define _pkgver     %{_tarkver}%{?_rel:.rc%{_rel}}.%{_custom_tag}%{?_gccreltag}.%{_buildver}
+%if %{_is_rc}
+%define _pkgver_suffix .rc%{_rcnum}.%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%else
+%define _pkgver_suffix .%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%endif
+%define _pkgver %{_kver_str}%{_pkgver_suffix}
+
 %define _rpmver     %{version}-%{release}
 %define _kver       %{_rpmver}.%{_arch}
 %define _devel_dir  %{_usrsrc}/kernels/%{_kver}
@@ -224,8 +232,6 @@ Release: 1%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 Packager: CatPieLeaf <catpieleaf@proton.me>
-BuildRequires: curl
-BuildRequires: jq
 
 Requires: %{name}-core    = %{_rpmver}
 Requires: %{name}-modules = %{_rpmver}
@@ -256,6 +262,7 @@ BuildRequires: zstd
 BuildRequires: rust
 BuildRequires: rust-src
 BuildRequires: quilt
+BuildRequires: p7zip
 BuildRequires: ncurses-devel
 
 %if %{_distro_suse}
@@ -326,28 +333,22 @@ BuildRequires: qt5-qtbase-devel
 %endif
 %endif
 
-# Fedora/RHEL only — openSUSE fetches straight from the Kernel:HEAD OBS
-# project via curl (see %prep) and never touches the koji CLI at all.
-%if %{_koji_dynamic} && !%{_distro_suse}
-BuildRequires: koji
-%endif
-
 # ==============================================================================
 # Sources
 # ==============================================================================
 
-# Fetches the repo zip / raw sources from the %%tag pinned above;
-# set _fetch_tag 0 to fetch from the moving main branch instead.
-%if !%{_fetch_tag}
+%if %{_fetch_tag}
+%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{_tag_ver}/sources
+%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{_tag_ver}.tar.gz
+%else
 %define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
-%else
-%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{tag}/sources
-%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{tag}.tar.gz
 %endif
 
-%if !%{_distro_suse} && !%{_koji_dynamic}
-Source0: https://koji.fedoraproject.org/packages/kernel/%{_tarkver}/%{_static_koji_release}/src/%{_static_nvr}.src.rpm#/%{_static_nvr}.srpm
+%if !%{_distro_suse}
+Source0: https://koji.fedoraproject.org/packages/kernel/%{_kver_str}/%{_krel_str}/src/%{_koji_nvr}.src.rpm
+%else
+Source0: https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/%{_suse_nvr}.src.rpm
 %endif
 
 Source1: %{_baseurl}/kconfig/linux-p03.config
@@ -378,7 +379,6 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 # ==============================================================================
 %setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
 
-    # Create local patch drop directories so the user knows they exist.
     mkdir -p "%{_sourcedir}/local-patches"
     mkdir -p "%{_sourcedir}/local-patches-nvidia"
 
@@ -411,27 +411,10 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 %endif
 
 %if %{_distro_suse}
-    _suse_repo="https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src"
-  %if "%{?_rel}" != ""
-    _suse_verpat="%{_basekver}~rc%{_rel}"
-  %else
-    _suse_verpat="%{_tarkver}"
-  %endif
-    _suse_srpm=$(curl -fsSL "${_suse_repo}/" \
-                 | grep -oE "kernel-source-${_suse_verpat}-[0-9.]+(\.g[0-9a-f]+)?\.src\.rpm" \
-                 | sort -V | tail -1)
-    [ -z "${_suse_srpm}" ] && { echo "ERROR: no openSUSE Kernel:HEAD build matched ${_suse_verpat}" >&2; exit 1; }
-
-    if [ -f "%{_sourcedir}/${_suse_srpm}" ]; then
-        cp "%{_sourcedir}/${_suse_srpm}" "%{_builddir}/${_suse_srpm}"
-    else
-        curl -fsSL -o "%{_builddir}/${_suse_srpm}" "${_suse_repo}/${_suse_srpm}"
-        cp "%{_builddir}/${_suse_srpm}" "%{_sourcedir}/${_suse_srpm}"
-    fi
-
+    # openSUSE: Source0 is the Kernel:HEAD SRPM, pre-fetched by OBS.
     mkdir -p %{_builddir}/suse-srpm
     cd %{_builddir}/suse-srpm
-    rpm2cpio "%{_builddir}/${_suse_srpm}" | cpio -idm
+    rpm2cpio %{SOURCE0} | cpio -idm
     _suse_tarball=$(ls linux-*.tar.xz)
     tar xf "${_suse_tarball}" --strip-components=1 -C %{_builddir}/%{_srcdir}
     cd %{_builddir}/%{_srcdir}
@@ -457,54 +440,15 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     tar xjf %{_builddir}/suse-srpm/config.tar.bz2 -C %{_builddir}/suse-srpm
     cp %{_builddir}/suse-srpm/config/x86_64/default .config
 %else
-  %if %{_koji_dynamic}
-    # Dynamic mode: resolve and fetch Fedora kernel SRPM from Koji
-    _fedoraver=$(echo '%{?dist}' | sed 's/.*\.fc//')
-    %if %{_koji_fc} > 0
-    _fedoraver="%{_koji_fc}"
-    %endif
-    [ -z "${_fedoraver}" ] && { echo "ERROR: %{dist} is empty — cannot determine Fedora version" >&2; exit 1; }
-
-    %if "%{?_rel}" != ""
-      %if %{_koji_patch} > 0
-    _pattern="kernel-%{_tarkver}-0.rc%{_rel}*%{_koji_patch}.fc${_fedoraver}"
-      %else
-    _pattern="kernel-%{_tarkver}-0.rc%{_rel}*.fc${_fedoraver}"
-      %endif
-    %else
-      %if %{_koji_patch} > 0
-    _pattern="kernel-%{_tarkver}-%{_koji_patch}.fc${_fedoraver}"
-      %else
-    _pattern="kernel-%{_tarkver}-*.fc${_fedoraver}"
-      %endif
-    %endif
-    _nvr=$(koji list-builds --package=kernel --state=COMPLETE --pattern="${_pattern}" --quiet \
-           | awk '{print $1}' \
-           | sort -V | tail -1)
-    [ -z "${_nvr}" ] && { echo "ERROR: no Koji build matched: ${_pattern}" >&2; exit 1; }
-    _koji_srpm="${_nvr}.src.rpm"
-
-    if [ -f "%{_sourcedir}/${_koji_srpm}" ]; then
-        cp "%{_sourcedir}/${_koji_srpm}" "%{_builddir}/${_koji_srpm}"
-    else
-        cd %{_builddir} && koji download-build --arch=src "${_nvr}"
-        cp "%{_builddir}/${_koji_srpm}" "%{_sourcedir}/${_koji_srpm}"
-    fi
-    _srpm_path="%{_builddir}/${_koji_srpm}"
-  %else
-    # Static mode: use pre-fetched Source0
-    _srpm_path="%{SOURCE0}"
-  %endif
-
+    # Fedora/RHEL: Source0 is the Koji SRPM, pre-fetched before build.
     cd %{_builddir}
-    rpm2cpio "${_srpm_path}" | cpio -idm
+    rpm2cpio %{SOURCE0} | cpio -idm
     _tarball=$(ls linux-*.tar.xz)
     tar xf "${_tarball}" --strip-components=1 -C %{_srcdir}
     cd %{_srcdir}
 
     cp %{_builddir}/kernel-x86_64-fedora.config .config
 %endif
-
 %if %{_build_minimal}
     %make_build LSMOD=%{SOURCE2} localmodconfig
 %else
@@ -658,7 +602,7 @@ fi
 # ==============================================================================
 %build
 # ==============================================================================
-    %make_build EXTRAVERSION=-%{release}.%{_arch} KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
+    %make_build EXTRAVERSION=%{_pkgver_suffix}-%{release}.%{_arch} KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
 
     # bpftool vmlinux.h for the devel package
     %make_build -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 || true
@@ -1147,19 +1091,5 @@ Conflicts: nvidia-kmod
 %files
 
 %changelog
-%if !%{_fetch_tag}
-%(
-json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/commits/main)
-sha=$(echo "$json" | jq -r '.sha[0:7]')
-msg=$(echo "$json" | jq -r '.commit.message | split("\n")[0]' | sed 's/%/%%/g')
-echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
-echo "- ${sha}: ${msg}"
-)
-%else
-%(
-json=$(curl -fsSL https://api.github.com/repos/CatPieLeaf/linux-p03/releases/tags/%{tag})
-desc=$(echo "$json" | jq -r '.body // .name // "%{tag}"' | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/%/%%/g' -e 's/[[:space:]]*$//')
-echo "* $(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}"
-echo "- ${desc}"
-)
-%endif
+* %(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}
+- See https://github.com/CatPieLeaf/linux-p03/releases/tag/%{_tag_ver}
