@@ -9,10 +9,23 @@
 <div align="center">
   <img src=".github/title-darkmode.png#gh-dark-mode-only" width="450">
   <img src=".github/title-lightmode.png#gh-light-mode-only" width="450">
-  <p align="center">A zero-misplay kernel with Firelzrd, CachyOS, TKG, XanMod, Clear Linux patches and more, built from Fedora Koji SRPMs.</p>
+
+<br>
+<br>
+<p align="center">
+  <img src="https://img.shields.io/badge/kernel-7.2.0--rc7-f5bd20?logo=linux&logoColor=000000&style=for-the-badge&labelColor=FDEFC7" alt="Kernel version">
+  <a href="https://discord.gg/DSrbRk6dPp"><img src="https://img.shields.io/discord/1434166231274885313?label=support&logo=discord&style=for-the-badge&color=5965f1&labelColor=D6D9FC" alt="Discord"></a>
+  <a href="https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/"><img src="https://img.shields.io/badge/COPR-catpieleaf%2Fkernel--p03-white?logo=fedora&style=for-the-badge&color=52a1d9&labelColor=D4E8F6" alt="Fedora COPR"></a>
+  <a href="https://build.opensuse.org/package/show/home:CatPieLeaf:kernel-p03/kernel-p03"><img src="https://img.shields.io/badge/OBS-kernel--p03-white?logo=opensuse&style=for-the-badge&color=72b82a&labelColor=DCEDCA" alt="openSUSE OBS"></a>
+  <a href="https://repo.rakuos.org/">
+  <img src="https://img.shields.io/badge/RakuOS-kernel--p03--v3-white?style=for-the-badge&color=2462b3&labelColor=C8D8EC&logo=data:image/webp;base64,UklGRqgCAABXRUJQVlA4WAoAAAAQAAAAEwAAEwAAQUxQSJcAAAARgKtt+/nmjW1tGXUIGTNaZ6DVabu5k23bmDt18p6pk207zu93CBExASiUB7qWF1YWqsM6lDRv/GdKPjVxizgeM2UfyAHobzOEaQkwmCGuhe6D7ELgz1D0TtAY2KKxfUwjfUrjcJvGSYLGtu6PQi9GyL6t0LwQDQKoItkUAWBMl/UzLUYho+qoxNuwAaUZlshgb2ujjY2iAFZQOCDqAQAAMAsAnQEqFAAUAD4xFolDoiEhFAQAIAMEtgBOmUI6u9N4Qzi4g9agP2K8kDLGvKn9jrygKOBjt/1piN3oe/2PlN+VfYF/kH81/0/Aq/sAGsK5oB1BD9nc33T//pHhXfVVwKAA/v1N6gxzh9bFLSNq3fD/9bQLvB8jmwuVqVFW87yL1nWbIXgobaeeppFPl/yIAqlau4H9wNZ2RRxuKglF56f/hDX3qdmAlh4Kdl+CykAVS24ow2aZ4vh7v/SCp+Tv/WZ8yqculm3iFg3+3h1jFna3vpVsL/f4iyRk50SV5pf4dkjsOVQfXkEqPslHw/ho/M+q/UsNLkhWDv3/4lb/0+I4xfNKpEn/fSsU/mMa+mJ/VHSt6DaEvh0rl/+CQ0HFyrc47s/4zRIP1oJ9Gv/gPfbswij/Qn/4lkzhYti0AlqdMBC8b+8bAsc4KbFE8mlezbmStoOuSR8AnoRwZvfoLk7Ia8yhxr9xjEmZFpazcOHJc69Vg29PlPu/oL9niO5VUrTevJoulo332fXfz3XLM95ksoE1pvgf/AqbBpyedLsLz+S9BndULZm67j+3RA/Hk2hxqKyiK3qJPTd7XKm9PjbcJC7T67iE+vixaBmGlJcv8nI39Zkq//t90amPPW3KYuXlYMSHqqAAAA==" alt="RakuOS Repository"></a>
+</p>
+  <p align="center">A zero-misplay kernel with Firelzrd, CachyOS, TKG, XanMod, Clear Linux patches and more, built from Fedora Koji and OpenSUSE SRPMs.</p>
 </div>
 
-<p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji SPRMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
+<p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji and OpenSUSE SRPMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
+
+<p align="center">Support server: <a href="https://discord.gg/DSrbRk6dPp">RakuOS Discord</a></p>
 
 ---
 
@@ -22,7 +35,7 @@
 </div>
 
 <div align="center">
-  <p><i>Why P03? He is a character defined by obsessive optimization — he takes something already functional and tears it apart, rebuilds it piece by piece, and won't stop until it performs exactly the way he envisions. That's precisely what this kernel is: Fedora's solid, well-tested base, stripped down and reassembled with handpicked patches, a custom scheduler, compiler optimizations, and configurations that aren't present on the stock kernel. It's built to be exactly what it needs to be.</i></p>
+  <p><i>Why P03? He is a character defined by obsessive optimization — he takes something already functional and tears it apart, rebuilds it piece by piece, and won't stop until it performs exactly the way he envisions. That's precisely what this kernel is: Fedora's and OpenSUSE's solid, well-tested base, stripped down and reassembled with handpicked patches, a custom scheduler, compiler optimizations, and configurations that aren't present on the stock kernel. It's built to be exactly what it needs to be.</i></p>
 </div>
 
 
@@ -31,7 +44,7 @@
   <h4>F E A T U R E S</h4>
 </div>
 
- - Built on top of Fedora Koji Sources with Fedora's baseconfigs
+ - Built on top of Fedora Koji and OpenSUSE's Sources with their respective baseconfigs
  - Local Automatic Secureboot Signing and Key generation (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
@@ -43,7 +56,6 @@
  - BORE scheduler and Reflex CPU Governor
  - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
- - AMD HDMI-FRL Support
  - xConfig and nConfig during build
  - ADIOS I/O Scheduler
  - Handheld support (ROG Ally, Steam Deck, etc)
@@ -67,8 +79,11 @@
 </div>
 
 <div align="center">
-  <p><i>A massive thank you to <b><a href="https://rakuos.org/">RakuOS</a></b> for adopting this project as their default system kernel!<br><br>
-  Being chosen as the default kernel for an entire distribution is a huge honor. I am incredibly grateful to the RakuOS developers and community for their trust, valuable testing, and continuous support.</i></p>
+  <p><i>A massive thank you to <b><a href="https://rakuos.org/">RakuOS</a></b> for adopting this project as their <b><a href="https://rakuos.org/kernel">default system kernel</a></b>!<br><br>
+  Being chosen as the default kernel for an entire distribution is a huge honor. I am incredibly grateful to the RakuOS developers and community for their trust, valuable testing, and continuous support.
+
+  For all those reading this, remember that P03 <u>is</u> and <u>will always be</u> Independent! Any distros are still totally welcome to adopt P03 as their default kernel!
+  </i></p>
 </div>
 
 <div align="center">
@@ -151,7 +166,7 @@ sudo dnf install ~/rpmbuild/RPMS/x86_64/kernel-p03-*.rpm
   <h4>I N S T A L L A T I O N</h4>
 </div>
 
-Pre-built packages are available on [COPR](https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/) — no need to build from source unless you want a custom configuration.
+Pre-built packages are available on [COPR](https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/) (Fedora) and [OBS](https://build.opensuse.org/package/show/home:CatPieLeaf:kernel-p03/kernel-p03) (openSUSE) — no need to build from source unless you want a custom configuration.
 
 > [!WARNING]
 > ## ⚙️ C P U  -  S U P P O R T
@@ -189,6 +204,19 @@ sudo systemctl reboot
 > sudo mokutil --import /etc/kernel/certs/p03-kernel/mok.der
 > ```
 
+## 🦎 O P E N S U S E
+
+```bash
+sudo zypper addrepo https://download.opensuse.org/repositories/home:CatPieLeaf:kernel-p03/openSUSE_Tumbleweed/home:CatPieLeaf:kernel-p03.repo
+sudo zypper refresh
+sudo zypper install kernel-p03
+```
+> [!WARNING]
+> Run immediately after installation if using Secure Boot:
+> ```bash
+> sudo mokutil --import /etc/kernel/certs/p03-kernel/mok.der
+> ```
+
 ## 🟢 N V I D I A
 
 ```bash
@@ -203,6 +231,16 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
 > ```bash
 > sudo sh ./NVIDIA-Linux-x86_64-*.run --no-kernel-modules --no-dkms --no-nouveau-check
 > ```
+
+---
+> [!WARNING]
+> ## Disable systemd-oomd
+> Disable or mask `systemd-oomd`. LRU-Marie already handles OOM promptly and correctly on its own; `systemd-oomd` misreads its proactive cache management as exhaustion and kills apps prematurely, or freezes the system.
+> ```bash
+> sudo systemctl disable --now systemd-oomd
+> sudo systemctl mask systemd-oomd
+> ```
+> ⚠️ Very low-core / low-RAM machines: keep a PSI-based OOM daemon instead — Marie's mechanisms are kernel-side and can't help if CPU itself is saturated by compression.
 
 <div align="center">
   <h1>📑</h1>
