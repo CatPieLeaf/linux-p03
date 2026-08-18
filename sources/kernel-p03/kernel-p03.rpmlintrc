@@ -1,0 +1,103 @@
+# kernel-p03 ships the stock upstream kernel scripts/tools tree verbatim in
+# -devel (needed for `make prepare`/DKMS/out-of-tree module builds), same as
+# every real distro kernel-devel package. These findings are all inherent to
+# that upstream content, not bugs introduced by this spec — see
+# opensuse-kernel-source's own kernel-source.rpmlintrc for the same idea
+# applied to their zero-length-file/vdso/dangling-symlink noise; this covers
+# the separate set kernel-p03 actually hits.
+
+# Upstream kernel scripts (scripts/*.pl, *.py, tools/docs/kernel-doc, ...)
+# use `#!/usr/bin/env <interpreter>` shebangs by design, straight from
+# torvalds/linux. Rewriting thousands of upstream files would fork every
+# one of them from upstream for no functional gain (nothing in this package
+# executes them at RPM-dependency-resolution time).
+addFilter("env-script-interpreter /usr/src/kernels/.*")
+
+# /usr/src/kernels/<kver> is the standard kernel-devel headers path on every
+# RPM-based distro, Fedora and SUSE alike — required for `make prepare`.
+addFilter("filelist-forbidden-fhs23 /usr/src/kernels")
+
+# include/config/<SYMBOL>: kbuild's own zero-byte Kconfig dependency-tracking
+# marker files (one per enabled config symbol) — required by fixdep, same
+# category opensuse-kernel-source's own rpmlintrc filters for their
+# /usr/src/linux-*-obj/ path (see kernel-source.rpmlintrc).
+addFilter("zero-length /usr/src/kernels/.*/include/config/.*")
+
+# tools/include/uapi/* intentionally mirrors include/uapi/* (tooling that
+# builds standalone against a copy of the uapi headers) — by upstream kernel
+# tree design, not an accidental duplication.
+addFilter("files-duplicate /usr/src/kernels/.*")
+
+# Package-level aggregate of the same tools/include/uapi/* mirroring above
+# (no path in this check's output, just a total wasted-byte count) — same
+# root cause, not actionable without breaking the intentional mirroring.
+addFilter("files-duplicated-waste")
+
+# kernel-p03-devel-matched is a meta-package pulling in core+modules+devel
+# together (same role/naming as SUSE's own kernel-devel-matched convention);
+# it isn't itself a -devel package and isn't meant to be.
+addFilter("devel-dependency kernel-p03-devel")
+
+# scripts/dev-needs.sh ships as-is from upstream kernel source.
+addFilter("bin-sh-syntax-error /usr/src/kernels/.*/scripts/dev-needs.sh")
+addFilter("potential-bashisms /usr/src/kernels/.*/scripts/dev-needs.sh")
+
+# Legitimate empty-by-design upstream stub headers: rwonce.h/nmi.h are
+# tools/include/ arch-fallback placeholders (real content only needed on
+# some architectures), and dummy-plugin-dir is part of the dummy-tools
+# stub toolchain (same rationale as the dummy-tools symlinks above).
+addFilter("zero-length /usr/src/kernels/.*/tools/include/asm/rwonce.h")
+addFilter("zero-length /usr/src/kernels/.*/tools/include/linux/nmi.h")
+addFilter("zero-length /usr/src/kernels/.*/scripts/dummy-tools/dummy-plugin-dir/.*")
+
+# scripts/.gitignore etc: upstream kernel tree ships these throughout
+# scripts/, and `cp -a scripts` (needed for `make prepare`) brings them
+# along verbatim. Harmless, not shipped as anything actionable.
+addFilter("version-control-internal-file /usr/src/kernels/.*")
+addFilter("hidden-file-or-dir /usr/src/kernels/.*")
+
+# scripts/atomic/fallbacks/*: upstream data files consumed by
+# scripts/atomic/gen-atomics.sh as templates, not meant to be executed
+# directly — no shebang by design.
+addFilter("script-without-shebang /usr/src/kernels/.*/scripts/atomic/fallbacks/.*")
+
+# scripts/dummy-tools/{nm,objcopy} -> ld and scripts/kernel-doc ->
+# tools/docs/kernel-doc: intentional upstream symlinks (dummy-tools is a
+# stub toolchain for `make headers_install` w/o a real cross-compiler; the
+# kernel-doc symlink is upstream's own scripts/->tools/docs/ relocation).
+addFilter("symlink-to-binary-with-shebang /usr/src/kernels/.*")
+
+# scripts/asn1_compiler, fixdep, etc.: host build helper binaries compiled
+# during this build and needed unstripped for `make prepare`/out-of-tree
+# module builds against this -devel package — same as every kernel-devel.
+addFilter("unstripped-binary-or-object /usr/src/kernels/.*")
+addFilter("unstripped-binary-or-object /lib/modules/.*/sign-file")
+
+# Upstream kernel scripts shipped without the executable bit by design
+# (sourced or invoked via an explicit interpreter, not executed directly).
+addFilter("non-executable-script /usr/src/kernels/.*")
+
+# %changelog's macros are intentional: %{version}/%{release}/%{_tag_ver}
+# and %(date ...) generate an accurate changelog line reflecting what was
+# actually built. Escaping them to satisfy this check would just print the
+# literal macro text instead, defeating the point.
+addFilter("macro-in-%changelog")
+
+# kernel-p03 (vmlinuz), kernel-p03-nvidia-open (.ko.zst) and the
+# meta-packages (kernel-p03-modules, kernel-p03-devel-matched) don't ship
+# anything rpmlint's binary detector recognizes as an ELF/arch binary, but
+# genuinely are/depend on arch-specific content — not actually noarch.
+addFilter("no-binary")
+
+# We don't ship a kernel selftest/regression suite as part of this build;
+# nothing meaningful to run in %check for a kernel package build like this.
+addFilter("no-%check-section")
+
+# %default_patch_fuzz 2 is intentional (patches.rpmify/patches.suse and the
+# p03 patchset both need slack against upstream drift) — informational only.
+addFilter("patch-fuzz-is-changed")
+
+# Packager is intentionally set: this is a personal kernel project, not a
+# distro package meant to be rebuilt/re-stamped by third-party infra — the
+# tag identifies the actual maintainer, which is the point here.
+addFilter("hardcoded-packager-tag")

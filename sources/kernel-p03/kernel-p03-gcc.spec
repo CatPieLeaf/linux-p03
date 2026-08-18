@@ -111,19 +111,19 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
+%define _koji_nvr  kernel-7.2.0-61.fc45
 
 # openSUSE only — paste the NVR from Kernel:HEAD OBS project:
 #   https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/
 # Formats (git hash suffix is always present):
 #   kernel-source-7.2~rc7-2.1.gaf18d8c     (RC)
 #   kernel-source-7.1.8-5.1.ga5cdd68       (stable)
-%define _suse_nvr  kernel-source-7.2~rc7-2.1.gaf18d8c
+%define _suse_nvr  kernel-source-7.2.0-3.1.g3c47466
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when _fetch_tag is 1.
 # Format: p03.N
-%define _tag_ver   p03.17
+%define _tag_ver   p03.18
 
 # 1 = fetch GitHub sources from %%_tag_ver above (default; tagged releases)
 # 0 = fetch from the moving main branch (COPR/OBS bleeding edge)
@@ -406,6 +406,11 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     if [ -s "%{_builddir}/nv-patches/series" ]; then
         cd %{_builddir}/%{_nv_pkg}
         quilt push -a --fuzz=2 --leave-rejects
+        if find . -name '*.rej' | grep -q .; then
+            echo "ERROR: NVIDIA patchset left rejected hunks:"
+            find . -name '*.rej'
+            exit 1
+        fi
         cd %{_builddir}/%{_srcdir}
     fi
 %endif
@@ -432,6 +437,11 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
         | xargs -n1 basename >> %{_builddir}/suse-patches/series
 
     quilt push -a --fuzz=2 --leave-rejects
+    if find . -name '*.rej' | grep -q .; then
+        echo "ERROR: openSUSE patchset (patches.rpmify/patches.suse) left rejected hunks:"
+        find . -name '*.rej'
+        exit 1
+    fi
 
     rm -rf %{_builddir}/%{_srcdir}/.pc
 
@@ -439,6 +449,15 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     # Fedora's kernel-x86_64-fedora.config.
     tar xjf %{_builddir}/suse-srpm/config.tar.bz2 -C %{_builddir}/suse-srpm
     cp %{_builddir}/suse-srpm/config/x86_64/default .config
+
+    # openSUSE's "default" flavor bakes CONFIG_LOCALVERSION="-default" (their
+    # kernel-default flavor marker). Left alone, kbuild appends "-default" to
+    # KERNELRELEASE, so modules_install writes modules.builtin(.modinfo) under
+    # .../lib/modules/%%{_pkgver}-%%{release}.%%{_arch}-default while every path
+    # in this spec (%%{_kernel_dir}, %%files) expects the suffix-free release
+    # computed from our own EXTRAVERSION. Strip it so p03's version string is
+    # the only thing that ends up in KERNELRELEASE.
+    ./scripts/config --set-str LOCALVERSION ""
 %else
     # Fedora/RHEL: Source0 is the Koji SRPM, pre-fetched before build.
     cd %{_builddir}
@@ -479,6 +498,15 @@ done < <(find "%{_builddir}/patches" -maxdepth 1 -name "*.patch" 2>/dev/null | s
 
 if [ -s "%{_builddir}/patches/series" ]; then
     quilt push -a --fuzz=2 --leave-rejects
+    if find . -name '*.rej' | grep -q .; then
+        echo "ERROR: p03 patchset (patchset/patches-p03, includes aufs.patch) left rejected hunks:"
+        find . -name '*.rej'
+        exit 1
+    fi
+    # quilt's own bookkeeping dir - pristine pre-patch snapshots for `quilt
+    # pop`. Left in place it gets swept into -devel by the Makefile*/Kconfig*
+    # find below (zero-length files, rpmlint E: zero-length/files-duplicated-waste).
+    rm -rf %{_builddir}/%{_srcdir}/.pc
 fi
 
 ./scripts/kconfig/merge_config.sh -m .config %{SOURCE1}
@@ -602,7 +630,7 @@ fi
 # ==============================================================================
 %build
 # ==============================================================================
-    %make_build EXTRAVERSION=%{_pkgver_suffix}-%{release}.%{_arch} KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
+    %make_build EXTRAVERSION=%{_pkgver_suffix}-%{release}.%{_arch} KERNEL_MODULE_DIRECTORY=/lib/modules KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
 
     # bpftool vmlinux.h for the devel package
     %make_build -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 || true
@@ -618,7 +646,7 @@ fi
 
     # 1. Kernel modules
     echo "Installing kernel modules..."
-    ZSTD_CLEVEL=19 %make_build INSTALL_MOD_PATH="%{buildroot}" INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
+    ZSTD_CLEVEL=19 %make_build INSTALL_MOD_PATH="%{buildroot}" KERNEL_MODULE_DIRECTORY=/lib/modules INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
 
     # 2. NVIDIA modules
 %if %{_build_nv}
@@ -681,6 +709,7 @@ fi
     cp    --parents tools/objtool/include/objtool/*.h %{buildroot}%{_devel_dir}
     cp    --parents tools/objtool/sync-check.sh       %{buildroot}%{_devel_dir}
     cp    --parents tools/scripts/utilities.mak       %{buildroot}%{_devel_dir}
+    [ -f tools/docs/kernel-doc ] && cp -a --parents tools/docs/kernel-doc %{buildroot}%{_devel_dir} || true
 
     # Files needed for `make prepare` — x86_64
     cp -a --parents arch/x86/boot/ctype.h                    %{buildroot}%{_devel_dir}
@@ -748,7 +777,15 @@ Provides: kernel-core-uname-r = %{_kver}
 Provides: kernel-uname-r      = %{_kver}
 
 Requires:      kernel-modules-uname-r = %{_kver}
+%if !%{_distro_suse}
 Requires(pre): /usr/bin/kernel-install
+%else
+# openSUSE doesn't use kernel-install; boot entries go through sdbootutil
+# (or /usr/lib/bootloader/bootloader_entry) instead, checked at runtime —
+# neither is universally present across openSUSE bootloader setups, so this
+# stays a soft Recommends rather than a hard Requires.
+Recommends: sdbootutil
+%endif
 Requires(pre): coreutils
 Requires(pre): dracut >= 027
 Requires(pre): systemd >= 203-2
@@ -815,8 +852,23 @@ Requires(post): sbsigntools
     mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
     echo "vmlinuz signed."
 %endif
-    if [ ! -e /run/ostree-booted ]; then
-        /bin/kernel-install add %{_kver} %{_kernel_dir}/vmlinuz || exit $?
+    # OBS build/check chroots mark themselves with /.buildenv; real SUSE
+    # kernel packages skip bootloader integration entirely there too (see
+    # suse-module-tools/kernel-scriptlets/rpm-script) since there's no real
+    # /boot to manage and no bootloader tooling installed in that chroot.
+    if [ -e /.buildenv ]; then
+        :
+    elif [ ! -e /run/ostree-booted ]; then
+%if %{_distro_suse}
+        if [ -x /usr/bin/sdbootutil ] && /usr/bin/sdbootutil is-installed &>/dev/null; then
+            /usr/bin/sdbootutil --image=%{_kernel_dir}/vmlinuz add-kernel %{_kver} || exit $?
+        else
+            echo "sdbootutil not set up — you may need to add %{_kver} to your"
+            echo "bootloader manually (grub2-mkconfig, sdbootutil, etc.)."
+        fi
+%else
+        /usr/bin/kernel-install add %{_kver} %{_kernel_dir}/vmlinuz || exit $?
+%endif
         if [[ ! -e "/boot/symvers-%{_kver}.zst" ]]; then
             cp "%{_kernel_dir}/symvers.zst" "/boot/symvers-%{_kver}.zst"
             if command -v restorecon &>/dev/null; then
@@ -841,7 +893,17 @@ Requires(post): sbsigntools
 %endif
 
 %preun core
-    /bin/kernel-install remove %{_kver} || exit $?
+    if [ -e /.buildenv ]; then
+        :
+%if %{_distro_suse}
+    elif [ -x /usr/bin/sdbootutil ] && /usr/bin/sdbootutil is-installed &>/dev/null; then
+        /usr/bin/sdbootutil --image=%{_kernel_dir}/vmlinuz remove-kernel %{_kver} || exit $?
+    fi
+%else
+    else
+        /usr/bin/kernel-install remove %{_kver} || exit $?
+    fi
+%endif
     if [ -x /usr/sbin/weak-modules ]; then
         /usr/sbin/weak-modules --remove-kernel %{_kver} || exit $?
     fi
@@ -852,7 +914,10 @@ Requires(post): sbsigntools
     %ghost %attr(0644, root, root) /boot/symvers-%{_kver}.zst
 %if %{_build_secureboot}
     # ghost: generated on the target machine by posttrans; tracked for removal
-    # but not present in the RPM payload itself.
+    # but not present in the RPM payload itself. Parent dirs need their own
+    # %%dir entries too — nothing else on openSUSE owns /etc/kernel(/certs).
+    %ghost %attr(0755, root, root) %dir /etc/kernel
+    %ghost %attr(0755, root, root) %dir /etc/kernel/certs
     %ghost %attr(0700, root, root) %dir %{_mok_dir}
     %ghost %attr(0600, root, root) %{_mok_key}
     %ghost %attr(0644, root, root) %{_mok_der}
@@ -971,6 +1036,7 @@ Requires: gcc
     fi
 
 %files devel
+    %dir %{_usrsrc}/kernels
     %{_devel_dir}
 
 # ==============================================================================
@@ -998,7 +1064,7 @@ Requires: %{name}-devel   = %{_rpmver}
 %if %{_build_nv}
 %package nvidia-open
 # ==============================================================================
-Summary: nvidia-open %{_nv_ver} kernel modules for %{name}
+Summary: NVIDIA-open %{_nv_ver} kernel modules for %{name}
 License: MIT AND GPL-2.0-only
 
 Provides: installonlypkg(kernel-module)
@@ -1083,6 +1149,7 @@ Conflicts: nvidia-kmod
     fi
 
 %files nvidia-open
+    %dir %{_defaultlicensedir}/%{name}-nvidia-open
     %license %{_defaultlicensedir}/%{name}-nvidia-open/COPYING
     %{_kernel_dir}/nvidia
 %endif

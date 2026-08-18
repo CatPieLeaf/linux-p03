@@ -23,7 +23,7 @@ new file mode 100644
 index 0000000..4160901
 --- /dev/null
 +++ b/drivers/vhba/Kconfig
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,14 @@
 +#
 +# vhba driver as part of kernel source
 +#
@@ -32,6 +32,7 @@ index 0000000..4160901
 +
 +config VHBA
 +        tristate "vhba module"
++        depends on SCSI
 +        default y
 +        help
 +          vhba kernel module integrated as part of kernel source.

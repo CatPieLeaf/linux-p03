@@ -81,9 +81,6 @@ p "lru_marie.patch" \
 p "nap.patch" \
   "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
 
-p "vhba.patch" \
-  "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.2/NEXT/04-vhba.patch"
-
 p "mm-filemap-retry.patch" \
   "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.2/NEXT/15-mm-filemap-retry.patch"
 
