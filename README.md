@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/kernel-7.2.0--rc7-f5bd20?logo=linux&logoColor=000000&style=for-the-badge&labelColor=FDEFC7" alt="Kernel version">
   <a href="https://discord.gg/DSrbRk6dPp"><img src="https://img.shields.io/discord/1434166231274885313?label=support&logo=discord&style=for-the-badge&color=5965f1&labelColor=D6D9FC" alt="Discord"></a>
   <a href="https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/"><img src="https://img.shields.io/badge/COPR-catpieleaf%2Fkernel--p03-white?logo=fedora&style=for-the-badge&color=52a1d9&labelColor=D4E8F6" alt="Fedora COPR"></a>
-  <a href="https://build.opensuse.org/package/show/home:CatPieLeaf:kernel-p03/kernel-p03"><img src="https://img.shields.io/badge/OBS-kernel--p03-white?logo=opensuse&style=for-the-badge&color=72b82a&labelColor=DCEDCA" alt="openSUSE OBS"></a>
+  <a href="https://build.opensuse.org/package/show/home:CatPieLeaf:Kernel-P03/Kernel-P03"><img src="https://img.shields.io/badge/OBS-kernel--p03-white?logo=opensuse&style=for-the-badge&color=72b82a&labelColor=DCEDCA" alt="openSUSE OBS"></a>
   <a href="https://repo.rakuos.org/">
   <img src="https://img.shields.io/badge/RakuOS-kernel--p03--v3-white?style=for-the-badge&color=2462b3&labelColor=C8D8EC&logo=data:image/webp;base64,UklGRqgCAABXRUJQVlA4WAoAAAAQAAAAEwAAEwAAQUxQSJcAAAARgKtt+/nmjW1tGXUIGTNaZ6DVabu5k23bmDt18p6pk207zu93CBExASiUB7qWF1YWqsM6lDRv/GdKPjVxizgeM2UfyAHobzOEaQkwmCGuhe6D7ELgz1D0TtAY2KKxfUwjfUrjcJvGSYLGtu6PQi9GyL6t0LwQDQKoItkUAWBMl/UzLUYho+qoxNuwAaUZlshgb2ujjY2iAFZQOCDqAQAAMAsAnQEqFAAUAD4xFolDoiEhFAQAIAMEtgBOmUI6u9N4Qzi4g9agP2K8kDLGvKn9jrygKOBjt/1piN3oe/2PlN+VfYF/kH81/0/Aq/sAGsK5oB1BD9nc33T//pHhXfVVwKAA/v1N6gxzh9bFLSNq3fD/9bQLvB8jmwuVqVFW87yL1nWbIXgobaeeppFPl/yIAqlau4H9wNZ2RRxuKglF56f/hDX3qdmAlh4Kdl+CykAVS24ow2aZ4vh7v/SCp+Tv/WZ8yqculm3iFg3+3h1jFna3vpVsL/f4iyRk50SV5pf4dkjsOVQfXkEqPslHw/ho/M+q/UsNLkhWDv3/4lb/0+I4xfNKpEn/fSsU/mMa+mJ/VHSt6DaEvh0rl/+CQ0HFyrc47s/4zRIP1oJ9Gv/gPfbswij/Qn/4lkzhYti0AlqdMBC8b+8bAsc4KbFE8mlezbmStoOuSR8AnoRwZvfoLk7Ia8yhxr9xjEmZFpazcOHJc69Vg29PlPu/oL9niO5VUrTevJoulo332fXfz3XLM95ksoE1pvgf/AqbBpyedLsLz+S9BndULZm67j+3RA/Hk2hxqKyiK3qJPTd7XKm9PjbcJC7T67iE+vixaBmGlJcv8nI39Zkq//t90amPPW3KYuXlYMSHqqAAAA==" alt="RakuOS Repository"></a>
 </p>
@@ -207,9 +207,9 @@ sudo systemctl reboot
 ## 🦎 O P E N S U S E
 
 ```bash
-sudo zypper addrepo https://download.opensuse.org/repositories/home:CatPieLeaf:kernel-p03/openSUSE_Tumbleweed/home:CatPieLeaf:kernel-p03.repo
-sudo zypper refresh
-sudo zypper install kernel-p03
+sudo zypper ar -f https://download.opensuse.org/repositories/home:/CatPieLeaf:/Kernel-P03/openSUSE_Tumbleweed/ kernel-p03
+sudo zypper --gpg-auto-import-keys refresh
+sudo zypper install kernel-p03 kernel-p03-core kernel-p03-devel kernel-p03-devel-matched kernel-p03-modules
 ```
 > [!WARNING]
 > Run immediately after installation if using Secure Boot:
