@@ -118,7 +118,7 @@
 # Formats (git hash suffix is always present):
 #   kernel-source-7.2~rc7-2.1.gaf18d8c     (RC)
 #   kernel-source-7.1.8-5.1.ga5cdd68       (stable)
-%define _suse_nvr  kernel-source-7.2.0-3.1.g3c47466
+%define _suse_nvr  kernel-source-7.2.0-4.1.g080d79d
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when _fetch_tag is 1.
