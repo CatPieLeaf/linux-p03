@@ -129,6 +129,9 @@ p "tcp-skip-collapse.patch" \
 p "netfilter-flowoffload.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/netfilter/0001-netfilter-add-xt_FLOWOFFLOAD-target.patch?ref_type=heads"
 
+p "netfilter-fullcone.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/netfilter/0001-netfilter-Add-netfilter-nf_tables-fullcone-support.patch?ref_type=heads"
+
 p "binder-debug-mask.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/binder/0002-binder-give-binder_alloc-its-own-debug-mask-file.patch?ref_type=heads"
 
