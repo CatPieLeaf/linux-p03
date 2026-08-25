@@ -123,7 +123,7 @@
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when _fetch_tag is 1.
 # Format: p03.N
-%define _tag_ver   p03.18
+%define _tag_ver   p03.19
 
 # 1 = fetch GitHub sources from %%_tag_ver above (default; tagged releases)
 # 0 = fetch from the moving main branch (COPR/OBS bleeding edge)
