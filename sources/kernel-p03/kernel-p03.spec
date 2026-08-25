@@ -59,46 +59,49 @@
   %undefine _include_frame_pointers
 %endif
 
-# Compiler: set exactly one to 1. Setting both or neither aborts the build.
-%define _build_clang 1
-%define _build_gcc   0
+# Compiler: rpmbuild --with gcc ... for gcc, default clang.
+%bcond gcc 0
 
-# LTO: clang-only. Set at most one to 1.
-%define _build_lto 1
-%define _lto_thin  1
-%define _lto_full  0
+# LTO: 0 = disabled, 1 = thin, 2 = full. Clang-only — forced to 0 when gcc is
+# selected, see "Cmdline overrides" section below.
+%define _lto_type 1
 
 # Optimization level: 0=size, 2=O2, 3=O3, other=default
 %define _opt_level 3
 
 # Secure Boot: generates a per-machine MOK key on first install.
 # Enroll once with: mokutil --import /etc/kernel/certs/p03-kernel/mok.der
-%define _build_secureboot 1
+# rpmbuild --without secureboot ... to disable.
+%bcond secureboot 1
 
 # Tickrate: 100, 250, 300, 500, 600, 750, 1000. Invalid value falls back to 1000.
-%define _hz_tick 750
+%define _hz_tickrate 750
 
 # x86_64 ISA level: 1-4. Invalid value falls back to x86_64_v3.
-%define _x86_64_lvl 3
+%{!?_x86_64_lvl: %define _x86_64_lvl 3}
 
 # Minimal kernel via modprobed.db (CI only, not for production).
-%define _build_minimal 0
+# rpmbuild --with minimal ... to enable.
+%bcond minimal 0
 
-# Local-patches-only mode:
-#   0 = default: download GitHub patchset and apply it, then apply local patches
-#   1 = offline:  skip GitHub download entirely; apply only patches found in
-#                 SOURCES/local-patches/ (kernel) and SOURCES/local-patches-nvidia/
-%define _local_patches_only 0
+# Local-patches-only mode: rpmbuild --with local_patches ...
+#   default: download GitHub patchset and apply it, then apply local patches
+#   with:    offline — skip GitHub download entirely; apply only patches found
+#            in SOURCES/local-patches/ (kernel) and SOURCES/local-patches-nvidia/
+%bcond local_patches 0
 
-%define _build_generic 1
-%define _interactive_config 0
+# rpmbuild --without generic ... for a non-portable, machine-specific build.
+%bcond generic 1
+# rpmbuild --with interactive ... to run menuconfig interactively.
+%bcond interactive 0
 
-# NR_CPUS: 1 = set from _nr_cpus (defaults to nproc), 0 = use kernel default.
-%define _set_nr_cpus 0
+# NR_CPUS: rpmbuild --with set_nr_cpus ... to pin NR_CPUS to _nr_cpus below
+# instead of the kernel default.
+%bcond set_nr_cpus 0
 %define _nr_cpus     %(nproc)
 
-# NVIDIA open kernel modules.
-%define _build_nv 1
+# NVIDIA open kernel modules. rpmbuild --without nv ... to disable.
+%bcond nv 1
 %define _nv_ver   610.57.04
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
@@ -121,13 +124,36 @@
 %define _suse_nvr  kernel-source-7.2.0-4.1.g080d79d
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
-# Must match an existing tag in the repo when _fetch_tag is 1.
+# Must match an existing tag in the repo when building %{with fetch_tag}.
 # Format: p03.N
 %define _tag_ver   p03.19
 
-# 1 = fetch GitHub sources from %%_tag_ver above (default; tagged releases)
-# 0 = fetch from the moving main branch (COPR/OBS bleeding edge)
-%define _fetch_tag 1
+# with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
+# rpmbuild --without fetch_tag ... to fetch from the moving main branch
+# (COPR/OBS bleeding edge) instead.
+%bcond fetch_tag 1
+
+# ==============================================================================
+# Cmdline overrides logic
+# ==============================================================================
+
+# LTO: rpmbuild --define '_lto 2' ...
+%{?_lto: %define _lto_type %{_lto}}
+
+# LTO is clang-only; force off whenever gcc ends up selected — wins over the
+# override above.
+%if %{with gcc}
+  %define _lto_type 0
+%endif
+
+# x86_64 ISA level: rpmbuild --define '_isa_lvl 2' ...
+%{?_isa_lvl: %define _x86_64_lvl %{_isa_lvl}}
+
+# Optimization level: rpmbuild --define '_opt_lv 0' ...
+%{?_opt_lv: %define _opt_level %{_opt_lv}}
+
+# Tickrate: rpmbuild --define '_hz_tick 1000' ...
+%{?_hz_tick: %define _hz_tickrate %{_hz_tick}}
 
 # ==============================================================================
 # Version string derivation — do not edit below this line
@@ -155,7 +181,7 @@
   %{error: could not parse the RC number from the pasted NVR}
 %endif
 
-%if %{_build_gcc}
+%if %{with gcc}
     %define _gccreltag  .gcc
     %define _gccpacktag -gcc
 %endif
@@ -176,25 +202,6 @@
 %define _kernel_dir /lib/modules/%{_kver}
 
 # ==============================================================================
-# Validation
-# ==============================================================================
-%if %{_build_clang} && %{_build_gcc}
-  %{error: _build_clang and _build_gcc are mutually exclusive — set only one to 1}
-%endif
-
-%if !%{_build_clang} && !%{_build_gcc}
-  %{error: no compiler selected — set either _build_clang or _build_gcc to 1}
-%endif
-
-%if %{_lto_thin} && %{_lto_full}
-  %{error: _lto_thin and _lto_full are mutually exclusive — set only one to 1}
-%endif
-
-%if %{_build_gcc} && %{_build_lto}
-  %{error: GCC LTO is not supported by this specfile — LTO is only available with _build_clang; unset _build_lto or set _build_clang to 1}
-%endif
-
-# ==============================================================================
 # Compiler flags
 # ==============================================================================
 %if %{_opt_level}
@@ -207,13 +214,13 @@
 
 %define _kcflags %{_opt_cflags}
 
-%if %{_build_clang}
+%if %{without gcc}
   %define _clang_args  CC=clang CXX=clang++ LD=ld.lld LLVM=1 LLVM_IAS=1
 %else
   %define _gcc_ld_args LD=ld.lld
 %endif
 
-%if %{_build_secureboot}
+%if %{with secureboot}
   %define _mok_dir /etc/kernel/certs/p03-kernel
   %define _mok_der %{_mok_dir}/mok.der
   %define _mok_key %{_mok_dir}/mok.key
@@ -308,12 +315,12 @@ BuildRequires: rustfmt
 
 BuildRequires: lld
 
-%if %{_build_clang}
+%if %{without gcc}
 BuildRequires: clang
 BuildRequires: llvm
 %endif
 
-%if %{_build_clang} && %{_build_lto}
+%if %{without gcc} && %{_lto_type}
 %if %{_distro_suse}
 BuildRequires: llvm-polly
 %else
@@ -321,11 +328,11 @@ BuildRequires: polly
 %endif
 %endif
 
-%if %{_build_nv}
+%if %{with nv}
 BuildRequires: gcc-c++
 %endif
 
-%if %{_interactive_config}
+%if %{with interactive}
 %if %{_distro_suse}
 BuildRequires: libqt5-qtbase-devel
 %else
@@ -337,7 +344,7 @@ BuildRequires: qt5-qtbase-devel
 # Sources
 # ==============================================================================
 
-%if %{_fetch_tag}
+%if %{with fetch_tag}
 %define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{_tag_ver}/sources
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{_tag_ver}.tar.gz
 %else
@@ -346,22 +353,22 @@ BuildRequires: qt5-qtbase-devel
 %endif
 
 %if !%{_distro_suse}
-Source0: https://koji.fedoraproject.org/packages/kernel/%{_kver_str}/%{_krel_str}/src/%{_koji_nvr}.src.rpm
+Source0: https://koji.fedoraproject.org/packages/kernel/%{_kver_str}/%{_krel_str}/src/%{_koji_nvr}.src.rpm#/%{_koji_nvr}.srpm
 %else
-Source0: https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/%{_suse_nvr}.src.rpm
+Source0: https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/%{_suse_nvr}.src.rpm#/%{_suse_nvr}.srpm
 %endif
 
 Source1: %{_baseurl}/kconfig/linux-p03.config
 
-%if %{_build_minimal}
+%if %{with minimal}
 Source2: https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-config/%{_basekver}/minimal-modprobed.db
 %endif
 
-%if !%{_local_patches_only}
+%if %{without local_patches}
 Source3: %{_gh_archive}
 %endif
 
-%if %{_build_nv}
+%if %{with nv}
 Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%{_nv_pkg}.tar.gz
 %endif
 
@@ -382,18 +389,18 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     mkdir -p "%{_sourcedir}/local-patches"
     mkdir -p "%{_sourcedir}/local-patches-nvidia"
 
-%if !%{_local_patches_only}
+%if %{without local_patches}
     _gh_tmp="%{_builddir}/_gh_repo"
     mkdir -p "${_gh_tmp}"
     tar xzf %{SOURCE3} -C "${_gh_tmp}" --strip-components=1
 %endif
 
-%if %{_build_nv}
+%if %{with nv}
     # ---- Apply NVIDIA patches ------------------------------------------------
     mkdir -p %{_builddir}/nv-patches
     export QUILT_PATCHES=%{_builddir}/nv-patches
 
-%if !%{_local_patches_only}
+%if %{without local_patches}
     find "${_gh_tmp}/sources/patchset-nvidia" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/nv-patches/" \; 2>/dev/null
 %endif
 
@@ -468,13 +475,13 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 
     cp %{_builddir}/kernel-x86_64-fedora.config .config
 %endif
-%if %{_build_minimal}
+%if %{with minimal}
     %make_build LSMOD=%{SOURCE2} localmodconfig
 %else
     %make_build olddefconfig
 %endif
 
-%if %{_interactive_config}
+%if %{with interactive}
     if [ -t 0 ]; then
         make %{?_clang_args} xconfig
     else
@@ -485,7 +492,7 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     mkdir -p %{_builddir}/patches
     export QUILT_PATCHES=%{_builddir}/patches
 
-%if !%{_local_patches_only}
+%if %{without local_patches}
     find "${_gh_tmp}/sources/patchset" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
     find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
 %endif
@@ -513,17 +520,17 @@ fi
 
 # --- Kconfig -----------------------------------------------------------------
 
-%if %{_build_generic}
+%if %{with generic}
     ./scripts/config --enable GENERIC_CPU
 %else
     ./scripts/config -u GENERIC_CPU
 %endif
 
     # Tickrate
-    case %{_hz_tick} in
+    case %{_hz_tickrate} in
     100|250|300|500|600|750|1000)
-        ./scripts/config --enable HZ_%{_hz_tick}
-        ./scripts/config --set-val HZ %{_hz_tick}
+        ./scripts/config --enable HZ_%{_hz_tickrate}
+        ./scripts/config --set-val HZ %{_hz_tickrate}
         ;;
     *)
         echo "Invalid tickrate value, using default 1000"
@@ -541,7 +548,7 @@ fi
 %endif
 
     # Secure Boot: IMA, module signing, lockdown
-%if %{_build_secureboot}
+%if %{with secureboot}
     scripts/config -e  IMA
     scripts/config -e  IMA_APPRAISE
     scripts/config -e  IMA_APPRAISE_BOOTPARAM
@@ -572,14 +579,14 @@ fi
 %endif
 
     # Clang LTO
-%if %{_build_clang} && %{_build_lto}
+%if %{without gcc} && %{_lto_type}
     scripts/config -d LTO_NONE
     scripts/config -e POLLY_CLANG  # requires clang-polly patch from patchset/
-  %if %{_lto_thin}
+  %if %{_lto_type} == 1
     scripts/config -e  LTO_CLANG_THIN
     scripts/config -d  LTO_CLANG_FULL
   %endif
-  %if %{_lto_full}
+  %if %{_lto_type} == 2
     scripts/config -e  LTO_CLANG_FULL
     scripts/config -d  LTO_CLANG_THIN
   %endif
@@ -604,7 +611,7 @@ fi
   %endif
 %endif
 
-%if %{_set_nr_cpus}
+%if %{with set_nr_cpus}
     scripts/config -d CPUMASK_OFFSTACK
     scripts/config -d MAXSMP
     scripts/config --set-val NR_CPUS %{_nr_cpus}
@@ -619,7 +626,7 @@ fi
 
     %make_build oldconfig
 
-%if %{_build_minimal}
+%if %{with minimal}
     %make_build LSMOD=%{SOURCE2} localmodconfig
 %else
     %make_build olddefconfig
@@ -633,9 +640,13 @@ fi
     %make_build EXTRAVERSION=%{_pkgver_suffix}-%{release}.%{_arch} KERNEL_MODULE_DIRECTORY=/lib/modules KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
 
     # bpftool vmlinux.h for the devel package
+%if %{with gcc}
+    %make_build -C tools/bpf/bpftool vmlinux.h || true
+%else
     %make_build -C tools/bpf/bpftool vmlinux.h feature-clang-bpf-co-re=1 || true
+%endif
 
-%if %{_build_nv}
+%if %{with nv}
     cd %{_builddir}/%{_nv_pkg}
     CFLAGS= CXXFLAGS= LDFLAGS= %make_build %{?_clang_args} %{_module_args} IGNORE_CC_MISMATCH=yes modules
 %endif
@@ -649,7 +660,7 @@ fi
     ZSTD_CLEVEL=19 %make_build INSTALL_MOD_PATH="%{buildroot}" KERNEL_MODULE_DIRECTORY=/lib/modules INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
 
     # 2. NVIDIA modules
-%if %{_build_nv}
+%if %{with nv}
     echo "Installing NVIDIA modules..."
     cd %{_builddir}/%{_nv_pkg}
     install -Dt %{buildroot}%{_kernel_dir}/nvidia -m644 kernel-open/*.ko
@@ -663,7 +674,7 @@ fi
     echo "Installing kernel image..."
     install -Dm644 "$(%make_build -s image_name)" "%{buildroot}%{_kernel_dir}/vmlinuz"
 
-%if %{_build_secureboot}
+%if %{with secureboot}
     # ship sign-file so posttrans can sign external modules without -devel
     install -Dm755 scripts/sign-file "%{buildroot}%{_kernel_dir}/sign-file"
 %endif
@@ -804,7 +815,7 @@ Recommends: kernel-firmware-all
 Recommends: linux-firmware
 %endif
 
-%if %{_build_secureboot}
+%if %{with secureboot}
 Requires(post): openssl
 Requires(post): sbsigntools
 %endif
@@ -821,7 +832,7 @@ Requires(post): sbsigntools
 
 %posttrans core
     rm -f %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{_kver}
-%if %{_build_secureboot}
+%if %{with secureboot}
     # MOK key generation and vmlinuz signing — runs on the TARGET machine.
     # The private key is never present on the build host; generated here once
     # and reused across upgrades that share the same enrolled MOK certificate.
@@ -876,7 +887,7 @@ Requires(post): sbsigntools
             fi
         fi
     fi
-%if %{_build_secureboot}
+%if %{with secureboot}
     if command -v mokutil &>/dev/null; then
         SB_STATE=$(mokutil --sb-state 2>/dev/null || true)
         echo ""
@@ -912,7 +923,7 @@ Requires(post): sbsigntools
     %license COPYING
     %ghost %attr(0600, root, root) /boot/initramfs-%{_kver}.img
     %ghost %attr(0644, root, root) /boot/symvers-%{_kver}.zst
-%if %{_build_secureboot}
+%if %{with secureboot}
     # ghost: generated on the target machine by posttrans; tracked for removal
     # but not present in the RPM payload itself. Parent dirs need their own
     # %%dir entries too — nothing else on openSUSE owns /etc/kernel(/certs).
@@ -1005,10 +1016,10 @@ Requires: perl-interpreter
 
 Requires: lld
 
-%if %{_build_clang}
+%if %{without gcc}
 Requires: clang
 Requires: llvm
-%if %{_build_lto}
+%if %{_lto_type}
 %if %{_distro_suse}
 Requires: llvm-polly
 %else
@@ -1061,7 +1072,7 @@ Requires: %{name}-devel   = %{_rpmver}
 %files devel-matched
 
 # ==============================================================================
-%if %{_build_nv}
+%if %{with nv}
 %package nvidia-open
 # ==============================================================================
 Summary: NVIDIA-open %{_nv_ver} kernel modules for %{name}
@@ -1074,7 +1085,7 @@ Requires: kmod
 %if !%{_distro_suse}
 Requires: nvidia-gpu-firmware
 %endif
-%if %{_build_secureboot}
+%if %{with secureboot}
 Requires: zstd
 %endif
 
@@ -1114,7 +1125,7 @@ Conflicts: nvidia-kmod
     touch %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
 
 %posttrans nvidia-open
-%if %{_build_secureboot}
+%if %{with secureboot}
     # Sign NVIDIA modules on the target machine using the MOK key from posttrans core.
     MOK_KEY="%{_mok_key}"
     MOK_PEM="%{_mok_pem}"
