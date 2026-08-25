@@ -25,9 +25,6 @@ pnv() { PATCHSET_NVIDIA["$1"]="$2"; }
 # PATCHSET
 # ==============================================================================
 
-p "aufs.patch" \
-  "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/0001-aufs-7.2-merge-v20260824.patch"
-
 # STILL 7.1
 p "clang-polly.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-clang-polly.patch"

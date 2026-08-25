@@ -38395,28 +38395,16 @@ diff --git a/fs/proc/nommu.c b/fs/proc/nommu.c
 index c6e7ebc63..12c340dcd 100644
 --- a/fs/proc/nommu.c
 +++ b/fs/proc/nommu.c
-@@ -39,7 +39,7 @@ static int nommu_region_show(struct seq_file *m, struct vm_region *region)
- 	file = region->vm_file;
- 
- 	if (file) {
+@@ -42 +42 @@
 -		struct inode *inode = file_inode(region->vm_file);
 +		struct inode *inode = file_user_inode(region->vm_file);
- 		dev = inode->i_sb->s_dev;
- 		ino = inode->i_ino;
- 	}
 diff --git a/fs/proc/task_nommu.c b/fs/proc/task_nommu.c
 index d362919f4..79a2590d4 100644
 --- a/fs/proc/task_nommu.c
 +++ b/fs/proc/task_nommu.c
-@@ -137,7 +137,7 @@ static int nommu_vma_show(struct seq_file *m, struct vm_area_struct *vma)
- 	file = vma->vm_file;
- 
- 	if (file) {
+@@ -140 +140 @@
 -		struct inode *inode = file_inode(vma->vm_file);
 +		struct inode *inode = file_user_inode(vma->vm_file);
- 		dev = inode->i_sb->s_dev;
- 		ino = inode->i_ino;
- 		pgoff = (loff_t)vma->vm_pgoff << PAGE_SHIFT;
 diff --git a/fs/read_write.c b/fs/read_write.c
 index e8c14e276..31e7ab73a 100644
 --- a/fs/read_write.c
@@ -38541,17 +38529,14 @@ diff --git a/include/linux/fs/super_types.h b/include/linux/fs/super_types.h
 index ef7941e9d..b866d11ca 100644
 --- a/include/linux/fs/super_types.h
 +++ b/include/linux/fs/super_types.h
-@@ -127,6 +127,11 @@ struct super_operations {
- 
- 	/* Report a filesystem error */
- 	void (*report_error)(const struct fserror_event *event);
+@@ -132,3 +132,8 @@
 +
 +#if IS_ENABLED(CONFIG_BLK_DEV_LOOP) || IS_ENABLED(CONFIG_BLK_DEV_LOOP_MODULE)
 +	/* and aufs */
 +	struct file *(*real_loop)(struct file *);
 +#endif
  };
- 
+
  struct super_block {
 diff --git a/include/linux/lockdep.h b/include/linux/lockdep.h
 index 621566345..24d2eca0d 100644
