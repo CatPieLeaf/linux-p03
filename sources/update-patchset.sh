@@ -25,6 +25,9 @@ pnv() { PATCHSET_NVIDIA["$1"]="$2"; }
 # PATCHSET
 # ==============================================================================
 
+p "aufs.patch" \
+  "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/0001-aufs-7.2-merge-v20260824.patch"
+
 # STILL 7.1
 p "clang-polly.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-clang-polly.patch"
@@ -76,7 +79,7 @@ p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
 
 p "lru_marie.patch" \
-  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.10.1.patch"
+  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.10.6.patch"
 
 p "nap.patch" \
   "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
@@ -93,61 +96,50 @@ p "zstd.patch" \
 p "tcp-write-buffer.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0022-tcp-write-buffer.patch"
 
-# STILL 7.1
 p "sched-wait-lifo-accept.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/clearlinux/0001-sched-wait-Do-accept-in-LIFO-order-for-cache-efficie.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/clearlinux/0001-sched-wait-Do-accept-in-LIFO-order-for-cache-efficie.patch?ref_type=heads"
 
-# STILL 7.1
 p "mm-raise-max_map_count-default-value.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0013-XANMOD-mm-Raise-max_map_count-default-value.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/xanmod/0013-XANMOD-mm-Raise-max_map_count-default-value.patch?ref_type=heads"
 
-# STILL 7.1
 p "handheld.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-handheld.patch"
 
-# STILL 7.1
+p "bbr3.patch" \
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/tcp/0001-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch?ref_type=heads"
+
 p "vfs-cache-reclaim-rate.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0012-XANMOD-vfs-Decrease-rate-at-which-vfs-caches-are-rec.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/xanmod/0012-XANMOD-vfs-Decrease-rate-at-which-vfs-caches-are-rec.patch?ref_type=heads"
 
-# STILL 7.1
 p "setlocalversion-remove-tag.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0017-XANMOD-scripts-setlocalversion-remove-tag-for-git-re.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/xanmod/0017-XANMOD-scripts-setlocalversion-remove-tag-for-git-re.patch?ref_type=heads"
 
-# STILL 7.1
 p "setlocalversion-move.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/xanmod/0018-XANMOD-scripts-setlocalversion-Move-localversion-fil.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/xanmod/0018-XANMOD-scripts-setlocalversion-Move-localversion-fil.patch?ref_type=heads"
 
-# STILL 7.1
 p "evdev-use-call-rcu.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/zen/0001-ZEN-input-evdev-Use-call_rcu-when-detaching-client.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/zen/0001-ZEN-input-evdev-Use-call_rcu-when-detaching-client.patch?ref_type=heads"
 
-# STILL 7.1
 p "dm-crypt-async-queue.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/zen/0002-ZEN-dm-crypt-Disable-workqueues-for-crypto-ops.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/zen/0002-ZEN-dm-crypt-Disable-workqueues-for-crypto-ops.patch?ref_type=heads"
 
-# STILL 7.1
 p "tcp-skip-collapse.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/tcp/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/tcp/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch?ref_type=heads"
 
-# STILL 7.1
 p "netfilter-flowoffload.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/net/netfilter/0001-netfilter-add-xt_FLOWOFFLOAD-target.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/netfilter/0001-netfilter-add-xt_FLOWOFFLOAD-target.patch?ref_type=heads"
 
-# STILL 7.1
 p "binder-debug-mask.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/binder/0002-binder-give-binder_alloc-its-own-debug-mask-file.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/binder/0002-binder-give-binder_alloc-its-own-debug-mask-file.patch?ref_type=heads"
 
-# STILL 7.1
 p "stateless-firmware-loading.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/clearlinux/0002-firmware-Enable-stateless-firmware-loading.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/clearlinux/0002-firmware-Enable-stateless-firmware-loading.patch?ref_type=heads"
 
-# STILL 7.1
 p "pci-missing-acs-overrides.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/pci_acso/0001-PCI-Enable-overrides-for-missing-ACS-capabilities.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/pci_acso/0001-PCI-Enable-overrides-for-missing-ACS-capabilities.patch?ref_type=heads"
 
-# STILL 7.1
 p "allow-wake-up-pollfree-gpl.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.1.y-xanmod/binder/0003-wait-allow-to-use-__wake_up_pollfree-from-GPL-module.patch?ref_type=heads"
+  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/binder/0003-wait-allow-to-use-__wake_up_pollfree-from-GPL-module.patch?ref_type=heads"
 
 p "surface3.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0002-surface3.patch"
@@ -178,12 +170,9 @@ p "cambyses.patch" \
 
 # STILL 7.1
 p "reflex.patch" \
-  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.2.patch"
+  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.3r2.patch"
 
 # STILL 7.1
-p "zram-ir.patch" \
-  "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch"
-
 p "zram-ir.patch" \
   "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch"
 

@@ -1,7 +1,7 @@
-From 3a3078acdaa2401d0f2e12ec63ad967fd79b1c11 Mon Sep 17 00:00:00 2001
+From 632e46ce275ca0707269ce5909f123bc01cad7fb Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Tue, 28 Jul 2026 02:30:19 +0900
-Subject: [PATCH] linux7.1-reflex-v0.3.2
+Date: Thu, 20 Aug 2026 00:49:08 +0900
+Subject: [PATCH] linux7.1-reflex-v0.3.3r2
 
 ---
  arch/x86/kernel/cpu/aperfmperf.c |    1 +
@@ -9,13 +9,13 @@ Subject: [PATCH] linux7.1-reflex-v0.3.2
  drivers/cpufreq/Kconfig          |   24 +
  drivers/cpufreq/Makefile         |    1 +
  drivers/cpufreq/cpufreq.c        |    3 +
- drivers/cpufreq/cpufreq_reflex.c | 1141 ++++++++++++++++++++++++++++++
+ drivers/cpufreq/cpufreq_reflex.c | 1160 ++++++++++++++++++++++++++++++
  include/linux/sched/cpufreq.h    |   10 +
  kernel/kthread.c                 |    1 +
  kernel/sched/cpufreq.c           |    1 +
  kernel/sched/cpufreq_schedutil.c |   76 ++
  kernel/time/tick-sched.c         |    1 +
- 11 files changed, 1260 insertions(+)
+ 11 files changed, 1279 insertions(+)
  create mode 100644 drivers/cpufreq/cpufreq_reflex.c
 
 diff --git a/arch/x86/kernel/cpu/aperfmperf.c b/arch/x86/kernel/cpu/aperfmperf.c
@@ -119,10 +119,10 @@ index 44eb1b7e7f..323cdcf020 100644
  static int __target_intermediate(struct cpufreq_policy *policy,
 diff --git a/drivers/cpufreq/cpufreq_reflex.c b/drivers/cpufreq/cpufreq_reflex.c
 new file mode 100644
-index 0000000000..bcd51a65cd
+index 0000000000..31a317ec9e
 --- /dev/null
 +++ b/drivers/cpufreq/cpufreq_reflex.c
-@@ -0,0 +1,1141 @@
+@@ -0,0 +1,1160 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Reflex CPUFreq governor (based on schedutil)
@@ -149,6 +149,7 @@ index 0000000000..bcd51a65cd
 +#include <linux/init.h>
 +#include <linux/irq_work.h>
 +#include <linux/kthread.h>
++#include <linux/ktime.h>
 +#include <linux/module.h>
 +#include <linux/sched.h>
 +#include <linux/sched/cpufreq.h>
@@ -167,7 +168,7 @@ index 0000000000..bcd51a65cd
 +#define CPUFREQ_REFLEX_PROGNAME "Reflex CPUFreq Governor"
 +#define CPUFREQ_REFLEX_AUTHOR   "Masahito Suzuki"
 +
-+#define CPUFREQ_REFLEX_VERSION  "0.3.2"
++#define CPUFREQ_REFLEX_VERSION  "0.3.3"
 +
 +/**************************************************************
 + * Default tunables
@@ -439,6 +440,24 @@ index 0000000000..bcd51a65cd
 +{
 +	u64 cur_idle, cur_wall;
 +	unsigned int wall_delta, idle_delta;
++
++	/*
++	 * Fast path: hispeed not armed.  The hispeed window can only
++	 * have expired if the wall clock advanced window_us since the
++	 * last full read (prev_wall_time is only updated by full
++	 * reads, i.e. the Phase 1 / Phase 2 paths below).  A vDSO
++	 * clock read is much cheaper than the kcpustat seqcount/
++	 * atomic64 read inside get_cpu_idle_time(), so skip the latter
++	 * unless the window may have expired.  On expiry the full read
++	 * below re-evaluates the window test against the same clock it
++	 * has always used, so the decision semantics are unchanged; in
++	 * the (rare) microsecond boundary race the arming is delayed
++	 * by at most one callback.
++	 */
++	if (!rfx_c->hispeed_active) {
++		if (ktime_to_us(ktime_get()) - rfx_c->prev_wall_time < window_us)
++			return;
++	}
 +
 +	cur_idle = get_cpu_idle_time(rfx_c->cpu, &cur_wall, 1);
 +	wall_delta = (unsigned int)(cur_wall - rfx_c->prev_wall_time);

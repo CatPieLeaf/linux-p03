@@ -1,4 +1,4 @@
-From 97b3dd4520cc9b8f881cee8bdf2ebc5cc179cbad Mon Sep 17 00:00:00 2001
+From 7ad1084c1078247c1405c32b83316113a66f1adc Mon Sep 17 00:00:00 2001
 From: Alexandre Frade <kernel@xanmod.org>
 Date: Sun, 29 May 2022 00:57:40 +0000
 Subject: [PATCH 17/18] XANMOD: scripts/setlocalversion: remove '+' tag for git

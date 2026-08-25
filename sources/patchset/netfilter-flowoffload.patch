@@ -1,4 +1,4 @@
-From d1367449ba0af9e9ddeee77691f395c4e63b38d1 Mon Sep 17 00:00:00 2001
+From b833efc7165de82c7634cc1cbba26d73d7d6938d Mon Sep 17 00:00:00 2001
 From: Felix Fietkau <nbd@nbd.name>
 Date: Tue, 20 Feb 2018 15:56:02 +0100
 Subject: [PATCH] netfilter: add xt_FLOWOFFLOAD target
@@ -17,10 +17,10 @@ Signed-off-by: Alexandre Frade <kernel@xanmod.org>
  create mode 100644 net/netfilter/xt_FLOWOFFLOAD.c
 
 diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_flow_table.h
-index 7b23b245a5a8..1d64224445c1 100644
+index ce414118962f..0a468053a7b3 100644
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
-@@ -321,6 +321,11 @@ void nf_flow_table_free(struct nf_flowtable *flow_table);
+@@ -322,6 +322,11 @@ void nf_flow_table_free(struct nf_flowtable *flow_table);
  
  void flow_offload_teardown(struct flow_offload *flow);
  
@@ -56,10 +56,10 @@ index 000000000000..5841bbe0e3db
 +
 +#endif /* _XT_FLOWOFFLOAD_H */
 diff --git a/net/netfilter/Kconfig b/net/netfilter/Kconfig
-index 5a16cc560b6a..74a3a389934b 100644
+index c92f3290eb51..7bb9e48de2ae 100644
 --- a/net/netfilter/Kconfig
 +++ b/net/netfilter/Kconfig
-@@ -1032,6 +1032,15 @@ config NETFILTER_XT_TARGET_NOTRACK
+@@ -1033,6 +1033,15 @@ config NETFILTER_XT_TARGET_NOTRACK
  	depends on NETFILTER_ADVANCED
  	select NETFILTER_XT_TARGET_CT
  
@@ -76,7 +76,7 @@ index 5a16cc560b6a..74a3a389934b 100644
  	tristate '"RATEEST" target support'
  	depends on NETFILTER_ADVANCED
 diff --git a/net/netfilter/Makefile b/net/netfilter/Makefile
-index babf25407790..280727f40ca2 100644
+index a5b0cf1f9057..79c5c6939d14 100644
 --- a/net/netfilter/Makefile
 +++ b/net/netfilter/Makefile
 @@ -168,6 +168,7 @@ obj-$(CONFIG_NETFILTER_XT_TARGET_CLASSIFY) += xt_CLASSIFY.o
@@ -88,7 +88,7 @@ index babf25407790..280727f40ca2 100644
  obj-$(CONFIG_NETFILTER_XT_TARGET_HMARK) += xt_HMARK.o
  obj-$(CONFIG_NETFILTER_XT_TARGET_LED) += xt_LED.o
 diff --git a/net/netfilter/nf_flow_table_core.c b/net/netfilter/nf_flow_table_core.c
-index 785d8c244a77..c860f9198978 100644
+index 8b1165f2b5a4..f429f9681c21 100644
 --- a/net/netfilter/nf_flow_table_core.c
 +++ b/net/netfilter/nf_flow_table_core.c
 @@ -7,7 +7,6 @@
@@ -99,7 +99,7 @@ index 785d8c244a77..c860f9198978 100644
  #include <net/netfilter/nf_flow_table.h>
  #include <net/netfilter/nf_conntrack.h>
  #include <net/netfilter/nf_conntrack_core.h>
-@@ -418,8 +417,7 @@ flow_offload_lookup(struct nf_flowtable *flow_table,
+@@ -422,8 +421,7 @@ flow_offload_lookup(struct nf_flowtable *flow_table,
  }
  EXPORT_SYMBOL_GPL(flow_offload_lookup);
  
@@ -109,7 +109,7 @@ index 785d8c244a77..c860f9198978 100644
  		      void (*iter)(struct nf_flowtable *flowtable,
  				   struct flow_offload *flow, void *data),
  		      void *data)
-@@ -587,6 +585,7 @@ static void nf_flow_offload_gc_step(struct nf_flowtable *flow_table,
+@@ -596,6 +594,7 @@ static void nf_flow_offload_gc_step(struct nf_flowtable *flow_table,
  		nf_flow_offload_stats(flow_table, flow);
  	}
  }

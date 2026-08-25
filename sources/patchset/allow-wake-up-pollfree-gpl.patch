@@ -1,4 +1,4 @@
-From 9f00204bf3323a4969d11ecfaab97e68b54883ad Mon Sep 17 00:00:00 2001
+From 481c869c5ca38d9da6c07dd46497b57d32098e3a Mon Sep 17 00:00:00 2001
 From: Andrea Righi <andrea.righi@canonical.com>
 Date: Fri, 17 Dec 2021 11:14:24 +0100
 Subject: [PATCH 3/4] wait: allow to use __wake_up_pollfree() from GPL modules

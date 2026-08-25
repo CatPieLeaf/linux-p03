@@ -1,4 +1,4 @@
-From f83b4c869cebfdd553940da8a30108b51d8dea99 Mon Sep 17 00:00:00 2001
+From 4c98538ea54d9aaa4a9d793f85c2de19ab67e4bb Mon Sep 17 00:00:00 2001
 From: Arjan van de Ven <arjan@linux.intel.com>
 Date: Thu, 13 Dec 2018 01:00:49 +0000
 Subject: [PATCH 1/4] sched/wait: Do accept() in LIFO order for cache
@@ -74,7 +74,7 @@ index 20f27e2cf7ae..9ddd02e7551c 100644
  {
  	wq_entry->flags = flags;
 diff --git a/net/ipv4/inet_connection_sock.c b/net/ipv4/inet_connection_sock.c
-index 5b934ce8d98a..0d22832d81c0 100644
+index 6257459bcee2..76a2a1a4fc9b 100644
 --- a/net/ipv4/inet_connection_sock.c
 +++ b/net/ipv4/inet_connection_sock.c
 @@ -619,7 +619,7 @@ static int inet_csk_wait_for_connect(struct sock *sk, long timeo)

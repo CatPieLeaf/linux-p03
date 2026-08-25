@@ -1,4 +1,4 @@
-From dfe8f822579f33070a8c9b208fc334c349dd58cc Mon Sep 17 00:00:00 2001
+From 2cfe33494416293a56ad29a93f7097c2666c4b81 Mon Sep 17 00:00:00 2001
 From: Kenny Levinsen <kl@kl.wtf>
 Date: Sun, 27 Dec 2020 14:43:13 +0000
 Subject: [PATCH 1/2] ZEN: input/evdev: Use call_rcu when detaching client
@@ -43,10 +43,10 @@ Signed-off-by: Alexandre Frade <kernel@xanmod.org>
  1 file changed, 11 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/input/evdev.c b/drivers/input/evdev.c
-index c7325226cb86..4f18a50ea366 100644
+index 3a718d600006..1689d9cdb259 100644
 --- a/drivers/input/evdev.c
 +++ b/drivers/input/evdev.c
-@@ -46,6 +46,7 @@ struct evdev_client {
+@@ -47,6 +47,7 @@ struct evdev_client {
  	struct fasync_struct *fasync;
  	struct evdev *evdev;
  	struct list_head node;
@@ -54,7 +54,7 @@ index c7325226cb86..4f18a50ea366 100644
  	enum input_clock_type clk_type;
  	bool revoked;
  	unsigned long *evmasks[EV_CNT];
-@@ -368,13 +369,22 @@ static void evdev_attach_client(struct evdev *evdev,
+@@ -373,13 +374,22 @@ static void evdev_attach_client(struct evdev *evdev,
  	spin_unlock(&evdev->client_lock);
  }
  
@@ -78,7 +78,7 @@ index c7325226cb86..4f18a50ea366 100644
  }
  
  static int evdev_open_device(struct evdev *evdev)
-@@ -427,7 +437,6 @@ static int evdev_release(struct inode *inode, struct file *file)
+@@ -432,7 +442,6 @@ static int evdev_release(struct inode *inode, struct file *file)
  {
  	struct evdev_client *client = file->private_data;
  	struct evdev *evdev = client->evdev;
@@ -86,7 +86,7 @@ index c7325226cb86..4f18a50ea366 100644
  
  	mutex_lock(&evdev->mutex);
  
-@@ -439,11 +448,6 @@ static int evdev_release(struct inode *inode, struct file *file)
+@@ -444,11 +453,6 @@ static int evdev_release(struct inode *inode, struct file *file)
  
  	evdev_detach_client(evdev, client);
  
@@ -98,7 +98,7 @@ index c7325226cb86..4f18a50ea366 100644
  	evdev_close_device(evdev);
  
  	return 0;
-@@ -486,7 +490,6 @@ static int evdev_open(struct inode *inode, struct file *file)
+@@ -491,7 +495,6 @@ static int evdev_open(struct inode *inode, struct file *file)
  
   err_free_client:
  	evdev_detach_client(evdev, client);
