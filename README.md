@@ -53,7 +53,7 @@
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and v2)
  - 750hz tickrate
  - Built with LLVM + O3 + Polly Clang + Mimalloc
- - BORE scheduler and Reflex CPU Governor
+ - MuQSS scheduler and Reflex CPU Governor
  - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
  - xConfig and nConfig during build
@@ -61,7 +61,6 @@
  - Handheld support (ROG Ally, Steam Deck, etc)
  - VHBA and AUFS support
  - Microsoft Surface support
- - Piece-Of-Cake (POC) CPU Selector
  - Dynamic PREEMPT (Lazy by default)
  - Passive intel_pstate and amd_pstate
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
@@ -254,6 +253,7 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Patches from [babiulep's Custom Kernel](https://github.com/babiulep/my-kernel-patches)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Patches from [XanMod Kernel](https://gitlab.com/xanmod/linux-patches)
+ - MuQSS tree from [ckolivas's Custom Kernel](https://github.com/ckolivas/linux)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
  - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
  - Nap patches from [NikoMalik/nap](https://github.com/NikoMalik/nap/)

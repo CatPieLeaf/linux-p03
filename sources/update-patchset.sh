@@ -35,9 +35,6 @@ p "dkms-clang.patch" \
 p "acpi-call.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/0001-acpi-call.patch"
 
-p "bore.patch" \
-  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.2-rc1-bore-6.8.0.patch"
-
 p "adios.patch" \
   "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch"
 
@@ -68,9 +65,6 @@ p "mm_lazy_rss_stat.patch" \
 
 p "openRGB.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0014-OpenRGB.patch"
-
-p "poc-selector.patch" \
-  "https://raw.githubusercontent.com/firelzrd/poc-selector/refs/heads/main/patches/stable/0001-7.2-rc1-poc-selector-v2.6.3.patch"
 
 p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"

@@ -121,12 +121,12 @@
 # Formats (git hash suffix is always present):
 #   kernel-source-7.2~rc7-2.1.gaf18d8c     (RC)
 #   kernel-source-7.1.8-5.1.ga5cdd68       (stable)
-%define _suse_nvr  kernel-source-7.2.0-4.1.g080d79d
+%define _suse_nvr  kernel-source-7.2.0-6.1.g5ec603b
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
-# Must match an existing tag in the repo when building %{with fetch_tag}.
+# Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.19
+%define _tag_ver   p03.20
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
@@ -530,11 +530,13 @@ fi
     case %{_hz_tickrate} in
     100|250|300|500|600|750|1000)
         ./scripts/config --enable HZ_%{_hz_tickrate}
+        ./scripts/config --enable HZ_%{_hz_tickrate}_NODEF
         ./scripts/config --set-val HZ %{_hz_tickrate}
         ;;
     *)
         echo "Invalid tickrate value, using default 1000"
         ./scripts/config --enable HZ_1000
+        ./scripts/config --enable HZ_1000_NODEF
         ./scripts/config --set-val HZ 1000
         ;;
     esac
