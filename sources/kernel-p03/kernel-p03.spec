@@ -159,8 +159,17 @@
 # Version string derivation — do not edit below this line
 # ==============================================================================
 # Each distro parses its own NVR into the same RPM version string
-# (e.g. 7.2.0.rc7.p03.18). openSUSE's tilde (7.2~rc7) is normalized to
-# Fedora's dotted form (7.2.0).
+# (e.g. 7.2.0~rc7.p03.18). openSUSE's tilde (7.2~rc7) is normalized to
+# Fedora's dotted form (7.2.0) for the base kernel version; the ~rc tag
+# is re-added ourselves so rc builds always sort below the final release
+# of the same kernel version (Fedora pre-release convention).
+#
+# Epoch is pinned to 1: our p03 buildnum must always be the deciding
+# factor for "which build is newer", but it lives at the tail of Version
+# (after the kernel version) purely for readability. Any package already
+# published under Epoch 0 — including the old broken scheme where "rc"
+# could outrank "p03" alphabetically — is unconditionally superseded by
+# Epoch 1. Do not remove or lower the Epoch.
 #
 %define _buildnum   %(echo "%{_tag_ver}" | sed -E 's/^p03\\.//')
 
@@ -190,7 +199,7 @@
 %define _srcdir     linux-%{_kver_str}
 
 %if %{_is_rc}
-%define _pkgver_suffix .rc%{_rcnum}.%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%define _pkgver_suffix ~rc%{_rcnum}.%{_custom_tag}%{?_gccreltag}.%{_buildnum}
 %else
 %define _pkgver_suffix .%{_custom_tag}%{?_gccreltag}.%{_buildnum}
 %endif
@@ -234,6 +243,7 @@
 # ==============================================================================
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
+Epoch:   1
 Version: %{_pkgver}
 Release: 1%{?dist}
 License: GPL-2.0-only
