@@ -114,19 +114,19 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.2.0-61.fc45
+%define _koji_nvr  kernel-7.2.2-300.fc45
 
 # openSUSE only — paste the NVR from Kernel:HEAD OBS project:
 #   https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/
 # Formats (git hash suffix is always present):
 #   kernel-source-7.2~rc7-2.1.gaf18d8c     (RC)
 #   kernel-source-7.1.8-5.1.ga5cdd68       (stable)
-%define _suse_nvr  kernel-source-7.2.0-6.1.g5ec603b
+%define _suse_nvr  kernel-source-7.2.0-8.1.g3a45cbc
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.21
+%define _tag_ver   p03.22
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
@@ -164,12 +164,14 @@
 # is re-added ourselves so rc builds always sort below the final release
 # of the same kernel version (Fedora pre-release convention).
 #
-# Epoch is pinned to 1: our p03 buildnum must always be the deciding
-# factor for "which build is newer", but it lives at the tail of Version
-# (after the kernel version) purely for readability. Any package already
-# published under Epoch 0 — including the old broken scheme where "rc"
-# could outrank "p03" alphabetically — is unconditionally superseded by
-# Epoch 1. Do not remove or lower the Epoch.
+# Our p03 buildnum must always be the deciding factor for "which build
+# is newer", but it lives at the tail of Version (after the kernel
+# version) purely for readability — this only holds because buildnums
+# are assigned in the same order the kernel base itself progresses.
+# p03.21 was a one-time Epoch 1 release to unconditionally supersede
+# every package published under the old broken scheme (where "rc" could
+# outrank "p03" alphabetically); see the Obsoletes line below Version
+# for how packages moved back to Epoch 0 afterward.
 #
 %define _buildnum   %(echo "%{_tag_ver}" | sed -E 's/^p03\\.//')
 
@@ -243,7 +245,6 @@
 # ==============================================================================
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
-Epoch:   1
 Version: %{_pkgver}
 Release: 1%{?dist}
 License: GPL-2.0-only
@@ -257,9 +258,20 @@ Provides: installonlypkg(kernel)
 %if %{_distro_suse}
 Provides: multiversion(kernel)
 %endif
-Provides: kernel-%{_custom_tag}%{?_gccpacktag} > 6.12.9-cb1.0%{?_clang_args:.lto}.%{_custom_tag}%{?dist}
 
-Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} <= 6.12.9-cb1.0.lto.%{_custom_tag}%{?dist}
+Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.0.p03.21-1%{?dist}
+
+# p03.21 was published as a one-time Epoch 1 transition release, to
+# unconditionally supersede every package published under the old
+# broken versioning scheme (where "rc" could outrank "p03"
+# alphabetically). This release (p03.22) drops back to Epoch 0 and
+# relies on this Obsoletes line — which bypasses the normal "must be a
+# newer EVR" rule — to replace both the Epoch 1 transition install and
+# any straggler still stuck on the original broken build (Epoch 0 is
+# always < Epoch 1 regardless of version content, so both are caught).
+# Keep this line in place for a good while, for anyone updating from
+# an old install that skipped several releases. Safe to remove once
+# everyone has moved past p03.21.
 
 # ==============================================================================
 # Build dependencies
