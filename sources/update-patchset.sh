@@ -94,7 +94,7 @@ p "mm-raise-max_map_count-default-value.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/xanmod/0013-XANMOD-mm-Raise-max_map_count-default-value.patch?ref_type=heads"
 
 p "handheld.patch" \
-  "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/0001-handheld.patch"
+  "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/0001-handheld.patch"
 
 p "bbr3.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/tcp/0001-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch?ref_type=heads"
