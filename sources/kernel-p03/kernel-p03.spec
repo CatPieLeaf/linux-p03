@@ -126,7 +126,7 @@
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.24
+%define _tag_ver   p03.25
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
@@ -258,34 +258,6 @@ Provides: installonlypkg(kernel)
 %if %{_distro_suse}
 Provides: multiversion(kernel)
 %endif
-
-Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
-Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
-Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.23-1%{?dist}
-
-# p03.21 and p03.22 (both deleted, both broken — see git history) attempted
-# a one-time Epoch 1 transition to unconditionally supersede every package
-# published under the old broken versioning scheme (where a dot-scheme
-# "rc" segment could outrank a "p03" segment alphabetically, e.g.
-# 7.2.0.rc7.p03.17 sorting as *newer* than 7.2.0.p03.20 — fixed by
-# switching the RC suffix to a leading tilde, which always sorts lowest).
-# p03.23 finally got that transition right — but it's still Epoch 1 like
-# its two predecessors. This release (p03.24) drops back to Epoch 0 and
-# relies on these three Obsoletes lines — which bypass the normal "must
-# be a newer EVR" rule — to replace anyone stuck on p03.21, p03.22, OR
-# p03.23 (Epoch 0 is always < Epoch 1 regardless of version content, so
-# plain version comparison alone can NEVER pull an Epoch-1 install forward
-# — every Epoch-1 NVR ever published needs its own explicit line here).
-# The %%{?_gccreltag} branch matters: the gcc-variant builds carry their
-# own ".gcc." segment in the buildnum suffix (e.g. 7.2.0.p03.gcc.21), so
-# a plain-variant literal here would silently never match them.
-# Keep these lines in place for a good while, for anyone updating from an
-# old install that skipped several releases. Planned removal at p03.25,
-# once everyone's had a chance to pass through p03.24 — that'll be the
-# first fully clean release, no Epoch and no transition Obsoletes at all.
-# Keep both lines in place for a good while, for anyone updating from an
-# old install that skipped several releases. Safe to remove once
-# everyone has moved past p03.22.
 
 # ==============================================================================
 # Build dependencies
@@ -825,11 +797,6 @@ Provides: kernel              = %{_rpmver}
 Provides: kernel-core-uname-r = %{_kver}
 Provides: kernel-uname-r      = %{_kver}
 
-# See the Obsoletes comment on the main package above — each subpackage
-# needs its own copy, since Epoch/Obsoletes are resolved per package name.
-Obsoletes: %{name}-core == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
-Obsoletes: %{name}-core == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
-Obsoletes: %{name}-core == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.23-1%{?dist}
 
 Requires:      kernel-modules-uname-r = %{?epoch:%{epoch}:}%{_kver}
 %if !%{_distro_suse}
@@ -1000,10 +967,6 @@ Provides: kernel-modules-extra-uname-r = %{_kver}
 Provides: kernel-modules-uname-r      = %{_kver}
 Provides: v4l2loopback-kmod           = 0.14.0
 
-# See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-modules == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
-Obsoletes: %{name}-modules == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
-Obsoletes: %{name}-modules == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.23-1%{?dist}
 
 Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod
@@ -1048,10 +1011,6 @@ Provides: multiversion(kernel)
 Provides: kernel-devel         = %{_rpmver}
 Provides: kernel-devel-uname-r = %{_kver}
 
-# See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-devel == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
-Obsoletes: %{name}-devel == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
-Obsoletes: %{name}-devel == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.23-1%{?dist}
 
 Requires: bison
 Requires: findutils
@@ -1115,10 +1074,6 @@ Provides: multiversion(kernel)
 %endif
 Provides: kernel-devel-matched = %{_rpmver}
 
-# See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-devel-matched == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
-Obsoletes: %{name}-devel-matched == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
-Obsoletes: %{name}-devel-matched == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.23-1%{?dist}
 
 Requires: %{name}-core    = %{?epoch:%{epoch}:}%{_rpmver}
 Requires: %{name}-modules = %{?epoch:%{epoch}:}%{_rpmver}
@@ -1139,10 +1094,6 @@ License: MIT AND GPL-2.0-only
 
 Provides: installonlypkg(kernel-module)
 
-# See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-nvidia-open == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
-Obsoletes: %{name}-nvidia-open == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
-Obsoletes: %{name}-nvidia-open == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.23-1%{?dist}
 
 Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod

@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Usama Arif <usama.arif@linux.dev>
+Date: Wed, 26 Aug 2026 05:25:36 -0700
+Subject: [PATCH 1/3] zstd: use ZSTD_cpuSupportsBmi2() in ZSTD_initStaticCCtx()
+
+ZSTD_initStaticCCtx() open-codes its BMI2 probe as
+ZSTD_cpuid_bmi2(ZSTD_cpuid()).  Every other context setup -
+ZSTD_initCCtx() and ZSTD_initDCtx_internal() - goes through
+ZSTD_cpuSupportsBmi2(), which requires BMI1 as well as BMI2.
+
+Requiring both is the correct test.  The alternate function bodies the
+flag selects are tagged BMI2_TARGET_ATTRIBUTE, which is
+TARGET_ATTRIBUTE("lzcnt,bmi,bmi2"), so the compiler may emit BMI1 and
+LZCNT instructions in them; BMI2 alone does not make that safe.  No
+shipping x86 CPU implements BMI2 without BMI1, so this is a latent
+inconsistency rather than an observed failure.
+
+Route the static path through the same helper.  That also leaves a
+single place where the probe is issued, which the following patches
+build on.
+
+No functional change on any CPU in the field.
+
+Signed-off-by: Usama Arif <usama.arif@linux.dev>
+
+Upstream-Status: submitted, not yet merged
+Link: https://lore.kernel.org/lkml/20260826122558.2662013-2-usama.arif@linux.dev/
+---
+ lib/zstd/compress/zstd_compress.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/zstd/compress/zstd_compress.c b/lib/zstd/compress/zstd_compress.c
+index c41a747413e01..4ab67d679bb63 100644
+--- a/lib/zstd/compress/zstd_compress.c
++++ b/lib/zstd/compress/zstd_compress.c
+@@ -142,7 +142,7 @@ ZSTD_CCtx* ZSTD_initStaticCCtx(void* workspace, size_t workspaceSize)
+     cctx->blockState.nextCBlock = (ZSTD_compressedBlockState_t*)ZSTD_cwksp_reserve_object(&cctx->workspace, sizeof(ZSTD_compressedBlockState_t));
+     cctx->tmpWorkspace = ZSTD_cwksp_reserve_object(&cctx->workspace, TMP_WORKSPACE_SIZE);
+     cctx->tmpWkspSize = TMP_WORKSPACE_SIZE;
+-    cctx->bmi2 = ZSTD_cpuid_bmi2(ZSTD_cpuid());
++    cctx->bmi2 = ZSTD_cpuSupportsBmi2();
+     return cctx;
+ }
+
+--
+2.53.0-Meta
+
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
+From: Usama Arif <usama.arif@linux.dev>
+Date: Wed, 26 Aug 2026 05:25:37 -0700
+Subject: [PATCH 2/3] zstd: skip the BMI2 probe when dynamic BMI2 dispatch is
+ disabled
+
+When DYNAMIC_BMI2 is 0 - GCC older than 11, a non-x86 target, or a build
+that already has BMI2 on globally - nothing reads the flag.
+HUF_compress1X_usingCTable_internal(), FSE_decompress_wksp_bmi2(),
+HUF_readStats_body() and the rest all resolve to the default body
+without consulting it.  ZSTD_cpuSupportsBmi2() nevertheless issues
+CPUID, which on x86 is two serializing instructions, and throws the
+answer away.
+
+ZSTD_initDCtx_internal() already wraps its assignment in
+#if DYNAMIC_BMI2 - it has to, because the dctx->bmi2 field is itself
+declared under that #if.  The two compress-side callers have no such
+guard, and ZSTD_CCtx_s::bmi2 is unconditional, so they probe
+unconditionally.
+
+Put the test inside ZSTD_cpuSupportsBmi2() so every caller gets it
+without having to remember.
+
+Signed-off-by: Usama Arif <usama.arif@linux.dev>
+
+Upstream-Status: submitted, not yet merged
+Link: https://lore.kernel.org/lkml/20260826122558.2662013-3-usama.arif@linux.dev/
+---
+ lib/zstd/common/zstd_internal.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/lib/zstd/common/zstd_internal.h b/lib/zstd/common/zstd_internal.h
+index 52a79435caf66..41f190b533209 100644
+--- a/lib/zstd/common/zstd_internal.h
++++ b/lib/zstd/common/zstd_internal.h
+@@ -311,8 +311,13 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
+  */
+ MEM_STATIC int ZSTD_cpuSupportsBmi2(void)
+ {
++#if DYNAMIC_BMI2
+     ZSTD_cpuid_t cpuid = ZSTD_cpuid();
+     return ZSTD_cpuid_bmi1(cpuid) && ZSTD_cpuid_bmi2(cpuid);
++#else
++    /* Nothing looks at the flag in this configuration. */
++    return 0;
++#endif
+ }
+
+ #endif   /* ZSTD_CCOMMON_H_MODULE */
+--
+2.53.0-Meta
+
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: Usama Arif <usama.arif@linux.dev>
+Date: Wed, 26 Aug 2026 05:25:38 -0700
+Subject: [PATCH 3/3] zstd: probe the CPU for BMI2 support only once
+
+ZSTD_cpuSupportsBmi2() issues CPUID on every context setup for an answer
+that cannot change while the kernel is running.  On x86 that is two
+serializing CPUID instructions, and the callers are not rare:
+squashfs, erofs, btrfs, f2fs and crypto/zstd all initialise a context
+per operation, so a busy squashfs or zswap workload pays for it per
+block or per page.  Under KVM it is worse, because CPUID is an
+unconditional VM exit.
+
+Cache the result.  Keeping the cache as a single int with a negative
+sentinel, rather than a copy of ZSTD_cpuid_t, keeps it to one word: a
+racing pair of probes computes the same value from the same CPUID leaf,
+so the unsynchronized access is benign, and READ_ONCE()/WRITE_ONCE()
+keep the compiler and KCSAN in agreement about that.
+
+ZSTD_cpuSupportsBmi2() is MEM_STATIC, so each translation unit that
+inlines it gets its own cache - three in a modular build, plus one in
+each preboot decompressor.  That is a handful of ints in bss and one
+extra probe apiece, not worth avoiding.
+
+The cached answer is the one the probing CPU reported.  zstd could
+already be migrated between the probe and the use of the flag, so this
+does not introduce a heterogeneity question that was not there before.
+
+Suggested-by: Yosry Ahmed <yosry@kernel.org>
+Signed-off-by: Usama Arif <usama.arif@linux.dev>
+
+Upstream-Status: submitted, not yet merged
+Link: https://lore.kernel.org/lkml/20260826122558.2662013-4-usama.arif@linux.dev/
+---
+ lib/zstd/common/zstd_internal.h | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/lib/zstd/common/zstd_internal.h b/lib/zstd/common/zstd_internal.h
+index 41f190b533209..b179f44753598 100644
+--- a/lib/zstd/common/zstd_internal.h
++++ b/lib/zstd/common/zstd_internal.h
+@@ -312,8 +312,21 @@ size_t ZSTD_decodeSeqHeaders(ZSTD_DCtx* dctx, int* nbSeqPtr,
+ MEM_STATIC int ZSTD_cpuSupportsBmi2(void)
+ {
+ #if DYNAMIC_BMI2
+-    ZSTD_cpuid_t cpuid = ZSTD_cpuid();
+-    return ZSTD_cpuid_bmi1(cpuid) && ZSTD_cpuid_bmi2(cpuid);
++    /*
++     * The answer cannot change over the life of the kernel, so probe
++     * once.  Racing probes compute the same value, so the unsynchronized
++     * access is benign; the annotations are there to keep it that way.
++     */
++    static int supported = -1;
++    int s = READ_ONCE(supported);
++
++    if (s < 0) {
++        ZSTD_cpuid_t const cpuid = ZSTD_cpuid();
++
++        s = ZSTD_cpuid_bmi1(cpuid) && ZSTD_cpuid_bmi2(cpuid);
++        WRITE_ONCE(supported, s);
++    }
++    return s;
+ #else
+     /* Nothing looks at the flag in this configuration. */
+     return 0;
+--
+2.53.0-Meta
