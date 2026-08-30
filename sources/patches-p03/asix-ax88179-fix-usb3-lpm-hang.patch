@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CatPieLeaf <catpieleaf@proton.me>
+Date: Sun, 30 Aug 2026 00:00:00 -0300
+Subject: [PATCH] USB: quirks: add USB_QUIRK_NO_LPM for ASIX AX88179/178A
+
+The ASIX AX88179 USB 3.0 Gigabit Ethernet chip (0b95:1790) wedges on
+the bus after running under sustained wired traffic: the driver logs
+a spontaneous
+
+  ax88179_178a 2-2:1.0 enp5s0f3u2: ax88179 - Link status is: 0
+
+with no cable pull, and the interface never comes back. The xHC port
+it is on subsequently fails to re-enable it:
+
+  usb usb3-port4: Cannot enable. Maybe the USB cable is bad?
+  usb usb3-port4: attempt power cycle
+  usb usb3-port4: unable to enumerate USB device
+
+The device only recovers once something forces a real bus/port reset
+(e.g. `usbreset 0b95:1790`, or physically unplugging it), which
+re-enumerates it from scratch and restores link.
+
+This matches the same USB3 LPM (U1/U2) interaction that Realtek's
+RTL8153-based gigabit dongles hit, already worked around via
+USB_QUIRK_NO_LPM on 0bda:8153: SuperSpeed gigabit ethernet chips
+autonegotiating link power states appear to fail to come back out of
+U1/U2 during real traffic bursts and wedge until externally reset.
+Disable LPM for the AX88179/178A the same way to keep it out of that
+state.
+
+---
+ drivers/usb/core/quirks.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/usb/core/quirks.c b/drivers/usb/core/quirks.c
+--- a/drivers/usb/core/quirks.c
++++ b/drivers/usb/core/quirks.c
+@@ -457,6 +457,9 @@ static const struct usb_device_id usb_quirk_list[] = {
+ 	/* ASUS TUF 4K PRO - BOS descriptor fetch hangs at SuperSpeed Plus */
+ 	{ USB_DEVICE(0x0b05, 0x1ab9), .driver_info = USB_QUIRK_NO_BOS },
+
++	/* ASIX AX88179/178A USB 3.0 Gigabit Ethernet - wedges under LPM */
++	{ USB_DEVICE(0x0b95, 0x1790), .driver_info = USB_QUIRK_NO_LPM },
++
+ 	/* Realtek Semiconductor Corp. Mass Storage Device (Multicard Reader)*/
+ 	{ USB_DEVICE(0x0bda, 0x0151), .driver_info = USB_QUIRK_CONFIG_INTF_STRINGS },
+
+--
+2.49.0

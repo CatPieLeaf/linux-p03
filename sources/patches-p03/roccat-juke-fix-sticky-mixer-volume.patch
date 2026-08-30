@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CatPieLeaf <catpieleaf@proton.me>
+Date: Sun, 30 Aug 2026 00:00:00 -0300
+Subject: [PATCH] ALSA: usb-audio: add MIXER_GET_CUR_BROKEN quirk for ROCCAT
+ Juke
+
+The ROCCAT Juke 7.1 (CM6206-based, 1e7d:371e) Playback Volume feature
+unit (FU 13) always reports the same GET_CUR raw value regardless of
+what SET_CUR writes, e.g.:
+
+  usb 1-4.3.2.2: 13:0: sticky mixer values (0/6096/48 => 5376), disabling
+  usb 1-4.3.2.2: check MIXER_GET_CUR_BROKEN if you believe the mixer is non-sticky
+
+check_sticky_volume_control() in sound/usb/mixer.c can't tell a truly
+sticky (non-functional) mixer apart from one where only the readback
+is broken, so without a hint it gates registration of the control
+entirely (-ENODEV, "disabling"). On the Juke the hardware volume is
+in fact tunable via SET_CUR - only GET_CUR is constant - so this
+misfires and the control never gets registered/effective, leaving
+playback stuck near the last raw HW level regardless of the ALSA/
+PipeWire volume slider. Below roughly 35% this collapses to silence
+instead of scaling down, and above it playback resumes at a constant,
+un-attenuated level.
+
+Add a DEVICE_FLG() entry with QUIRK_FLAG_MIXER_GET_CUR_BROKEN, exactly
+as the in-source hint suggests, so the sticky check takes the non-
+fatal path (get_cur_broken=1, GET_CUR served from cache) instead of
+refusing to register the control, restoring real hardware volume
+control.
+
+---
+ sound/usb/quirks.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/sound/usb/quirks.c b/sound/usb/quirks.c
+--- a/sound/usb/quirks.c
++++ b/sound/usb/quirks.c
+@@ -2432,6 +2432,8 @@
+ 		   QUIRK_FLAG_GET_SAMPLE_RATE | QUIRK_FLAG_MIC_RES_16),
+ 	DEVICE_FLG(0x1bcf, 0x2283, /* NexiGo N930AF FHD Webcam */
+ 		   QUIRK_FLAG_GET_SAMPLE_RATE | QUIRK_FLAG_MIC_RES_16),
++	DEVICE_FLG(0x1e7d, 0x371e, /* ROCCAT Juke 7.1 */
++		   QUIRK_FLAG_MIXER_GET_CUR_BROKEN),
+ 	DEVICE_FLG(0x1ff7, 0x0f81, /* SC13A Webcam */
+ 		   QUIRK_FLAG_GET_SAMPLE_RATE),
+ 	DEVICE_FLG(0x2040, 0x7200, /* Hauppauge HVR-950Q */
+--
+2.49.0
