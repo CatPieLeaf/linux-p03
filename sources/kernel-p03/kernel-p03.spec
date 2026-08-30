@@ -126,7 +126,7 @@
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.22
+%define _tag_ver   p03.23
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
@@ -245,18 +245,23 @@
 # ==============================================================================
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
-# TEMPORARY, THIS RELEASE ONLY: p03.22 is the one-time Epoch 1 transition
-# build to unconditionally supersede every dot-scheme pre-release ever
+# TEMPORARY, THIS RELEASE ONLY: p03.23 is the corrected one-time Epoch 1
+# transition build, replacing p03.22 (which attempted the same transition
+# but its Obsoletes lines never accounted for the gcc-variant NVR carrying
+# a ".gcc." segment in the buildnum suffix, so they silently never matched
+# it — same class of bug that killed the original p03.21 attempt before
+# it). p03.23 obsoletes BOTH p03.21 and p03.22 below.
+# Purpose: unconditionally supersede every dot-scheme pre-release ever
 # published (e.g. 7.2.0.rc7.p03.17, which sorts as *newer* than any later
 # dotted final release — 'rc' > 'p03' in a plain, non-tilde alpha compare).
 # Epoch bypasses version-string comparison entirely, so this reaches every
 # poisoned NVR without enumerating them one by one.
-# Remove this Epoch: line starting with the NEXT release (p03.23+), and
+# Remove this Epoch: line starting with the NEXT release (p03.24+), and
 # add `Obsoletes: %%{name}-<subpkg> == 1:%%{_pkgver}-%%{release}%%{?dist}`
-# to the main package and all 5 subpackages instead (mirrors what p03.21
-# did for p03.22) — back to normal Epoch-0 releases after that, permanently,
-# since all builds from here on use the tilde `~rc` scheme and can't
-# reproduce this class of bug again.
+# to the main package and all 5 subpackages instead (mirrors this release)
+# — back to normal Epoch-0 releases after that, permanently, since all
+# builds from here on use the tilde `~rc` scheme and can't reproduce this
+# class of bug again.
 Epoch:   1
 Version: %{_pkgver}
 Release: 1%{?dist}
@@ -272,19 +277,27 @@ Provides: installonlypkg(kernel)
 Provides: multiversion(kernel)
 %endif
 
-Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.0.p03.21-1%{?dist}
+Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
+Obsoletes: kernel-%{_custom_tag}%{?_gccpacktag} == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
 
-# p03.21 was published as a one-time Epoch 1 transition release, to
-# unconditionally supersede every package published under the old
-# broken versioning scheme (where "rc" could outrank "p03"
-# alphabetically). This release (p03.22) drops back to Epoch 0 and
-# relies on this Obsoletes line — which bypasses the normal "must be a
-# newer EVR" rule — to replace both the Epoch 1 transition install and
-# any straggler still stuck on the original broken build (Epoch 0 is
-# always < Epoch 1 regardless of version content, so both are caught).
-# Keep this line in place for a good while, for anyone updating from
-# an old install that skipped several releases. Safe to remove once
-# everyone has moved past p03.21.
+# p03.21 (deleted, broken — missing this same Obsoletes on the
+# subpackages caused split/unsolvable transactions) and p03.22 (also
+# deleted, broken — its Obsoletes never matched the gcc-variant NVR) both
+# attempted this same one-time Epoch 1 transition. p03.23 is the corrected
+# attempt: it unconditionally supersedes every package published under
+# the old broken versioning scheme (where a dot-scheme "rc" segment could
+# outrank a "p03" segment alphabetically, e.g. 7.2.0.rc7.p03.17 sorting as
+# *newer* than 7.2.0.p03.20 — fixed by switching the RC suffix to a
+# leading tilde, which always sorts lowest) AND catches anyone who already
+# installed either failed prior attempt. These Obsoletes lines bypass the
+# normal "must be a newer EVR" rule to replace both, since Epoch 0 (next
+# release, p03.24) is always < Epoch 1 regardless of version content.
+# The %%{?_gccreltag} branch matters: the gcc-variant builds carry their
+# own ".gcc." segment in the buildnum suffix (e.g. 7.2.0.p03.gcc.21), so
+# a plain-variant literal here would silently never match them.
+# Keep both lines in place for a good while, for anyone updating from an
+# old install that skipped several releases. Safe to remove once
+# everyone has moved past p03.22.
 
 # ==============================================================================
 # Build dependencies
@@ -826,7 +839,8 @@ Provides: kernel-uname-r      = %{_kver}
 
 # See the Obsoletes comment on the main package above — each subpackage
 # needs its own copy, since Epoch/Obsoletes are resolved per package name.
-Obsoletes: %{name}-core == 1:7.2.0.p03.21-1%{?dist}
+Obsoletes: %{name}-core == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
+Obsoletes: %{name}-core == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
 
 Requires:      kernel-modules-uname-r = %{?epoch:%{epoch}:}%{_kver}
 %if !%{_distro_suse}
@@ -998,7 +1012,8 @@ Provides: kernel-modules-uname-r      = %{_kver}
 Provides: v4l2loopback-kmod           = 0.14.0
 
 # See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-modules == 1:7.2.0.p03.21-1%{?dist}
+Obsoletes: %{name}-modules == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
+Obsoletes: %{name}-modules == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
 
 Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod
@@ -1044,7 +1059,8 @@ Provides: kernel-devel         = %{_rpmver}
 Provides: kernel-devel-uname-r = %{_kver}
 
 # See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-devel == 1:7.2.0.p03.21-1%{?dist}
+Obsoletes: %{name}-devel == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
+Obsoletes: %{name}-devel == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
 
 Requires: bison
 Requires: findutils
@@ -1109,7 +1125,8 @@ Provides: multiversion(kernel)
 Provides: kernel-devel-matched = %{_rpmver}
 
 # See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-devel-matched == 1:7.2.0.p03.21-1%{?dist}
+Obsoletes: %{name}-devel-matched == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
+Obsoletes: %{name}-devel-matched == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
 
 Requires: %{name}-core    = %{?epoch:%{epoch}:}%{_rpmver}
 Requires: %{name}-modules = %{?epoch:%{epoch}:}%{_rpmver}
@@ -1131,7 +1148,8 @@ License: MIT AND GPL-2.0-only
 Provides: installonlypkg(kernel-module)
 
 # See the Obsoletes comment on the main package above.
-Obsoletes: %{name}-nvidia-open == 1:7.2.0.p03.21-1%{?dist}
+Obsoletes: %{name}-nvidia-open == 1:7.2.0.%{_custom_tag}%{?_gccreltag}.21-1%{?dist}
+Obsoletes: %{name}-nvidia-open == 1:7.2.2.%{_custom_tag}%{?_gccreltag}.22-1%{?dist}
 
 Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod
