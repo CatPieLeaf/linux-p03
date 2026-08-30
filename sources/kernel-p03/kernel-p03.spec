@@ -245,14 +245,27 @@
 # ==============================================================================
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
+# TEMPORARY, THIS RELEASE ONLY: p03.22 is the one-time Epoch 1 transition
+# build to unconditionally supersede every dot-scheme pre-release ever
+# published (e.g. 7.2.0.rc7.p03.17, which sorts as *newer* than any later
+# dotted final release — 'rc' > 'p03' in a plain, non-tilde alpha compare).
+# Epoch bypasses version-string comparison entirely, so this reaches every
+# poisoned NVR without enumerating them one by one.
+# Remove this Epoch: line starting with the NEXT release (p03.23+), and
+# add `Obsoletes: %%{name}-<subpkg> == 1:%%{_pkgver}-%%{release}%%{?dist}`
+# to the main package and all 5 subpackages instead (mirrors what p03.21
+# did for p03.22) — back to normal Epoch-0 releases after that, permanently,
+# since all builds from here on use the tilde `~rc` scheme and can't
+# reproduce this class of bug again.
+Epoch:   1
 Version: %{_pkgver}
 Release: 1%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 Packager: CatPieLeaf <catpieleaf@proton.me>
 
-Requires: %{name}-core    = %{_rpmver}
-Requires: %{name}-modules = %{_rpmver}
+Requires: %{name}-core    = %{?epoch:%{epoch}:}%{_rpmver}
+Requires: %{name}-modules = %{?epoch:%{epoch}:}%{_rpmver}
 
 Provides: installonlypkg(kernel)
 %if %{_distro_suse}
@@ -815,7 +828,7 @@ Provides: kernel-uname-r      = %{_kver}
 # needs its own copy, since Epoch/Obsoletes are resolved per package name.
 Obsoletes: %{name}-core == 1:7.2.0.p03.21-1%{?dist}
 
-Requires:      kernel-modules-uname-r = %{_kver}
+Requires:      kernel-modules-uname-r = %{?epoch:%{epoch}:}%{_kver}
 %if !%{_distro_suse}
 Requires(pre): /usr/bin/kernel-install
 %else
@@ -987,7 +1000,7 @@ Provides: v4l2loopback-kmod           = 0.14.0
 # See the Obsoletes comment on the main package above.
 Obsoletes: %{name}-modules == 1:7.2.0.p03.21-1%{?dist}
 
-Requires: kernel-uname-r = %{_kver}
+Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod
 
 %description modules
@@ -1098,9 +1111,9 @@ Provides: kernel-devel-matched = %{_rpmver}
 # See the Obsoletes comment on the main package above.
 Obsoletes: %{name}-devel-matched == 1:7.2.0.p03.21-1%{?dist}
 
-Requires: %{name}-core    = %{_rpmver}
-Requires: %{name}-modules = %{_rpmver}
-Requires: %{name}-devel   = %{_rpmver}
+Requires: %{name}-core    = %{?epoch:%{epoch}:}%{_rpmver}
+Requires: %{name}-modules = %{?epoch:%{epoch}:}%{_rpmver}
+Requires: %{name}-devel   = %{?epoch:%{epoch}:}%{_rpmver}
 
 %description devel-matched
     This meta package pulls in kernel-p03-core, kernel-p03-modules and
@@ -1120,7 +1133,7 @@ Provides: installonlypkg(kernel-module)
 # See the Obsoletes comment on the main package above.
 Obsoletes: %{name}-nvidia-open == 1:7.2.0.p03.21-1%{?dist}
 
-Requires: kernel-uname-r = %{_kver}
+Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod
 %if !%{_distro_suse}
 Requires: nvidia-gpu-firmware
