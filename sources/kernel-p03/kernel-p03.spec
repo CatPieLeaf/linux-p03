@@ -811,6 +811,10 @@ Provides: kernel              = %{_rpmver}
 Provides: kernel-core-uname-r = %{_kver}
 Provides: kernel-uname-r      = %{_kver}
 
+# See the Obsoletes comment on the main package above — each subpackage
+# needs its own copy, since Epoch/Obsoletes are resolved per package name.
+Obsoletes: %{name}-core == 1:7.2.0.p03.21-1%{?dist}
+
 Requires:      kernel-modules-uname-r = %{_kver}
 %if !%{_distro_suse}
 Requires(pre): /usr/bin/kernel-install
@@ -980,6 +984,9 @@ Provides: kernel-modules-extra-uname-r = %{_kver}
 Provides: kernel-modules-uname-r      = %{_kver}
 Provides: v4l2loopback-kmod           = 0.14.0
 
+# See the Obsoletes comment on the main package above.
+Obsoletes: %{name}-modules == 1:7.2.0.p03.21-1%{?dist}
+
 Requires: kernel-uname-r = %{_kver}
 Requires: kmod
 
@@ -1022,6 +1029,9 @@ Provides: multiversion(kernel)
 %endif
 Provides: kernel-devel         = %{_rpmver}
 Provides: kernel-devel-uname-r = %{_kver}
+
+# See the Obsoletes comment on the main package above.
+Obsoletes: %{name}-devel == 1:7.2.0.p03.21-1%{?dist}
 
 Requires: bison
 Requires: findutils
@@ -1085,6 +1095,9 @@ Provides: multiversion(kernel)
 %endif
 Provides: kernel-devel-matched = %{_rpmver}
 
+# See the Obsoletes comment on the main package above.
+Obsoletes: %{name}-devel-matched == 1:7.2.0.p03.21-1%{?dist}
+
 Requires: %{name}-core    = %{_rpmver}
 Requires: %{name}-modules = %{_rpmver}
 Requires: %{name}-devel   = %{_rpmver}
@@ -1103,6 +1116,9 @@ Summary: NVIDIA-open %{_nv_ver} kernel modules for %{name}
 License: MIT AND GPL-2.0-only
 
 Provides: installonlypkg(kernel-module)
+
+# See the Obsoletes comment on the main package above.
+Obsoletes: %{name}-nvidia-open == 1:7.2.0.p03.21-1%{?dist}
 
 Requires: kernel-uname-r = %{_kver}
 Requires: kmod

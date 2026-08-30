@@ -28,6 +28,10 @@ U1/U2 during real traffic bursts and wedge until externally reset.
 Disable LPM for the AX88179/178A the same way to keep it out of that
 state.
 
+Reported by RakuOS (a downstream Linux distribution) users running
+its kernel-p03 build.
+
+Signed-off-by: CatPieLeaf <catpieleaf@proton.me>
 ---
  drivers/usb/core/quirks.c | 3 +++
  1 file changed, 3 insertions(+)

@@ -9,7 +9,7 @@ unit (FU 13) always reports the same GET_CUR raw value regardless of
 what SET_CUR writes, e.g.:
 
   usb 1-4.3.2.2: 13:0: sticky mixer values (0/6096/48 => 5376), disabling
-  usb 1-4.3.2.2: check MIXER_GET_CUR_BROKEN if you believe the mixer is non-sticky
+  check MIXER_GET_CUR_BROKEN if you believe the mixer is non-sticky
 
 check_sticky_volume_control() in sound/usb/mixer.c can't tell a truly
 sticky (non-functional) mixer apart from one where only the readback
@@ -28,6 +28,10 @@ fatal path (get_cur_broken=1, GET_CUR served from cache) instead of
 refusing to register the control, restoring real hardware volume
 control.
 
+Reported by RakuOS (a downstream Linux distribution) users running
+its kernel-p03 build.
+
+Signed-off-by: CatPieLeaf <catpieleaf@proton.me>
 ---
  sound/usb/quirks.c | 2 ++
  1 file changed, 2 insertions(+)
