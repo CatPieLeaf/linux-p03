@@ -116,12 +116,21 @@
 #   kernel-7.1.8-200.fc44
 %define _koji_nvr  kernel-7.2.2-300.fc45
 
-# openSUSE only — paste the NVR from Kernel:HEAD OBS project:
-#   https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/
-# Formats (git hash suffix is always present):
-#   kernel-source-7.2~rc7-2.1.gaf18d8c     (RC)
-#   kernel-source-7.1.8-5.1.ga5cdd68       (stable)
-%define _suse_nvr  kernel-source-7.2.0-8.1.g3a45cbc
+# openSUSE only — paste the NVR from either:
+#   Kernel:HEAD OBS project (RCs, bleeding edge):
+#     https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/
+#     kernel-source-7.2~rc7-2.1.gaf18d8c     (RC, git hash suffix always present)
+#     kernel-source-7.1.8-5.1.ga5cdd68       (stable, git hash suffix always present)
+#   Tumbleweed main src-oss repo (released stable kernels, no git hash):
+#     https://download.opensuse.org/tumbleweed/repo/src-oss/src/
+#     kernel-source-7.2.2-1.1                (stable, no git hash suffix)
+# Which one is auto-detected below from the trailing .g<hash> (or its
+# absence). If OBS's download_files source service can't evaluate that
+# (its spec parser may not run shell-exec macros), override it here by
+# uncommenting one of:
+#   %%define _suse_tumbleweed 1   -- force Tumbleweed src-oss
+#   %%define _suse_tumbleweed 0   -- force Kernel:HEAD OBS
+%define _suse_nvr  kernel-source-7.2.2-1.1
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
@@ -180,6 +189,17 @@
 %define _rcnum    %(echo "%{_suse_nvr}" | sed -nE 's/.*~rc([0-9]+).*/\\1/p')
 %define _kver_str %(echo "%{_suse_nvr}" | cut -d- -f3 | sed 's/~.*//;/^[0-9]*\\.[0-9]*$/s/$/.0/')
 %define _basekver %(echo "%{_suse_nvr}" | sed -E 's/^kernel-source-([0-9]+\\.[0-9]+).*/\\1/')
+
+# Kernel:HEAD OBS NVRs always carry a trailing git hash (.g<hash>); the
+# Tumbleweed src-oss repo's released NVRs never do. Skipped if the user
+# already forced _suse_tumbleweed above.
+%{!?_suse_tumbleweed: %define _suse_tumbleweed %(echo "%{_suse_nvr}" | grep -qE -- '\\.g[0-9a-f]+$' && echo 0 || echo 1)}
+
+%if %{_suse_tumbleweed}
+%define _suse_baseurl https://download.opensuse.org/tumbleweed/repo/src-oss/src
+%else
+%define _suse_baseurl https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src
+%endif
 %else
 %define _kver_str %(echo "%{_koji_nvr}" | cut -d- -f2)
 %define _krel_str %(echo "%{_koji_nvr}" | cut -d- -f3-)
@@ -363,7 +383,7 @@ BuildRequires: qt5-qtbase-devel
 %if !%{_distro_suse}
 Source0: https://koji.fedoraproject.org/packages/kernel/%{_kver_str}/%{_krel_str}/src/%{_koji_nvr}.src.rpm#/%{_koji_nvr}.srpm
 %else
-Source0: https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/%{_suse_nvr}.src.rpm#/%{_suse_nvr}.srpm
+Source0: %{_suse_baseurl}/%{_suse_nvr}.src.rpm#/%{_suse_nvr}.srpm
 %endif
 
 Source1: %{_baseurl}/kconfig/linux-p03.config
