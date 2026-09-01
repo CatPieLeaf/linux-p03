@@ -232,6 +232,14 @@
 %define _devel_dir  %{_usrsrc}/kernels/%{_kver}
 %define _kernel_dir /lib/modules/%{_kver}
 
+# kbuild recomputes KERNELRELEASE from EXTRAVERSION on every separate make
+# invocation (include/config/kernel.release has a FORCE prerequisite, so
+# nothing about it is cached across invocations) — every %%make_build call
+# that touches KERNELRELEASE (module/image install paths) must pass this
+# same EXTRAVERSION, or it silently reverts to the empty default from the
+# kernel's own Makefile and installs under the wrong /lib/modules/<rel> dir.
+%define _extraversion %{_pkgver_suffix}-%{release}.%{_arch}
+
 # ==============================================================================
 # Compiler flags
 # ==============================================================================
@@ -667,7 +675,7 @@ fi
 # ==============================================================================
 %build
 # ==============================================================================
-    %make_build EXTRAVERSION=%{_pkgver_suffix}-%{release}.%{_arch} KERNEL_MODULE_DIRECTORY=/lib/modules KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
+    %make_build EXTRAVERSION=%{_extraversion} KERNEL_MODULE_DIRECTORY=/lib/modules KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
 
     # bpftool vmlinux.h for the devel package
 %if %{with gcc}
@@ -687,7 +695,7 @@ fi
 
     # 1. Kernel modules
     echo "Installing kernel modules..."
-    ZSTD_CLEVEL=19 %make_build INSTALL_MOD_PATH="%{buildroot}" KERNEL_MODULE_DIRECTORY=/lib/modules INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
+    ZSTD_CLEVEL=19 %make_build EXTRAVERSION=%{_extraversion} INSTALL_MOD_PATH="%{buildroot}" KERNEL_MODULE_DIRECTORY=/lib/modules INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
 
     # 2. NVIDIA modules
 %if %{with nv}
