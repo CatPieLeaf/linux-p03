@@ -232,13 +232,23 @@
 %define _devel_dir  %{_usrsrc}/kernels/%{_kver}
 %define _kernel_dir /lib/modules/%{_kver}
 
-# kbuild recomputes KERNELRELEASE from EXTRAVERSION on every separate make
-# invocation (include/config/kernel.release has a FORCE prerequisite, so
-# nothing about it is cached across invocations) — every %%make_build call
-# that touches KERNELRELEASE (module/image install paths) must pass this
-# same EXTRAVERSION, or it silently reverts to the empty default from the
-# kernel's own Makefile and installs under the wrong /lib/modules/<rel> dir.
+# kbuild recomputes KERNELRELEASE from VERSION/PATCHLEVEL/SUBLEVEL/EXTRAVERSION
+# on every separate make invocation (include/config/kernel.release has a
+# FORCE prerequisite, so nothing about it is cached across invocations) —
+# every %%make_build call that touches KERNELRELEASE (module/image install
+# paths) must pass all of these consistently, or it silently reverts to
+# whatever the kernel's own Makefile hardcodes and installs under the wrong
+# /lib/modules/<rel> dir. This matters beyond EXTRAVERSION on openSUSE:
+# their Kernel:HEAD/Tumbleweed base tarball's own Makefile is NEVER bumped
+# for point releases (e.g. it still reads "SUBLEVEL = 0" even when the NVR
+# says kernel-source-7.2.2-*) — %%_kver_str, parsed from the NVR/koji name,
+# is the only place the real point-release version lives, so it must be
+# forced onto the command line too.
+%define _kver_major %(echo "%{_kver_str}" | cut -d. -f1)
+%define _kver_minor %(echo "%{_kver_str}" | cut -d. -f2)
+%define _kver_sub   %(echo "%{_kver_str}" | cut -d. -f3)
 %define _extraversion %{_pkgver_suffix}-%{release}.%{_arch}
+%define _kver_make_args VERSION=%{_kver_major} PATCHLEVEL=%{_kver_minor} SUBLEVEL=%{_kver_sub} EXTRAVERSION=%{_extraversion}
 
 # ==============================================================================
 # Compiler flags
@@ -675,7 +685,7 @@ fi
 # ==============================================================================
 %build
 # ==============================================================================
-    %make_build EXTRAVERSION=%{_extraversion} KERNEL_MODULE_DIRECTORY=/lib/modules KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
+    %make_build %{_kver_make_args} KERNEL_MODULE_DIRECTORY=/lib/modules KCFLAGS="%{?_kcflags}" KRUSTFLAGS="%{?_krustflags}" all
 
     # bpftool vmlinux.h for the devel package
 %if %{with gcc}
@@ -695,7 +705,7 @@ fi
 
     # 1. Kernel modules
     echo "Installing kernel modules..."
-    ZSTD_CLEVEL=19 %make_build EXTRAVERSION=%{_extraversion} INSTALL_MOD_PATH="%{buildroot}" KERNEL_MODULE_DIRECTORY=/lib/modules INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
+    ZSTD_CLEVEL=19 %make_build %{_kver_make_args} INSTALL_MOD_PATH="%{buildroot}" KERNEL_MODULE_DIRECTORY=/lib/modules INSTALL_MOD_STRIP=1 DEPMOD=/doesnt/exist modules_install
 
     # 2. NVIDIA modules
 %if %{with nv}
