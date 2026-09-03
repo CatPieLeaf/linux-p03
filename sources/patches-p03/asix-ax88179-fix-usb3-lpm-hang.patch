@@ -1,11 +1,13 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: CatPieLeaf <catpieleaf@proton.me>
 Date: Sun, 30 Aug 2026 00:00:00 -0300
-Subject: [PATCH] USB: quirks: add USB_QUIRK_NO_LPM for ASIX AX88179/178A
+Subject: [PATCH] USB: fix two ASIX AX88179/178A gigabit hangs
 
-The ASIX AX88179 USB 3.0 Gigabit Ethernet chip (0b95:1790) wedges on
-the bus after running under sustained wired traffic: the driver logs
-a spontaneous
+The ASIX AX88179 USB 3.0 Gigabit Ethernet chip (0b95:1790) wedges
+under sustained wired traffic in two distinct, unrelated ways.
+
+Part 1 (drivers/usb/core/quirks.c): the harsher failure. The driver
+logs a spontaneous
 
   ax88179_178a 2-2:1.0 enp5s0f3u2: ax88179 - Link status is: 0
 
@@ -28,26 +30,112 @@ U1/U2 during real traffic bursts and wedge until externally reset.
 Disable LPM for the AX88179/178A the same way to keep it out of that
 state.
 
+Part 2 (drivers/net/usb/ax88179_178a.c): a separate, softer failure
+that the LPM quirk above does not address. The AX88179/178A driver
+never implements driver_info->recover, the hook usbnet_tx_timeout()
+calls (in addition to unlinking pending TX URBs) when the net_device
+TX watchdog fires:
+
+  void usbnet_tx_timeout(struct net_device *net, unsigned int txqueue)
+  {
+          ...
+          unlink_urbs(dev, &dev->txq);
+          queue_work(system_bh_wq, &dev->bh_work);
+          if (dev->driver_info->recover)
+                  (dev->driver_info->recover)(dev);
+  }
+
+With no .recover, a watchdog timeout only unlinks the stuck URBs and
+reschedules the usbnet worker - it never actually pokes the hardware.
+If the chip's USB/PHY state is genuinely wedged (as opposed to a
+transient queue backup), nothing brings it back: the interface stays
+"up" (carrier and link state untouched, since this path never touches
+them) while no traffic passes - again only recovered by a real
+bus-level `usbreset`, and only until it wedges again, since nothing
+in the kernel ever performs that reset automatically. This is why
+disabling LPM alone was not sufficient to fix connectivity loss under
+sustained traffic.
+
+drivers/net/usb/cdc_subset.c's ALi M5632 minidriver already hits the
+same class of problem and defines exactly this recovery shape:
+
+  static void m5632_recover(struct usbnet *dev)
+  {
+          struct usb_device *udev = dev->udev;
+          struct usb_interface *intf = dev->intf;
+          int r;
+
+          r = usb_lock_device_for_reset(udev, intf);
+          if (r < 0)
+                  return;
+          usb_reset_device(udev);
+          usb_unlock_device(udev);
+  }
+
+Add the same pattern here - the in-kernel equivalent of the userspace
+`usbreset` workaround - and wire it up for both AX88179 and AX88178A,
+the two device IDs backed by this file (0b95:1790 / 0b95:178a).
+
 Reported by RakuOS (a downstream Linux distribution) users running
 its kernel-p03 build.
 
 Signed-off-by: CatPieLeaf <catpieleaf@proton.me>
 ---
- drivers/usb/core/quirks.c | 3 +++
- 1 file changed, 3 insertions(+)
+ drivers/net/usb/ax88179_178a.c | 15 +++++++++++++++
+ drivers/usb/core/quirks.c      |  3 +++
+ 2 files changed, 18 insertions(+)
 
+diff --git a/drivers/net/usb/ax88179_178a.c b/drivers/net/usb/ax88179_178a.c
+--- a/drivers/net/usb/ax88179_178a.c
++++ b/drivers/net/usb/ax88179_178a.c
+@@ -1707,6 +1707,19 @@ static int ax88179_stop(struct usbnet *dev)
+ 	return 0;
+ }
+ 
++static void ax88179_recover(struct usbnet *dev)
++{
++	struct usb_device *udev = dev->udev;
++	struct usb_interface *intf = dev->intf;
++	int r;
++
++	r = usb_lock_device_for_reset(udev, intf);
++	if (r < 0)
++		return;
++	usb_reset_device(udev);
++	usb_unlock_device(udev);
++}
++
+ static const struct driver_info ax88179_info = {
+ 	.description = "ASIX AX88179 USB 3.0 Gigabit Ethernet",
+ 	.bind = ax88179_bind,
+@@ -1714,6 +1727,7 @@ static const struct driver_info ax88179_info = {
+ 	.status = ax88179_status,
+ 	.link_reset = ax88179_link_reset,
+ 	.reset = ax88179_net_reset,
++	.recover = ax88179_recover,
+ 	.stop = ax88179_stop,
+ 	.flags = FLAG_ETHER | FLAG_FRAMING_AX,
+ 	.rx_fixup = ax88179_rx_fixup,
+@@ -1725,6 +1739,7 @@ static const struct driver_info ax88178a_info = {
+ 	.status = ax88179_status,
+ 	.link_reset = ax88179_link_reset,
+ 	.reset = ax88179_net_reset,
++	.recover = ax88179_recover,
+ 	.stop = ax88179_stop,
+ 	.flags = FLAG_ETHER | FLAG_FRAMING_AX,
+ 	.rx_fixup = ax88179_rx_fixup,
 diff --git a/drivers/usb/core/quirks.c b/drivers/usb/core/quirks.c
 --- a/drivers/usb/core/quirks.c
 +++ b/drivers/usb/core/quirks.c
 @@ -457,6 +457,9 @@ static const struct usb_device_id usb_quirk_list[] = {
  	/* ASUS TUF 4K PRO - BOS descriptor fetch hangs at SuperSpeed Plus */
  	{ USB_DEVICE(0x0b05, 0x1ab9), .driver_info = USB_QUIRK_NO_BOS },
-
+ 
 +	/* ASIX AX88179/178A USB 3.0 Gigabit Ethernet - wedges under LPM */
 +	{ USB_DEVICE(0x0b95, 0x1790), .driver_info = USB_QUIRK_NO_LPM },
 +
  	/* Realtek Semiconductor Corp. Mass Storage Device (Multicard Reader)*/
  	{ USB_DEVICE(0x0bda, 0x0151), .driver_info = USB_QUIRK_CONFIG_INTF_STRINGS },
-
+ 
 --
 2.49.0

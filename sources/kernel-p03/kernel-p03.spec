@@ -114,7 +114,7 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.2.2-300.fc45
+%define _koji_nvr  kernel-7.2.3-300.fc45
 
 # openSUSE only — paste the NVR from either:
 #   Kernel:HEAD OBS project (RCs, bleeding edge):
@@ -135,7 +135,7 @@
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.25
+%define _tag_ver   p03.26
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
