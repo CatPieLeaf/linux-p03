@@ -13,7 +13,7 @@
 <br>
 <br>
 <p align="center">
-  <img src="https://img.shields.io/badge/kernel-7.2.2-f5bd20?logo=linux&logoColor=000000&style=for-the-badge&labelColor=FDEFC7" alt="Kernel version">
+  <img src="https://img.shields.io/badge/kernel-7.2.3-f5bd20?logo=linux&logoColor=000000&style=for-the-badge&labelColor=FDEFC7" alt="Kernel version">
   <a href="https://discord.gg/DSrbRk6dPp"><img src="https://img.shields.io/discord/1434166231274885313?label=support&logo=discord&style=for-the-badge&color=5965f1&labelColor=D6D9FC" alt="Discord"></a>
   <a href="https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/"><img src="https://img.shields.io/badge/COPR-catpieleaf%2Fkernel--p03-white?logo=fedora&style=for-the-badge&color=52a1d9&labelColor=D4E8F6" alt="Fedora COPR"></a>
   <a href="https://build.opensuse.org/package/show/home:CatPieLeaf:Kernel-P03/Kernel-P03"><img src="https://img.shields.io/badge/OBS-kernel--p03-white?logo=opensuse&style=for-the-badge&color=72b82a&labelColor=DCEDCA" alt="openSUSE OBS"></a>
