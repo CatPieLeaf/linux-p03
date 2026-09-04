@@ -37,12 +37,14 @@
 %define _build_id_links       none
 %define _default_patch_fuzz   2
 %define _disable_source_fetch 0
+# openSUSE's mimalloc crashes short-lived host tools (fixdep, cc-version.sh's
+# self-check) under LD_PRELOAD; Fedora's is fine, so it's skipped on SUSE only.
 %if %{_distro_suse}
-%define _mimalloc_lib libmimalloc.so.3
+%define make_build            make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
 %else
 %define _mimalloc_lib libmimalloc.so.2
-%endif
 %define make_build            LD_PRELOAD=%{_mimalloc_lib} make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
+%endif
 %undefine __brp_mangle_shebangs
 %undefine _auto_set_build_flags
 
@@ -342,12 +344,6 @@ BuildRequires: python3-pyyaml
 %endif
 
 %if %{_distro_suse}
-BuildRequires: libmimalloc3
-%else
-BuildRequires: mimalloc
-%endif
-
-%if %{_distro_suse}
 BuildRequires: rust-bindgen
 BuildRequires: cargo
 %else
@@ -357,6 +353,10 @@ BuildRequires: bindgen
 # openSUSE's "rust" package already bundles rustfmt; it has no standalone package.
 %if !%{_distro_suse}
 BuildRequires: rustfmt
+%endif
+
+%if !%{_distro_suse}
+BuildRequires: mimalloc
 %endif
 
 BuildRequires: lld
