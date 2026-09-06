@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CatPieLeaf <catpieleaf@proton.me>
+Date: Sun, 6 Sep 2026 00:00:00 -0300
+Subject: [PATCH] drm/amd/display: complete cursor vblank events immediately
+
+Intermittent flip_done/commit wait timeouts have been widely reported
+on amdgpu since kernel 6.12 (RX 580 through RX 9070 XT), including on
+this p03 kernel: 3440x1440@144Hz over DP on an RX 9070 XT (Navi 48)
+hits repeated
+
+  [drm] *ERROR* [CRTC:117:crtc-0] flip_done timed out
+  [drm] *ERROR* [PLANE:113:plane-7] commit wait timed out
+
+dm_arm_vblank_event() in amdgpu_dm.c defers cursor-only commit events
+by stashing them in acrtc->event for amdgpu_dm_crtc_handle_vblank()
+(amdgpu_dm_crtc.c) to send on a later vblank:
+
+  } else if (cursor_update) {
+          acrtc->event = acrtc->base.state->event;
+          acrtc->base.state->event = NULL;
+  }
+
+That handler's send condition is:
+
+  if (acrtc->event && acrtc->pflip_status != AMDGPU_FLIP_SUBMITTED)
+
+which is also true for the idle AMDGPU_FLIP_NONE state, not just a
+genuinely pending cursor event. If a real page flip is armed on this
+CRTC before the deferred cursor event is ever picked up, dm_arm_vblank_event()'s
+pflip_update branch overwrites the same acrtc->event field (its own
+WARN_ON(acrtc->event) firing is the tell), and the cursor event's
+matching drm_crtc_vblank_get() reference is never balanced by a put.
+Either the wrong event ships or one is dropped, leaving DC waiting on
+a flip completion that already got consumed out of order - manifesting
+as the flip_done/commit wait timeouts above.
+
+This got much easier to hit after commit 58a261bfc967 ("drm/amd/display:
+use a more lax vblank enable policy for older ASICs") shortened the
+vblank off-delay, making vblank enable/disable toggle far more often
+between commits and widening how often this race window gets exercised.
+Tracked upstream at:
+https://gitlab.freedesktop.org/drm/amd/-/issues/3787
+
+Fix it the same way genuine page-flip and pageflip-IRQ completions
+already do elsewhere in this file (dm_pflip_high_irq(),
+amdgpu_dm_crtc_handle_vblank() itself): since a cursor update is
+already committed to hardware by the time we get here, there's no
+reason to defer its event at all. Send it immediately and balance the
+vblank reference dm_arm_vblank_event_pre_programming() took for it,
+instead of leaving it for the generic vblank handler to race against.
+
+Backport of an unmerged amd-gfx fix by Michele Palazzi
+("drm/amd/display: complete cursor vblank events immediately",
+amd-gfx, 2026-02-17), adapted to this kernel's current
+dm_arm_vblank_event() layout.
+
+Signed-off-by: CatPieLeaf <catpieleaf@proton.me>
+---
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 16 +++++++++++++---
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -10271,8 +10271,20 @@ static void dm_arm_vblank_event(struct amdgpu_crtc *acrtc,
+ 			      "crtc:%d, pflip_stat:AMDGPU_FLIP_SUBMITTED\n",
+ 			      acrtc->crtc_id);
+ 	} else if (cursor_update) {
+-		acrtc->event = acrtc->base.state->event;
+-		acrtc->base.state->event = NULL;
++		/*
++		 * Cursor updates are committed to hardware immediately, so
++		 * complete the event now instead of deferring it into
++		 * acrtc->event for amdgpu_dm_crtc_handle_vblank() to send on
++		 * a later vblank. Deferring it left a window where a
++		 * subsequent real page flip's arm above could clobber this
++		 * stashed cursor event before it was ever sent, and where
++		 * that handler's "pflip_status != AMDGPU_FLIP_SUBMITTED"
++		 * check (also true for the idle AMDGPU_FLIP_NONE state)
++		 * could send or drop the wrong flip's event under load.
++		 */
++		drm_crtc_send_vblank_event(&acrtc->base, acrtc->base.state->event);
++		acrtc->base.state->event = NULL;
++		drm_crtc_vblank_put(&acrtc->base);
+ 	}
+ }
+ 
+--
+2.49.0
