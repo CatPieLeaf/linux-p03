@@ -34,17 +34,7 @@ Signed-off-by: Peter Jung <admin@ptr1337.dev>
  drivers/gpu/drm/amd/amdgpu/amdgpu_mode.h      |    2 -
  drivers/gpu/drm/amd/amdgpu/amdgpu_ring.c      |    3 +-
  .../gpu/drm/amd/amdgpu/atombios_encoders.c    |   10 +-
- drivers/gpu/drm/amd/amdgpu/cik_ih.c           |    1 +
- drivers/gpu/drm/amd/amdgpu/cz_ih.c            |    1 +
  drivers/gpu/drm/amd/amdgpu/gfx_v10_0.c        |   39 +-
- drivers/gpu/drm/amd/amdgpu/iceland_ih.c       |    1 +
- drivers/gpu/drm/amd/amdgpu/ih_v6_0.c          |    1 +
- drivers/gpu/drm/amd/amdgpu/ih_v6_1.c          |    1 +
- drivers/gpu/drm/amd/amdgpu/navi10_ih.c        |    1 +
- drivers/gpu/drm/amd/amdgpu/si_ih.c            |    1 +
- drivers/gpu/drm/amd/amdgpu/tonga_ih.c         |    1 +
- drivers/gpu/drm/amd/amdgpu/vega10_ih.c        |    1 +
- drivers/gpu/drm/amd/amdgpu/vega20_ih.c        |    1 +
  .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c |   36 +-
  .../amd/display/amdgpu_dm/amdgpu_dm_color.c   |   16 +-
  .../amd/display/dc/dcn30/dcn30_cm_common.c    |  192 +
@@ -1601,30 +1591,6 @@ index a1d05df0ac99..dc4f3a8d0d35 100644
  	props.type = BACKLIGHT_RAW;
  	snprintf(bl_name, sizeof(bl_name),
  		 "amdgpu_bl%d", dev->primary->index);
-diff --git a/drivers/gpu/drm/amd/amdgpu/cik_ih.c b/drivers/gpu/drm/amd/amdgpu/cik_ih.c
-index 876a3256dba4..e0a4fc674e70 100644
---- a/drivers/gpu/drm/amd/amdgpu/cik_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/cik_ih.c
-@@ -216,6 +216,7 @@ static u32 cik_ih_get_wptr(struct amdgpu_device *adev,
- 		 */
- 		tmp &= ~IH_RB_CNTL__WPTR_OVERFLOW_CLEAR_MASK;
- 		WREG32(mmIH_RB_CNTL, tmp);
-+		ih->overflow = true;
- 	}
- 
- out:
-diff --git a/drivers/gpu/drm/amd/amdgpu/cz_ih.c b/drivers/gpu/drm/amd/amdgpu/cz_ih.c
-index bc7a2e06ab5f..795e52a10779 100644
---- a/drivers/gpu/drm/amd/amdgpu/cz_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/cz_ih.c
-@@ -227,6 +227,7 @@ static u32 cz_ih_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32(mmIH_RB_CNTL, tmp);
-+	ih->overflow = true;
- 
- out:
- 	return (wptr & ih->ptr_mask);
 diff --git a/drivers/gpu/drm/amd/amdgpu/gfx_v10_0.c b/drivers/gpu/drm/amd/amdgpu/gfx_v10_0.c
 index a9961d504833..cbac8449e5bf 100644
 --- a/drivers/gpu/drm/amd/amdgpu/gfx_v10_0.c
@@ -1713,102 +1679,6 @@ index a9961d504833..cbac8449e5bf 100644
  static int gfx_v10_0_soft_reset(struct amdgpu_ip_block *ip_block)
  {
  	u32 grbm_soft_reset = 0;
-diff --git a/drivers/gpu/drm/amd/amdgpu/iceland_ih.c b/drivers/gpu/drm/amd/amdgpu/iceland_ih.c
-index 01cadf898c00..23079fa29de4 100644
---- a/drivers/gpu/drm/amd/amdgpu/iceland_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/iceland_ih.c
-@@ -226,6 +226,7 @@ static u32 iceland_ih_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32(mmIH_RB_CNTL, tmp);
-+	ih->overflow = true;
- 
- out:
- 	return (wptr & ih->ptr_mask);
-diff --git a/drivers/gpu/drm/amd/amdgpu/ih_v6_0.c b/drivers/gpu/drm/amd/amdgpu/ih_v6_0.c
-index 333e9c30c091..7fbf51fa2d41 100644
---- a/drivers/gpu/drm/amd/amdgpu/ih_v6_0.c
-+++ b/drivers/gpu/drm/amd/amdgpu/ih_v6_0.c
-@@ -471,6 +471,7 @@ static u32 ih_v6_0_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32_NO_KIQ(ih_regs->ih_rb_cntl, tmp);
-+	ih->overflow = true;
- out:
- 	return (wptr & ih->ptr_mask);
- }
-diff --git a/drivers/gpu/drm/amd/amdgpu/ih_v6_1.c b/drivers/gpu/drm/amd/amdgpu/ih_v6_1.c
-index 699c274d357e..5fd3d4937d53 100644
---- a/drivers/gpu/drm/amd/amdgpu/ih_v6_1.c
-+++ b/drivers/gpu/drm/amd/amdgpu/ih_v6_1.c
-@@ -439,6 +439,7 @@ static u32 ih_v6_1_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32_NO_KIQ(ih_regs->ih_rb_cntl, tmp);
-+	ih->overflow = true;
- 
- out:
- 	return (wptr & ih->ptr_mask);
-diff --git a/drivers/gpu/drm/amd/amdgpu/navi10_ih.c b/drivers/gpu/drm/amd/amdgpu/navi10_ih.c
-index 4cd325149b63..167359da71b6 100644
---- a/drivers/gpu/drm/amd/amdgpu/navi10_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/navi10_ih.c
-@@ -447,6 +447,7 @@ static u32 navi10_ih_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32_NO_KIQ(ih_regs->ih_rb_cntl, tmp);
-+	ih->overflow = true;
- out:
- 	return (wptr & ih->ptr_mask);
- }
-diff --git a/drivers/gpu/drm/amd/amdgpu/si_ih.c b/drivers/gpu/drm/amd/amdgpu/si_ih.c
-index 66f650f87243..583766bba409 100644
---- a/drivers/gpu/drm/amd/amdgpu/si_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/si_ih.c
-@@ -132,6 +132,7 @@ static u32 si_ih_get_wptr(struct amdgpu_device *adev,
- 		 */
- 		tmp &= ~IH_RB_CNTL__WPTR_OVERFLOW_CLEAR_MASK;
- 		WREG32(IH_RB_CNTL, tmp);
-+		ih->overflow = true;
- 	}
- 
- out:
-diff --git a/drivers/gpu/drm/amd/amdgpu/tonga_ih.c b/drivers/gpu/drm/amd/amdgpu/tonga_ih.c
-index ee8038df17e3..b386d74944c6 100644
---- a/drivers/gpu/drm/amd/amdgpu/tonga_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/tonga_ih.c
-@@ -230,6 +230,7 @@ static u32 tonga_ih_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32(mmIH_RB_CNTL, tmp);
-+	ih->overflow = true;
- 
- out:
- 	return (wptr & ih->ptr_mask);
-diff --git a/drivers/gpu/drm/amd/amdgpu/vega10_ih.c b/drivers/gpu/drm/amd/amdgpu/vega10_ih.c
-index eb16916c6473..77728a4e4a4c 100644
---- a/drivers/gpu/drm/amd/amdgpu/vega10_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/vega10_ih.c
-@@ -377,6 +377,7 @@ static u32 vega10_ih_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32_NO_KIQ(ih_regs->ih_rb_cntl, tmp);
-+	ih->overflow = true;
- 
- out:
- 	return (wptr & ih->ptr_mask);
-diff --git a/drivers/gpu/drm/amd/amdgpu/vega20_ih.c b/drivers/gpu/drm/amd/amdgpu/vega20_ih.c
-index 85846fd08ce4..fa9cca935d3c 100644
---- a/drivers/gpu/drm/amd/amdgpu/vega20_ih.c
-+++ b/drivers/gpu/drm/amd/amdgpu/vega20_ih.c
-@@ -461,6 +461,7 @@ static u32 vega20_ih_get_wptr(struct amdgpu_device *adev,
- 	 */
- 	tmp = REG_SET_FIELD(tmp, IH_RB_CNTL, WPTR_OVERFLOW_CLEAR, 0);
- 	WREG32_NO_KIQ(ih_regs->ih_rb_cntl, tmp);
-+	ih->overflow = true;
- 
- out:
- 	return (wptr & ih->ptr_mask);
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
 index 00de201cc524..827de22fc74a 100644
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
