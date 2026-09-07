@@ -1906,6 +1906,20 @@ index 00de201cc524..827de22fc74a 100644
  			amdgpu_dm_connector_add_common_modes(encoder, connector);
  		amdgpu_dm_connector_add_freesync_modes(connector, drm_edid);
  	}
+@@ -10362,6 +10375,13 @@ static void amdgpu_dm_commit_planes(struct drm_atomic_commit *state,
+ 		struct dc_stream_update stream_update;
+ 	} *bundle;
+ 
++	/*
++	 * Hack: Make unconditional.
++	 * TODO: rework with flag to gate this or keep in in active period
++	 * based on userland selection.
++	 */
++	vrr_active = true;
++
+ 	bundle = kzalloc_obj(*bundle);
+ 
+ 	if (!bundle) {
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c
 index 4f99f6a01d42..bfa13259f02f 100644
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_color.c
