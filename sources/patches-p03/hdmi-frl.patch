@@ -79,7 +79,7 @@ dc/hpo/Makefile.
 
 Signed-off-by: Mauri de Souza Meneguzzo <mauri870@gmail.com>
 ---
- 96 files changed, 7289 insertions(+), 324 deletions(-)
+ 95 files changed, 7260 insertions(+), 308 deletions(-)
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
 +++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
@@ -9484,92 +9484,6 @@ diff --git a/drivers/gpu/drm/display/drm_dp_helper.c b/drivers/gpu/drm/display/d
  		if (drm_dp_dpcd_read_byte(aux, DP_PCON_HDMI_ERROR_STATUS_LN0 + i, &buf) < 0)
  			return;
  
-diff --git a/drivers/gpu/drm/drm_connector.c b/drivers/gpu/drm/drm_connector.c
---- a/drivers/gpu/drm/drm_connector.c
-+++ b/drivers/gpu/drm/drm_connector.c
-@@ -2471,6 +2471,19 @@
- EXPORT_SYMBOL(drm_connector_attach_passive_vrr_capable_property);
- 
- /**
-+ * DOC: Auto Low Latency Mode properties
-+ *
-+ * Auto Low Latency capable HDMI displays (be it PC monitors or TVs)
-+ * can automatically enter a "low latency" mode, usually named "Game Mode" by
-+ * receiving specific data in HDMI Forum vendor-specific info frame.
-+ *
-+ * This usually is the best mode for PC usage but disables as much processing as
-+ * possible which might not be desireable on lower end devices casing them to
-+ * produce an image that's unsatisfactory to some users.
-+ *
-+ */
-+
-+/**
-  * drm_connector_attach_scaling_mode_property - attach atomic scaling mode property
-  * @connector: connector to attach scaling mode property on.
-  * @scaling_mode_mask: or'ed mask of BIT(%DRM_MODE_SCALE_\*).
-@@ -3016,46 +3029,46 @@
- EXPORT_SYMBOL(drm_connector_atomic_hdr_metadata_equal);
- 
- /**
-- * drm_connector_set_vrr_capable_property - sets the variable refresh rate
-- * capable property for a connector
-+ * drm_connector_set_passive_vrr_disabled_capable_property - sets the variable refresh
-+ * rate on desktop capable property for a connector
-  * @connector: drm connector
-- * @capable: True if the connector is variable refresh rate capable
-+ * @capable: True if the connector is variable refresh rate on desktop capable
-  *
-  * Should be used by atomic drivers to update the indicated support for
-- * variable refresh rate over a connector.
-+ * variable refresh rate on desktop over a connector.
-  */
--void drm_connector_set_vrr_capable_property(
-+void drm_connector_set_passive_vrr_capable_property(
- 		struct drm_connector *connector, bool capable)
- {
--	if (!connector->vrr_capable_property)
-+	if (!connector->passive_vrr_capable_property)
- 		return;
- 
- 	drm_object_property_set_value(&connector->base,
--				      connector->vrr_capable_property,
-+				      connector->passive_vrr_capable_property,
- 				      capable);
- }
--EXPORT_SYMBOL(drm_connector_set_vrr_capable_property);
-+EXPORT_SYMBOL(drm_connector_set_passive_vrr_capable_property);
- 
- /**
-- * drm_connector_set_passive_vrr_capable_property - sets the variable refresh
-- * rate on desktop capable property for a connector
-+ * drm_connector_set_vrr_capable_property - sets the variable refresh rate
-+ * capable property for a connector
-  * @connector: drm connector
-- * @capable: True if the connector is variable refresh rate on desktop capable
-+ * @capable: True if the connector is variable refresh rate capable
-  *
-  * Should be used by atomic drivers to update the indicated support for
-- * variable refresh rate on desktop over a connector.
-+ * variable refresh rate over a connector.
-  */
--void drm_connector_set_passive_vrr_capable_property(
-+void drm_connector_set_vrr_capable_property(
- 		struct drm_connector *connector, bool capable)
- {
--	if (!connector->passive_vrr_capable_property)
-+	if (!connector->vrr_capable_property)
- 		return;
- 
- 	drm_object_property_set_value(&connector->base,
--				      connector->passive_vrr_capable_property,
-+				      connector->vrr_capable_property,
- 				      capable);
- }
--EXPORT_SYMBOL(drm_connector_set_passive_vrr_capable_property);
-+EXPORT_SYMBOL(drm_connector_set_vrr_capable_property);
- 
- /**
-  * drm_connector_set_panel_orientation - sets the connector's panel_orientation
 diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
 --- a/drivers/gpu/drm/drm_edid.c
 +++ b/drivers/gpu/drm/drm_edid.c
