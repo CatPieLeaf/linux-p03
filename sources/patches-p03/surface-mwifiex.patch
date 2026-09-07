@@ -359,14 +359,20 @@ diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
 index a41bb1e2a..572a9bcd2 100644
 --- a/drivers/bluetooth/btusb.c
 +++ b/drivers/bluetooth/btusb.c
-@@ -67,6 +67,7 @@ static struct usb_driver btusb_driver;
+@@ -62,6 +62,13 @@ static struct usb_driver btusb_driver;
+ #define BTUSB_WIDEBAND_SPEECH		BIT(21)
+ #define BTUSB_INVALID_LE_STATES		BIT(22)
+ #define BTUSB_QCA_WCN6855		BIT(23)
++/*
++ * Anchored here, not after BTUSB_BARROT: on Fedora builds p03 applies
++ * Fedora's downstream patch-<ver>-redhat.patch, which appends its own
++ * BTUSB_BROKEN_EXT_SCAN BIT(29) right after BARROT. Keeping the hunk
++ * above that spot lets this patch apply on Fedora and openSUSE alike.
++ */
++#define BTUSB_LOWER_LESCAN_INTERVAL	BIT(30)
+ #define BTUSB_INTEL_BROKEN_SHUTDOWN_LED	BIT(24)
+ #define BTUSB_INTEL_BROKEN_INITIAL_NCMD BIT(25)
  #define BTUSB_INTEL_NO_WBS_SUPPORT	BIT(26)
- #define BTUSB_ACTIONS_SEMI		BIT(27)
- #define BTUSB_BARROT			BIT(28)
-+#define BTUSB_LOWER_LESCAN_INTERVAL	BIT(29)
- 
- static const struct usb_device_id btusb_table[] = {
- 	/* Generic Bluetooth USB device */
 @@ -472,6 +473,7 @@ static const struct usb_device_id quirks_table[] = {
  	{ USB_DEVICE(0x1286, 0x2044), .driver_info = BTUSB_MARVELL },
  	{ USB_DEVICE(0x1286, 0x2046), .driver_info = BTUSB_MARVELL },

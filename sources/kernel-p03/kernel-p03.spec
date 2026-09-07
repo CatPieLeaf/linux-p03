@@ -137,7 +137,7 @@
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.29
+%define _tag_ver   p03.30
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
@@ -519,6 +519,28 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     tar xf "${_tarball}" --strip-components=1 -C %{_srcdir}
     cd %{_srcdir}
 
+    # Fedora's downstream delta. The tarball beside it in the Koji SRPM is
+    # vanilla upstream - Fedora ships this as Patch1 and applies it from their
+    # own kernel.spec with ApplyOptionalPatch. p03 used to take only Fedora's
+    # .config and skip their patches; apply them so the base tree matches what
+    # Fedora ships. Read out of the extracted SRPM instead of being vendored
+    # into p03, so it always matches %%{_koji_nvr}.
+    _rh_patch=$(ls %{_builddir}/patch-*-redhat.patch 2>/dev/null | head -1)
+    if [ -n "${_rh_patch}" ]; then
+        # Its Makefile hunk adds "include $(srctree)/Makefile.rhelver", which
+        # is a separate source in the same SRPM.
+        cp %{_builddir}/Makefile.rhelver .
+        patch -p1 --fuzz=2 < "${_rh_patch}" || :
+        if find . -name '*.rej' | grep -q .; then
+            echo "ERROR: Fedora patch $(basename "${_rh_patch}") left rejected hunks:"
+            find . -name '*.rej'
+            exit 1
+        fi
+    else
+        echo "ERROR: no patch-*-redhat.patch in %{_koji_nvr}; refusing to build a tree that is neither vanilla nor Fedora"
+        exit 1
+    fi
+
     cp %{_builddir}/kernel-x86_64-fedora.config .config
 %endif
 %if %{with minimal}
@@ -624,6 +646,7 @@ fi
     scripts/config -e  SYSTEM_EXTRA_CERTIFICATE
     scripts/config --set-val SYSTEM_EXTRA_CERTIFICATE_SIZE 4096
     scripts/config -e  SYSTEM_TRUSTED_KEYRING
+    scripts/config -d  CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT
 %endif
 
     # Clang LTO
