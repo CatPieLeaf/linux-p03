@@ -1,54 +1,91 @@
 From 9417c5818a0146980c2608fda94c908e604eb033 Mon Sep 17 00:00:00 2001
-From: Laxman Acharya Padhya <laxman.acharya.padhya@gmail.com>
-Date: Mon, 21 Jul 2026 00:00:00 +0000
+From: Laxman Acharya Padhya <acharyalaxman8848@gmail.com>
+Date: Tue, 21 Jul 2026 10:17:40 +0000
 Subject: [PATCH] wifi: mt76: mt7921: validate CLC firmware records
+ (p03: degrade instead of failing init)
 
 Backport of upstream commit 9417c5818a0146980c2608fda94c908e604eb033
 ("wifi: mt76: mt7921: validate CLC firmware records"), not present in
-Fedora 7.2.2 / openSUSE 7.2.
+Fedora 7.2.3 / openSUSE 7.2, with one deliberate change described below.
 
 mt7921_load_clc() walks the CLC (country/location config) records
 appended to the MCU firmware image and caches each in phy->clc[], which
-is declared in mt792x.h as:
+is declared in mt792x.h as
 
   void *clc[MT792x_CLC_MAX_NUM];   /* MT792x_CLC_MAX_NUM == 3 */
 
 The index used is clc->idx, taken verbatim from the firmware blob and
-never validated before subscripting that array. On a Framework Laptop 16
-(MT7922) this fires on every boot:
+never validated before subscripting that array, so a record with
+idx >= 3 writes a heap pointer past the end of the array and corrupts
+the adjacent members of struct mt792x_phy. Upstream also validates the
+region table against the firmware size, uses underflow-safe length
+comparisons, checks that a full record header is present before
+dereferencing it, and caches clc->len for the loop increment, which
+additionally fixes an infinite loop when a record reports len == 0.
 
-  UBSAN: array-index-out-of-bounds in drivers/net/wireless/mediatek/mt76/mt7921/mcu.c:471:7
+p03 change: upstream makes every one of those record checks abort
+mt7921_load_clc() with -EINVAL. That return value propagates through
+mt7921_run_firmware() and mt7921e_mcu_init() to mt7921_init_work(),
+which gives up with
+
+  mt7921e 0000:05:00.0: hardware init failed
+
+and the interface never appears.
+
+On a Framework Laptop 16 (MT7922, ASIC revision 79220010, WM firmware
+build 20260724143402) the shipping firmware really does carry a record
+with idx == 3, which is what the pre-patch kernels report:
+
+  UBSAN: array-index-out-of-bounds in .../mt7921/mcu.c:471:7
   index 3 is out of range for type 'void *[3]'
   Workqueue: events mt7921_init_work [mt7921_common]
-  Call Trace:
-   dump_stack_lvl+0x61/0x80
-   ubsan_epilogue+0xc/0x40
    __ubsan_handle_out_of_bounds+0xab/0xb0
    mt7921_run_firmware+0x445/0x5a0 [mt7921_common]
-   mt7921e_mcu_init+0xbe/0x110 [mt7921e]
-   mt7921_init_work+0x51/0x5a0 [mt7921_common]
 
-With UBSAN only reporting, the following "phy->clc[clc->idx] =
-devm_kmemdup(...)" then writes a heap pointer past the end of the array,
-corrupting the adjacent members of struct mt792x_phy.
+so on that machine the upstream patch converts a memory-corruption bug
+into a total loss of wifi. Confirmed by A/B on the one laptop:
+7.2.2.p03.25 and 7.2.3.p03.28 log the UBSAN splat above and still bring
+up wlan0, while 7.2.3.p03.29 - identical but for this patch - prints
+"hardware init failed" and never creates an interface.
 
-Besides the idx bound, upstream also validates the region table against
-the firmware size, uses underflow-safe length comparisons, checks that a
-full record header is present before dereferencing it, and caches
-clc->len for the loop increment - which additionally fixes an infinite
-loop when a record reports len == 0.
+Failing the whole device is also inconsistent with the rest of the
+function. mt7921_load_clc() already returns 0 when the firmware
+contains no CLC region at all ("if (!clc_base) goto out"),
+__mt7921_mcu_set_clc() starts with "if (!clc) return 0", and
+mt7921_regd_init() does not look at phy->clc[] - the driver is built to
+run with some or all of these records missing. CLC is optional
+regulatory metadata, so a record it cannot parse should cost the
+records themselves, not the adapter.
 
-Fixes: 23bdc5d8cadf ("wifi: mt76: mt7921: introduce ACPI SAR support")
-Signed-off-by: Laxman Acharya Padhya <laxman.acharya.padhya@gmail.com>
+So the bounds are kept and the reaction is softened:
+
+  - trailing bytes too short for a record header end the loop; that is
+    padding at the end of the region, not corruption
+  - a record whose length underflows sizeof(*clc) or overruns the
+    region ends the loop, keeping the records parsed before it (this
+    still forecloses the len == 0 infinite loop)
+  - a record whose idx is beyond phy->clc[] is skipped, and parsing
+    continues - that is a CLC type a newer firmware knows about and
+    this driver does not, which is what the Framework 16 image
+    contains
+
+Every memory-safety property of the upstream patch is retained: no
+out-of-bounds read of a record header, no out-of-bounds write to
+phy->clc[], no over-long devm_kmemdup(), and no infinite loop. The
+region-table checks keep upstream's fatal -EINVAL, since a bad region
+table means the image itself is unusable and both paths log a message.
+
+Fixes: 23bdc5d8cadf ("wifi: mt76: mt7921: introduce Country Location Control support")
+Signed-off-by: Laxman Acharya Padhya <acharyalaxman8848@gmail.com>
 Signed-off-by: Felix Fietkau <nbd@nbd.name>
 ---
- drivers/net/wireless/mediatek/mt76/mt7921/mcu.c | 34 ++++++++++++++----
- 1 file changed, 27 insertions(+), 7 deletions(-)
+ drivers/net/wireless/mediatek/mt76/mt7921/mcu.c | 36 ++++++++++++++++++++++----
+ 1 file changed, 32 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c b/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c
 --- a/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c
 +++ b/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c
-@@ -415,7 +415,8 @@ static int mt7921_load_clc(struct mt792x_dev *dev, const char *fw_name)
+@@ -415,7 +415,8 @@
  	struct mt76_dev *mdev = &dev->mt76;
  	struct mt792x_phy *phy = &dev->phy;
  	const struct firmware *fw;
@@ -58,7 +95,7 @@ diff --git a/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c b/drivers/net/wirel
  	u8 *clc_base = NULL, hw_encap = 0;
  
  	dev->phy.clc_chan_conf = 0xff;
-@@ -441,13 +442,21 @@ static int mt7921_load_clc(struct mt792x_dev *dev, const char *fw_name)
+@@ -441,13 +442,21 @@
  	}
  
  	hdr = (const void *)(fw->data + fw->size - sizeof(*hdr));
@@ -81,28 +118,36 @@ diff --git a/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c b/drivers/net/wirel
  			dev_err(mdev->dev, "Invalid firmware region\n");
  			ret = -EINVAL;
  			goto out;
-@@ -464,8 +473,19 @@ static int mt7921_load_clc(struct mt792x_dev *dev, const char *fw_name)
+@@ -464,8 +473,27 @@
  	if (!clc_base)
  		goto out;
  
 -	for (offset = 0; offset < len; offset += le32_to_cpu(clc->len)) {
 +	for (offset = 0; offset < len; offset += clc_len) {
-+		if (len - offset < sizeof(*clc)) {
-+			ret = -EINVAL;
-+			goto out;
-+		}
++		/* trailing bytes too short for a record header: padding at the
++		 * end of the region, not an error
++		 */
++		if (len - offset < sizeof(*clc))
++			break;
 +
  		clc = (const struct mt7921_clc *)(clc_base + offset);
 +		clc_len = le32_to_cpu(clc->len);
-+		if (clc_len < sizeof(*clc) || clc_len > len - offset ||
-+		    clc->idx >= ARRAY_SIZE(phy->clc)) {
-+			ret = -EINVAL;
-+			goto out;
-+		}
++
++		/* stop at a record that overruns the region or cannot advance
++		 * the loop, keeping whatever was parsed before it
++		 */
++		if (clc_len < sizeof(*clc) || clc_len > len - offset)
++			break;
++
++		/* a CLC type this driver does not know about: skip it, but
++		 * keep parsing the records that follow
++		 */
++		if (clc->idx >= ARRAY_SIZE(phy->clc))
++			continue;
  
  		/* do not init buf again if chip reset triggered */
  		if (phy->clc[clc->idx])
-@@ -477,7 +497,7 @@ static int mt7921_load_clc(struct mt792x_dev *dev, const char *fw_name)
+@@ -477,7 +505,7 @@
  			continue;
  
  		phy->clc[clc->idx] = devm_kmemdup(mdev->dev, clc,
@@ -111,5 +156,3 @@ diff --git a/drivers/net/wireless/mediatek/mt76/mt7921/mcu.c b/drivers/net/wirel
  						  GFP_KERNEL);
  
  		if (!phy->clc[clc->idx]) {
---
-2.49.0
