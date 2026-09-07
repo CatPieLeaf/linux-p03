@@ -79,7 +79,7 @@ dc/hpo/Makefile.
 
 Signed-off-by: Mauri de Souza Meneguzzo <mauri870@gmail.com>
 ---
- 95 files changed, 7260 insertions(+), 308 deletions(-)
+ 95 files changed, 7259 insertions(+), 307 deletions(-)
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
 +++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
@@ -155,7 +155,7 @@ diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm
  		}
  	}
  
-@@ -7755,11 +7791,13 @@
+@@ -7755,7 +7791,9 @@
  		connector,
  		sink);
  
@@ -166,11 +166,6 @@ diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm
  
  	if (stream->signal == SIGNAL_TYPE_HDMI_TYPE_A ||
  	    stream->signal == SIGNAL_TYPE_HDMI_FRL)
--		mod_build_hf_vsif_infopacket(stream, &stream->vsp_infopacket, false, false);
-+		mod_build_hf_vsif_infopacket(stream, &stream->vsp_infopacket);
- 
- 	if (stream->signal == SIGNAL_TYPE_DISPLAY_PORT ||
- 	    stream->signal == SIGNAL_TYPE_DISPLAY_PORT_MST ||
 @@ -8932,6 +8970,7 @@
  {
  	switch (st) {
