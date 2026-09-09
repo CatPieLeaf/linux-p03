@@ -8,16 +8,21 @@ which causes massive lock contention even if there is little work to do or to yi
 rare limit yielding since the base scheduler does a pretty good job already about just
 running the right things
 
+Rebased for LFBMQ: patches-p03/lfbmq.patch rewrites do_sched_yield()
+and declares "struct rq *rq" before "struct rq_flags rf", the reverse of
+the order this hunk used as context, so it stopped applying. The early
+return is taken before this_rq_lock_irq(), so it is correct under both
+CONFIG_SCHED_ALT and the stock scheduler.
+
 Signed-off-by: Colin Ian King <colin.i.king@intel.com>
 ---
  kernel/sched/syscalls.c | 12 ++++++++++++
  1 file changed, 12 insertions(+)
 
 diff --git a/kernel/sched/syscalls.c b/kernel/sched/syscalls.c
-index ae1b42775ef9..441ac65f4f15 100644
 --- a/kernel/sched/syscalls.c
 +++ b/kernel/sched/syscalls.c
-@@ -1456,10 +1456,22 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
+@@ -1453,10 +1453,22 @@
  	return ret;
  }
  
@@ -25,8 +30,8 @@ index ae1b42775ef9..441ac65f4f15 100644
 +
  static void do_sched_yield(void)
  {
- 	struct rq_flags rf;
  	struct rq *rq;
+ 	struct rq_flags rf;
 +	int cpu = raw_smp_processor_id();
 +
 +	cond_resched();
@@ -42,4 +47,3 @@ index ae1b42775ef9..441ac65f4f15 100644
  
 -- 
 2.46.2
-

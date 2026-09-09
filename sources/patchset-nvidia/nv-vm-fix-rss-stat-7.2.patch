@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CatPieLeaf <catpieleaf@proton.me>
+Date: Tue, 09 Sep 2026 00:00:00 -0300
+Subject: [PATCH] nv-vm: fix RSS accounting against 7.2's lazy_percpu_counter
+
+7.2 reworked mm_struct RSS accounting:
+
+  -	struct percpu_counter      rss_stat[NR_MM_COUNTERS];
+  +	struct lazy_percpu_counter rss_stat[NR_MM_COUNTERS];
+
+nv_account_mm_alloc()/nv_account_mm_free() still poke rss_stat directly.
+Their NV_PERCPU_MM_COUNTER conftest no longer matches the new type, so
+both fall through to the pre-percpu branch, which treats the array as a
+struct:
+
+  nv-vm.c:989:51: error: member reference base type
+                  'struct lazy_percpu_counter[4]' is not a structure or union
+  nv-vm.c:1003:71: error: member reference base type
+                  'struct lazy_percpu_counter[4]' is not a structure or union
+
+The obvious replacement, add_mm_counter_other(), cannot be used from a
+module: it is a static inline that ends with mm_trace_rss_stat(), and
+that function is not exported, so the module links but modpost rejects
+it:
+
+  ERROR: modpost: "mm_trace_rss_stat" [nvidia.ko] undefined!
+
+Call lazy_percpu_counter_add_atomic() directly instead. It is the same
+counter update add_mm_counter_other() performs, is a pure static inline
+over atomics and percpu_counter_add() - which resolves to the exported
+percpu_counter_add_batch() - and so is safe from a module. The only
+thing given up is the rss_stat tracepoint firing for these two
+allocations; the counters themselves stay correct.
+
+The atomic variant is the right one here rather than the _fast()/local
+path: both call sites operate on an mm pinned with mmgrab() rather than
+current->mm, and the free path runs from a workqueue.
+
+Older kernels keep the existing conftest branches untouched, so this
+stays buildable against < 7.2. LINUX_VERSION_CODE and KERNEL_VERSION are
+already in scope through nv-linux.h, which nv-vm.c includes and which
+uses them itself.
+
+Signed-off-by: CatPieLeaf <catpieleaf@proton.me>
+---
+ kernel-open/nvidia/nv-vm.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/kernel-open/nvidia/nv-vm.c b/kernel-open/nvidia/nv-vm.c
+--- a/kernel-open/nvidia/nv-vm.c
++++ b/kernel-open/nvidia/nv-vm.c
+@@ -983,7 +983,9 @@
+     mm_work->mm = mm;
+     mm_work->num_pages = numPages;
+     mmgrab(mm);
+-#if defined(NV_PERCPU_MM_COUNTER)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
++    lazy_percpu_counter_add_atomic(&mm->rss_stat[MM_SHMEMPAGES], numPages);
++#elif defined(NV_PERCPU_MM_COUNTER)
+     percpu_counter_add(&mm->rss_stat[MM_SHMEMPAGES], numPages);
+ #else
+     atomic_long_add_return(numPages, &mm->rss_stat.count[MM_SHMEMPAGES]);
+@@ -997,7 +999,10 @@
+     {
+         return;
+     }
+-#if defined(NV_PERCPU_MM_COUNTER)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
++    lazy_percpu_counter_add_atomic(&mm_work->mm->rss_stat[MM_SHMEMPAGES],
++                                   -mm_work->num_pages);
++#elif defined(NV_PERCPU_MM_COUNTER)
+     percpu_counter_add(&mm_work->mm->rss_stat[MM_SHMEMPAGES], -mm_work->num_pages);
+ #else
+     atomic_long_add_return(-mm_work->num_pages, &mm_work->mm->rss_stat.count[MM_SHMEMPAGES]);
+-- 
+2.49.0

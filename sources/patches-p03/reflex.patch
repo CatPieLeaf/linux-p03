@@ -1330,7 +1330,7 @@ diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
 index ae9fd211ce..a1d66273cf 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
-@@ -936,3 +936,79 @@ bool sugov_is_governor(struct cpufreq_policy *policy)
+@@ -936,3 +936,98 @@ bool sugov_is_governor(struct cpufreq_policy *policy)
  }
  
  cpufreq_governor_init(schedutil_gov);
@@ -1364,6 +1364,7 @@ index ae9fd211ce..a1d66273cf 100644
 +				unsigned long *out_util,
 +				unsigned long *out_bw_min)
 +{
++#ifndef CONFIG_SCHED_ALT
 +	unsigned long min, max, util = scx_cpuperf_target(cpu);
 +
 +	if (!scx_switched_all())
@@ -1372,6 +1373,14 @@ index ae9fd211ce..a1d66273cf 100644
 +	util = max(util, boost);
 +	*out_bw_min = min;
 +	*out_util = sugov_effective_cpu_perf(cpu, util, min, max);
++#else /* CONFIG_SCHED_ALT */
++	/*
++	 * SCHED_ALT has no CFS/sched_ext/deadline utilisation to combine, so
++	 * mirror what lfbmq.patch makes sugov_get_util() do in this build.
++	 */
++	*out_bw_min = 0;
++	*out_util = rq_load_util(cpu_rq(cpu), arch_scale_cpu_capacity(cpu));
++#endif /* CONFIG_SCHED_ALT */
 +}
 +EXPORT_SYMBOL_GPL(cpufreq_get_effective_util);
 +
@@ -1384,7 +1393,12 @@ index ae9fd211ce..a1d66273cf 100644
 + */
 +bool cpufreq_cpu_dl_bw_exceeded(int cpu, unsigned long bw_min)
 +{
++#ifndef CONFIG_SCHED_ALT
 +	return cpu_bw_dl(cpu_rq(cpu)) > bw_min;
++#else /* CONFIG_SCHED_ALT */
++	/* No deadline class, so no deadline bandwidth to exceed. */
++	return false;
++#endif /* CONFIG_SCHED_ALT */
 +}
 +EXPORT_SYMBOL_GPL(cpufreq_cpu_dl_bw_exceeded);
 +
@@ -1407,7 +1421,12 @@ index ae9fd211ce..a1d66273cf 100644
 + */
 +bool cpufreq_scx_switched_all(void)
 +{
++#ifndef CONFIG_SCHED_ALT
 +	return scx_switched_all();
++#else /* CONFIG_SCHED_ALT */
++	/* sched_ext is "depends on !SCHED_ALT" and never built here. */
++	return false;
++#endif /* CONFIG_SCHED_ALT */
 +}
 +EXPORT_SYMBOL_GPL(cpufreq_scx_switched_all);
 diff --git a/kernel/time/tick-sched.c b/kernel/time/tick-sched.c

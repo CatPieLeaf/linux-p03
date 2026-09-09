@@ -36,7 +36,7 @@ p "acpi-call.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/0001-acpi-call.patch"
 
 p "adios.patch" \
-  "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.19.3-ADIOS-3.2.0.patch"
+  "https://raw.githubusercontent.com/firelzrd/adios/refs/heads/main/patches/stable/0001-linux6.18.3-ADIOS-3.3.0.patch"
 
 p "cgroup-vram.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0017-cgroup-vram.patch"
@@ -46,9 +46,6 @@ p "mm-mmput-async.patch" \
 
 p "mm-libs-grow-down.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0015-mm-libs-grow-down.patch"
-
-p "sched-ratelimit-yield.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0014-sched-ratelimit-yield.patch"
 
 p "sched-better-idle-balance.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0011-sched-better-idle-balance.patch"
@@ -70,7 +67,7 @@ p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
 
 p "lru_marie.patch" \
-  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.11.0.patch"
+  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.11.1.patch"
 
 p "nap.patch" \
   "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
@@ -135,9 +132,6 @@ p "allow-wake-up-pollfree-gpl.patch" \
 p "surface3.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0002-surface3.patch"
 
-p "surface-mwifiex.patch" \
-  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0003-mwifiex.patch"
-
 p "surface-ath10k.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0004-ath10k.patch"
 
@@ -160,12 +154,8 @@ p "cambyses.patch" \
   "https://raw.githubusercontent.com/firelzrd/cambyses/refs/heads/main/patches/0001-7.2.0-rc4-cambyses-v0.6.0.patch"
 
 # STILL 7.1
-p "reflex.patch" \
-  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.3r2.patch"
-
-# STILL 7.1
 p "zram-ir.patch" \
-  "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.2.patch"
+  "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.3.patch"
 
 p "amdgpu-max-power-limit-115pct.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0023-amdgpu-max-power-limit-115pct.patch"
@@ -173,10 +163,6 @@ p "amdgpu-max-power-limit-115pct.patch" \
 # ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
-
-# STILL 7.1
-pnv "add-IBT-support.patch" \
-    "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.1/misc/nvidia/0001-Add-IBT-support.patch"
 
 pnv "fix-dsc.patch" \
     "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/nvidia/0002-fix-dsc-correct-RC-parameter-tables-to-match-VESA-DS.patch"
