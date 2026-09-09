@@ -1,11 +1,11 @@
-From 30ca95ba74c37b45e5e151c79b4e087b1b47084b Mon Sep 17 00:00:00 2001
+From 35f3da5ad4569469c9755ababa4efb752d123eab Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Mon, 31 Aug 2026 03:57:24 +0900
-Subject: [PATCH] linux7.2-rc1-lru_marie-0.11.0
+Date: Tue, 8 Sep 2026 01:03:26 +0900
+Subject: [PATCH] linux7.2-rc1-lru_marie-0.11.1
 
 ---
  include/linux/lru_marie.h      |  488 ++++++++
- include/linux/memcontrol.h     |   26 +-
+ include/linux/memcontrol.h     |   31 +-
  include/linux/mm_inline.h      |  103 +-
  include/linux/mmzone.h         |   15 +
  include/linux/swap.h           |   18 +
@@ -41,7 +41,7 @@ Subject: [PATCH] linux7.2-rc1-lru_marie-0.11.0
  mm/memcontrol-v1.c             |   11 +
  mm/memcontrol.c                |   21 +
  mm/mm_init.c                   |    3 +
- mm/oom_kill.c                  |  327 ++++++
+ mm/oom_kill.c                  |  365 ++++++
  mm/page_alloc.c                |  120 +-
  mm/page_io.c                   |  331 ++++++
  mm/page_isolation.c            |   31 +-
@@ -49,7 +49,7 @@ Subject: [PATCH] linux7.2-rc1-lru_marie-0.11.0
  mm/swap.c                      |  272 ++++-
  mm/swap.h                      |    4 +
  mm/vmscan.c                    |  513 +++++++-
- 45 files changed, 13779 insertions(+), 33 deletions(-)
+ 45 files changed, 13822 insertions(+), 33 deletions(-)
  create mode 100644 include/linux/lru_marie.h
  create mode 100644 mm/lru_marie/Makefile
  create mode 100644 mm/lru_marie/account.h
@@ -571,13 +571,18 @@ index 0000000000..afdceacc4e
 +
 +#endif /* _LINUX_LRU_MARIE_H */
 diff --git a/include/linux/memcontrol.h b/include/linux/memcontrol.h
-index e1f46a0016..dedb751ed4 100644
+index e1f46a0016..94924f359d 100644
 --- a/include/linux/memcontrol.h
 +++ b/include/linux/memcontrol.h
-@@ -877,14 +877,38 @@ static inline bool mem_cgroup_online(struct mem_cgroup *memcg)
- void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
- 		int zid, long nr_pages);
+@@ -365,6 +365,30 @@ enum objext_flags {
  
+ #define OBJEXTS_FLAGS_MASK (__NR_OBJEXTS_FLAGS - 1)
+ 
++/*
++ * Declared outside the CONFIG_MEMCG branches on purpose: the definition in
++ * mm/lru_marie/core.c is unconditional under CONFIG_LRU_MARIE, and x86_64
++ * defconfig builds with CONFIG_MEMCG=n (-Wmissing-prototypes otherwise).
++ */
 +#ifdef CONFIG_LRU_MARIE
 +/*
 + * Out-of-line (lru_marie_enabled()'s static key lives in lru_marie.h, which
@@ -597,8 +602,10 @@ index e1f46a0016..dedb751ed4 100644
 +				       int zone_idx, unsigned long stock);
 +#endif
 +
- static inline
- unsigned long mem_cgroup_get_zone_lru_size(struct lruvec *lruvec,
+ #ifdef CONFIG_MEMCG
+ /*
+  * After the initialization objcg->memcg is always pointing at
+@@ -882,9 +906,14 @@ unsigned long mem_cgroup_get_zone_lru_size(struct lruvec *lruvec,
  		enum lru_list lru, int zone_idx)
  {
  	struct mem_cgroup_per_node *mz;
@@ -11432,7 +11439,7 @@ index 0000000000..5731815039
 +}
 diff --git a/mm/lru_marie/version.h b/mm/lru_marie/version.h
 new file mode 100644
-index 0000000000..5e45dfff57
+index 0000000000..fa3edd405c
 --- /dev/null
 +++ b/mm/lru_marie/version.h
 @@ -0,0 +1,22 @@
@@ -11455,7 +11462,7 @@ index 0000000000..5e45dfff57
 +#define MARIE_PROGNAME	"Marie LRU"
 +#define MARIE_AUTHOR	"Masahito Suzuki"
 +
-+#define MARIE_VERSION	"0.11.0"
++#define MARIE_VERSION	"0.11.1"
 +
 +#endif /* _MM_LRU_MARIE_VERSION_H */
 diff --git a/mm/lru_marie/walker.c b/mm/lru_marie/walker.c
@@ -12714,7 +12721,7 @@ index 0f64909e8d..b8c8f26987 100644
  
  	for (i = 0; i < NR_VMSCAN_THROTTLE; i++)
 diff --git a/mm/oom_kill.c b/mm/oom_kill.c
-index 5f372f6e26..35204918bd 100644
+index 5f372f6e26..39dd22dcd9 100644
 --- a/mm/oom_kill.c
 +++ b/mm/oom_kill.c
 @@ -45,6 +45,10 @@
@@ -12764,7 +12771,7 @@ index 5f372f6e26..35204918bd 100644
  };
  #endif
  
-@@ -1255,3 +1281,304 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
+@@ -1255,3 +1281,342 @@ SYSCALL_DEFINE2(process_mrelease, int, pidfd, unsigned int, flags)
  	return -ENOSYS;
  #endif /* CONFIG_MMU */
  }
@@ -12887,10 +12894,11 @@ index 5f372f6e26..35204918bd 100644
 +		 * >= half refault, real memory
 +		 * pressure -- but no PSI ring (warm-up is one window, not five)
 +		 * and a severity-WEIGHTED accumulator rather than a flat window
-+		 * count: each treadmill window adds w in [1..THRASH_WD_SCORE]
++		 * count: each treadmill window adds w in [1..THRASH_WD_SCORE/2]
 +		 * scaled by how badly the box is losing, so a severe treadmill
 +		 * (near-zero NET progress AND free in the reserves) reaches the
-+		 * threshold in a single ~2s window, while a marginal one still
++		 * threshold in two ~2s windows -- the cap is half the threshold,
++		 * so no single sample can ever OOM -- while a marginal one still
 +		 * needs the full THRASH_WD_SCORE windows (== the classic 16s: no
 +		 * regression at the mild end). Honest net-progress: any window
 +		 * where reclaim actually lifted free (real headroom) resets the
@@ -12949,11 +12957,48 @@ index 5f372f6e26..35204918bd 100644
 +				 */
 +				hot_windows = 0;
 +			} else {
-+				/* free <= high is guaranteed by the escape above
-+				 * (base 2 folds in the old "below high wmark" +1). */
-+				w = 2;
-+				if (dr >= ds)		w += 3;	/* ~zero net progress */
-+				if (free <= min * 2)	w += 3;	/* into the reserves */
++				/*
++				 * free <= high is guaranteed by the escape above,
++				 * so both severity terms must say something that
++				 * arming does not. The reserves term did not.
++				 *
++				 * high is min + 2 * gap, gap = max(min / 4, managed *
++				 * watermark_scale_factor / 10000). At the default
++				 * scale factor of 10 the gap collapses to min / 4 --
++				 * and high to 1.5 * min -- once min_free_kbytes is
++				 * more than ~0.2% of RAM, which is where any tuned
++				 * desktop sits. "free <= min * 2" is then implied by
++				 * "free <= high": every armed window scored the full
++				 * 2 + 3 + 3 == THRASH_WD_SCORE and fired immediately,
++				 * so the ladder this path exists for degenerated into
++				 * "OOM on the first 2s sample". Measured, Sum() over
++				 * populated zones: 32 GiB with min_free_kbytes=256M ->
++				 * high 98301 vs 2*min 131070; 30 GiB with 66M ->
++				 * 32809 vs 33790. Both collapsed. The first is the
++				 * reported case: a parallel build was killed 57 pages
++				 * below high, one window after the ratio first tipped,
++				 * with 3.3 GB of reclaimable file cache still resident
++				 * and 65 GB of free swap.
++				 *
++				 * Reserves now means the reserves: free at or below
++				 * the min watermark, where allocation is into what
++				 * only ALLOC_HARDER may spend. high > min always, so
++				 * this is strictly inside the armed band by
++				 * construction and cannot be implied by it again.
++				 *
++				 * The weights are halved with that fix so the maximum
++				 * single-window score is THRASH_WD_SCORE / 2: two
++				 * windows minimum before any kill, at any severity. A
++				 * 2s sample cannot tell a burst from a treadmill --
++				 * the reported dr/ds tipped for exactly one window --
++				 * and the freeze this guards against is minutes long,
++				 * so 4s costs nothing to catch it. The mildest window
++				 * is back to 1, restoring the full 8-window / 16s
++				 * classic floor that a base of 2 had quietly halved.
++				 */
++				w = 1;
++				if (dr >= ds)		w += 2;	/* ~zero net progress */
++				if (free <= min)	w += 1;	/* into the reserves */
 +				hot_windows += w;
 +				if (hot_windows >= THRASH_WD_SCORE) {
 +					scnprintf(reason, sizeof(reason),
@@ -13252,7 +13297,7 @@ index ee902a468c..04c93a3b9a 100644
  
  	/*
 diff --git a/mm/page_io.c b/mm/page_io.c
-index b23f494fcc..35bf16ef3d 100644
+index b23f494fcc..3c4c92858c 100644
 --- a/mm/page_io.c
 +++ b/mm/page_io.c
 @@ -25,9 +25,20 @@
@@ -13342,7 +13387,7 @@ index b23f494fcc..35bf16ef3d 100644
 +static inline void do_swapout(struct folio *folio, struct swap_iocb **swap_plug)
 +{
 +	if (zswap_store(folio)) {
-+		count_mthp_stat(folio_order(folio), MTHP_STAT_SWPOUT);
++		count_mthp_stat(folio_order(folio), MTHP_STAT_ZSWPOUT);
 +		folio_unlock(folio);
 +	} else
 +		__swap_writepage(folio, swap_plug); /* Implies folio_unlock(folio) */
