@@ -477,22 +477,41 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     tar xf "${_suse_tarball}" --strip-components=1 -C %{_builddir}/%{_srcdir}
     cd %{_builddir}/%{_srcdir}
 
-    tar xjf %{_builddir}/suse-srpm/patches.rpmify.tar.bz2 -C %{_builddir}/suse-srpm
-    tar xjf %{_builddir}/suse-srpm/patches.suse.tar.bz2   -C %{_builddir}/suse-srpm
+    # The SRPM ships the plain x.y tarball; every stable release on top of it
+    # lives in patches.kernel.org, ending with the Linux-%%{_kver_str} patch
+    # that bumps SUBLEVEL. Skipping that tarball leaves a tree that reports
+    # x.y.0 while the package claims %%{_suse_nvr} - roughly 150 upstream
+    # fixes short of what the NVR promises. series.conf already lists
+    # patches.kernel.org before rpmify and suse, so taking all three in
+    # series.conf order applies the stable series first, exactly as openSUSE
+    # itself does.
+    tar xjf %{_builddir}/suse-srpm/patches.kernel.org.tar.bz2 -C %{_builddir}/suse-srpm
+    tar xjf %{_builddir}/suse-srpm/patches.rpmify.tar.bz2     -C %{_builddir}/suse-srpm
+    tar xjf %{_builddir}/suse-srpm/patches.suse.tar.bz2       -C %{_builddir}/suse-srpm
 
     mkdir -p %{_builddir}/suse-patches
     export QUILT_PATCHES=%{_builddir}/suse-patches
 
-    find "%{_builddir}/suse-srpm/patches.rpmify" -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
-    find "%{_builddir}/suse-srpm/patches.suse"   -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
+    # Flattened into one directory; the three sets share no basenames.
+    find "%{_builddir}/suse-srpm/patches.kernel.org" -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
+    find "%{_builddir}/suse-srpm/patches.rpmify"     -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
+    find "%{_builddir}/suse-srpm/patches.suse"       -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
 
-    grep -oE '^[[:space:]]*patches\.(rpmify|suse)/[^[:space:]]+' %{_builddir}/suse-srpm/series.conf \
+    grep -oE '^[[:space:]]*patches\.(kernel\.org|rpmify|suse)/[^[:space:]]+' %{_builddir}/suse-srpm/series.conf \
         | xargs -n1 basename >> %{_builddir}/suse-patches/series
 
     quilt push -a --fuzz=2 --leave-rejects
     if find . -name '*.rej' | grep -q .; then
-        echo "ERROR: openSUSE patchset (patches.rpmify/patches.suse) left rejected hunks:"
+        echo "ERROR: openSUSE patchset (patches.kernel.org/rpmify/suse) left rejected hunks:"
         find . -name '*.rej'
+        exit 1
+    fi
+
+    # The tree must now really be the version the NVR claims.
+    _got=$(sed -nE 's/^SUBLEVEL[[:space:]]*=[[:space:]]*//p' Makefile)
+    if [ "${_got}" != "%{_kver_sub}" ]; then
+        echo "ERROR: openSUSE tree is at SUBLEVEL=${_got}, expected %{_kver_sub} from %{_suse_nvr}"
+        echo "       patches.kernel.org did not apply as expected"
         exit 1
     fi
 
