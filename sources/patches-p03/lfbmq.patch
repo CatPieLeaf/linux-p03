@@ -70,6 +70,16 @@ scheduler guards:
    handles, silently losing SMT aware balancing on ordinary non hybrid
    desktop CPUs.
 
+   The detection helpers are __init, so sched_init_cpu_topology() and
+   sched_init_topology() are marked __init as well rather than left
+   "static inline". Both are reached only from sched_init()/sched_init_smp(),
+   which are __init themselves, but the compiler is free to outline a static
+   inline into .text - and modpost then reports a permanent function calling
+   into .init.text, which is freed after boot:
+
+     WARNING: modpost: vmlinux: section mismatch in reference:
+     sched_init_cpu_topology+0x1c -> sched_hybrid_detect (section: .init.text)
+
    Machines whose behaviour changes are only those the SMT heuristic could
    not classify: Intel hybrid with SMT disabled and Arrow Lake, which have
    no SMT to key on and previously got no topology awareness at all; AMD
@@ -10034,7 +10044,7 @@ new file mode 100644
 +}
 +
 +/* init schedule cpu topology masks: ucore/pcore/ecore and smt mask */
-+static inline void sched_init_cpu_topology(void)
++static void __init sched_init_cpu_topology(void)
 +{
 +	bool cpu_topo_smt_present = false;
 +
@@ -10088,7 +10098,7 @@ new file mode 100644
 +		bitmap_complement(cpumask_bits(topo), cpumask_bits(mask),	\
 +				  nr_cpumask_bits);
 +
-+static inline void sched_init_topology(void)
++static void __init sched_init_topology(void)
 +{
 +	int cpu;
 +
