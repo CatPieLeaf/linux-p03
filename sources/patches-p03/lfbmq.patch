@@ -106,6 +106,52 @@ scheduler guards:
    That and the SCHED_CACHE change above are the only files the port adds
    beyond alfredchen's 46.
 
+ - kernel/sched/alt_core.c: wakeup_srq_task() could return having resched'd
+   nobody while srq_nr_queued() still reported queued tasks, stranding them.
+   It is the last resort kick, called from pick_next_task() at the point a
+   cpu found nothing it may run and is about to go idle. Once that cpu is
+   idle NO_HZ stops its tick, so nothing comes back to retry - the queued
+   tasks stay queued until an unrelated wakeup happens to kick some cpu.
+
+   Reproduced on an i7-12700H as a permanent stall of any pipeline built
+   from a multi stage pipe plus a multithreaded stage, about 6% of runs:
+
+     head -c 200M file | zstd -1 -T4 -c | zstd -d -c | wc -c
+
+   Every process sits in S state with no accumulated cpu time and never
+   advances. Neither ingredient alone reproduces it (0/40 each). That shape
+   is what dracut and lsinitrd run (skipcpio | zstd -d | cpio), and what
+   makeself based installers run to unpack, so on an affected machine
+   dracut, lsinitrd and anything driving them wedge at random.
+
+   Three ways the kick was dropped, any one of which is permanent:
+
+     1. It sampled srq->_head[idx].first without _lock[idx] and returned
+        on NULL. PQ_PICK_TASK()/SRQ_DEQUEUE_TASK() detach the whole list
+        with llist_del_all() and merge the remainder back under that lock,
+        so the list is transiently empty while they run and a queued task
+        looks absent. Now sampled under the lock, which also stops p being
+        picked, run and freed while its cpumask is read.
+
+     2. It only ever looked at the first set bit. If that task is pinned to
+        a cpu that cannot be kicked - "most likely a per-cpu task", per the
+        original comment - everything queued at lower priorities behind it
+        was abandoned. Now walks every populated priority until a kick
+        lands.
+
+     3. resched on a remote cpu was attempted with raw_spin_trylock() only,
+        and a failed trylock silently dropped it. An idle target is now
+        forced out of the idle loop with set_nr_and_not_polling() plus an
+        IPI instead, which needs no rq lock - the same fallback
+        __resched_curr() uses for a remote cpu.
+
+   The cpu running wakeup_srq_task() is explicitly skipped: it is here
+   precisely because it could not take any of these tasks, so kicking
+   itself would only spin through __schedule() again.
+
+   This is upstream LFBMQ code, unmodified by the port - alt_core.c is
+   otherwise byte identical to linux-7.1.y-lfbmq.
+
 Nothing else needed changing: the remaining 42 files apply to 7.2.4
 unmodified.
 
@@ -117,7 +163,7 @@ CONFIG_SCHED_PDS.
 
 Signed-off-by: Alfred Chen <cchalpha@gmail.com>
 ---
- 47 files changed, 10116 insertions(+), 41 deletions(-)
+ 47 files changed, 10173 insertions(+), 41 deletions(-)
 
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
@@ -906,7 +952,7 @@ diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7369 @@
+@@ -0,0 +1,7426 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -5120,27 +5166,84 @@ new file mode 100644
 +static __always_inline void wakeup_srq_task(const int cpu)
 +{
 +	struct sched_run_queue *srq = cpu_srq(cpu);
-+	int idx = find_first_bit(srq->bitmap, SCHED_QUEUE_BITS);
++	int idx;
 +
-+	if (unlikely(SCHED_QUEUE_BITS == idx))
-+		return;
++	/*
++	 * Last resort kick. This cpu found nothing it is allowed to run and is
++	 * about to go idle while srq_nr_queued() still reports queued tasks.
++	 * Once it is idle NO_HZ stops the tick, so nothing here comes back to
++	 * retry: returning without having resched'd anybody strands those tasks
++	 * until some unrelated wakeup happens to kick a cpu. Observed as whole
++	 * pipelines (skipcpio | zstd -d | cpio, as run by dracut/lsinitrd)
++	 * stalling forever with every process in S state and no cpu time.
++	 *
++	 * Walk every populated priority instead of only the first set bit. The
++	 * head of the first one may be a per-cpu task whose cpu cannot be
++	 * kicked, which used to abandon everything queued behind it.
++	 */
++	for_each_set_bit (idx, srq->bitmap, SCHED_QUEUE_BITS) {
++		raw_spinlock_t *lock = &srq->_lock[idx];
++		struct llist_node *entry;
++		bool kicked = false;
++		int i;
 +
-+	struct llist_node *entry= srq->_head[idx].first;
-+	if (unlikely(NULL == entry))
-+		return;
++		/*
++		 * PQ_PICK_TASK()/SRQ_DEQUEUE_TASK() detach the whole list with
++		 * llist_del_all() and merge the remainder back while holding
++		 * _lock[idx]. Sampling ->first outside that lock can observe the
++		 * list while it is transiently empty and give up on a task that
++		 * is in fact queued. Holding it also keeps p from being picked,
++		 * run and freed while its cpumask is read below.
++		 */
++		raw_spin_lock(lock);
 +
-+	struct task_struct *p = llist_entry(entry, struct task_struct, pq_node);
-+	int i;
++		entry = srq->_head[idx].first;
++		if (likely(NULL != entry)) {
++			struct task_struct *p =
++				llist_entry(entry, struct task_struct, pq_node);
 +
-+	/* At this point, p is most likely per-cpu task */
-+	for_each_cpu_and (i, p->cpus_ptr, cpu_active_mask) {
-+		if (idx < READ_ONCE(cpu_prio[i])) {
-+			struct rq *rq = cpu_rq(i);
-+			if (likely(raw_spin_trylock(&rq->lock))) {
-+				resched_curr(rq);
-+				raw_spin_unlock(&rq->lock);
++			for_each_cpu_and (i, p->cpus_ptr, cpu_active_mask) {
++				struct rq *rq = cpu_rq(i);
++
++				/*
++				 * Never kick ourselves: we are here precisely
++				 * because this cpu could not take any of these
++				 * tasks, so it would just spin through
++				 * __schedule() again.
++				 */
++				if (i == cpu)
++					continue;
++
++				if (idx >= READ_ONCE(cpu_prio[i]))
++					continue;
++
++				if (likely(raw_spin_trylock(&rq->lock))) {
++					resched_curr(rq);
++					raw_spin_unlock(&rq->lock);
++					kicked = true;
++					continue;
++				}
++
++				/*
++				 * Contended remote rq lock. Do not drop the
++				 * kick: an idle target can be forced out of the
++				 * idle loop without taking its rq lock at all,
++				 * same as __resched_curr() does for a remote
++				 * cpu.
++				 */
++				if (cpumask_test_cpu(i, sched_idle_mask) &&
++				    set_nr_and_not_polling(task_thread_info(rq->idle),
++							   TIF_NEED_RESCHED)) {
++					smp_send_reschedule(i);
++					kicked = true;
++				}
 +			}
 +		}
++
++		raw_spin_unlock(lock);
++
++		if (kicked)
++			return;
 +	}
 +}
 +
