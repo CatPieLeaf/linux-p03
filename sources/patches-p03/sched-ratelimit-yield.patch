@@ -8,7 +8,7 @@ which causes massive lock contention even if there is little work to do or to yi
 rare limit yielding since the base scheduler does a pretty good job already about just
 running the right things
 
-Rebased for LFBMQ: patches-p03/lfbmq.patch rewrites do_sched_yield()
+Rebased for SCHED_ALT: patches-p03/prjc.patch rewrites do_sched_yield()
 and declares "struct rq *rq" before "struct rq_flags rf", the reverse of
 the order this hunk used as context, so it stopped applying. The early
 return is taken before this_rq_lock_irq(), so it is correct under both

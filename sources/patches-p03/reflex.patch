@@ -1376,7 +1376,7 @@ index ae9fd211ce..a1d66273cf 100644
 +#else /* CONFIG_SCHED_ALT */
 +	/*
 +	 * SCHED_ALT has no CFS/sched_ext/deadline utilisation to combine, so
-+	 * mirror what lfbmq.patch makes sugov_get_util() do in this build.
++	 * mirror what prjc.patch makes sugov_get_util() do in this build.
 +	 */
 +	*out_bw_min = 0;
 +	*out_util = rq_load_util(cpu_rq(cpu), arch_scale_cpu_capacity(cpu));
