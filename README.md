@@ -189,6 +189,24 @@ sudo dnf install kernel-p03
 
 ## ⚪ F E D O R A  -  S I L V E R B L U E
 
+> [!IMPORTANT]
+> **Secure Boot users: create the signing key BEFORE installing p03.**
+>
+> On other systems p03 creates this key itself on first install. That does not
+> work on atomic/ostree: layering re-runs the package scripts against each new
+> base image, so a key made there is a different key every upgrade, while your
+> firmware still only trusts the one you enrolled.
+> ([#4](https://github.com/CatPieLeaf/linux-p03/issues/4)).
+>
+> Making the key yourself means it is *your* change to `/etc`, which ostree
+> carries across upgrades, and p03 will reuse it instead of making a new one.
+>
+> ```bash
+> sudo mkdir -p /etc/kernel/certs/p03-kernel && sudo chmod 700 /etc/kernel/certs/p03-kernel && sudo openssl req -new -x509 -newkey rsa:4096 -keyout /etc/kernel/certs/p03-kernel/mok.key -outform DER -out /etc/kernel/certs/p03-kernel/mok.der -nodes -days 36500 -subj "/CN=P03 Kernel Secure Boot/" -addext "extendedKeyUsage=codeSigning" && sudo chmod 600 /etc/kernel/certs/p03-kernel/mok.key && sudo openssl x509 -inform DER -in /etc/kernel/certs/p03-kernel/mok.der -out /etc/kernel/certs/p03-kernel/mok.pem
+> ```
+>
+> Not using Secure Boot? Skip this.
+
 ```bash
 sudo wget https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/repo/fedora-$(rpm -E %fedora)/catpieleaf-kernel-p03-$(rpm -E %fedora).repo -O /etc/yum.repos.d/catpieleaf-kernel-p03.repo
 ```
@@ -202,6 +220,14 @@ sudo systemctl reboot
 > ```bash
 > sudo mokutil --import /etc/kernel/certs/p03-kernel/mok.der
 > ```
+> Enroll once.
+>
+> After your next `rpm-ostree upgrade`, check the key survived:
+> ```bash
+> sudo sbverify --cert /etc/kernel/certs/p03-kernel/mok.pem /usr/lib/modules/$(uname -r)/vmlinuz
+> ```
+> `Signature verification OK` means you are set. If it fails, open an issue,
+> as it means ostree is not carrying the key the way we expect.
 
 ## 🦎 O P E N S U S E
 

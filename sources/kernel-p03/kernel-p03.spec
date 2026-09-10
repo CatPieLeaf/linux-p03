@@ -933,26 +933,60 @@ Requires(post): sbsigntools
     MOK_DER="%{_mok_der}"
     MOK_PEM="%{_mok_pem}"
 
+    # An existing key is always used, wherever we are: if /etc already holds
+    # the machine's MOK then this is that machine (or a rescue chroot of it)
+    # and signing is exactly right.
+    #
+    # Generating a *new* key is the dangerous part. It only makes sense on the
+    # machine that will boot the kernel, because the key has to be the one
+    # enrolled in that machine's firmware. In an OBS/mock chroot, a container
+    # image build, or rpm-ostree's layering root, /etc is the image's rather
+    # than the admin's, so a key minted here is a different key every time.
+    #
+    # On rpm-ostree that is actively harmful. Layering re-runs this scriptlet
+    # against each new base commit, so every `rpm-ostree upgrade` mints a fresh
+    # key and re-signs vmlinuz with it, while the firmware still only trusts
+    # the key enrolled from an earlier deployment. The deployment then fails
+    # Secure Boot with the same kernel NVR that booted fine yesterday - issue #4.
+    #
+    # efivars is the tell for "real booted UEFI machine": mounted there, absent
+    # in a build root or layering chroot.
     mkdir -p "${MOK_DIR}"
     chmod 700 "${MOK_DIR}"
 
-    if [ ! -f "${MOK_KEY}" ]; then
+    SB_CAN_GENERATE=1
+    [ -e /.buildenv ] && SB_CAN_GENERATE=0
+    [ -d /sys/firmware/efi/efivars ] || SB_CAN_GENERATE=0
+
+    if [ -f "${MOK_KEY}" ]; then
+        echo "Reusing existing MOK key from ${MOK_DIR}."
+    elif [ "${SB_CAN_GENERATE}" = "1" ]; then
         echo "Generating MOK key at ${MOK_DIR} ..."
         openssl req -new -x509 -newkey rsa:4096 -keyout "${MOK_KEY}" -outform DER -out "${MOK_DER}" -nodes -days 36500 -subj "/CN=${MOK_CN}/" -addext "extendedKeyUsage=codeSigning"
         chmod 600 "${MOK_KEY}"
         openssl x509 -inform DER -in "${MOK_DER}" -out "${MOK_PEM}"
         echo "MOK key generated."
     else
-        echo "Reusing existing MOK key from ${MOK_DIR}."
+        echo "======================================================================"
+        echo " p03: no pre-made MOK key present or this is not the target machine"
+        echo " (build root, chroot, or rpm-ostree layering), so none was generated"
+        echo " and vmlinuz is left unsigned."
+        echo ""
+        echo " Minting one here would produce a different key on every build and"
+        echo " silently break Secure Boot for anyone who already enrolled a"
+        echo " previous one."
+        echo "======================================================================"
     fi
 
-    # Sign vmlinuz in-place BEFORE kernel-install copies it to /boot
-    # so the file that ends up in /boot is already signed.
-    echo "Signing vmlinuz for Secure Boot..."
-    SB_VMLINUZ="%{_kernel_dir}/vmlinuz"
-    sbsign --key "${MOK_KEY}" --cert "${MOK_PEM}" --output "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
-    mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
-    echo "vmlinuz signed."
+    if [ -f "${MOK_KEY}" ] && [ -f "${MOK_PEM}" ]; then
+        # Sign vmlinuz in-place BEFORE kernel-install copies it to /boot
+        # so the file that ends up in /boot is already signed.
+        echo "Signing vmlinuz for Secure Boot..."
+        SB_VMLINUZ="%{_kernel_dir}/vmlinuz"
+        sbsign --key "${MOK_KEY}" --cert "${MOK_PEM}" --output "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
+        mv "${SB_VMLINUZ}.signed" "${SB_VMLINUZ}"
+        echo "vmlinuz signed."
+    fi
 %endif
     # OBS build/check chroots mark themselves with /.buildenv; real SUSE
     # kernel packages skip bootloader integration entirely there too (see
