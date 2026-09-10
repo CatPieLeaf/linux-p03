@@ -53,7 +53,7 @@
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and v2)
  - 750hz tickrate
  - Built with LLVM + O3 + Polly Clang + Mimalloc
- - LFBMQ scheduler and Reflex CPU Governor
+ - PRJC scheduler and Reflex CPU Governor
  - BBRv3 congestion control and FQ qdisk
  - OpenRGB Support
  - xConfig and nConfig during build
