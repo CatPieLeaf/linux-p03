@@ -142,7 +142,7 @@
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
 # (COPR/OBS bleeding edge) instead.
-%bcond fetch_tag 1
+%bcond fetch_tag 0
 
 # ==============================================================================
 # Cmdline overrides logic
@@ -286,7 +286,7 @@
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
 Version: %{_pkgver}
-Release: 3%{?dist}
+Release: 4%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 Packager: CatPieLeaf <catpieleaf@proton.me>
@@ -394,8 +394,8 @@ BuildRequires: qt5-qtbase-devel
 %define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{_tag_ver}/sources
 %define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{_tag_ver}.tar.gz
 %else
-%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
-%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
+%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/rakuos-staging/sources
+%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/rakuos-staging.tar.gz
 %endif
 
 %if !%{_distro_suse}
