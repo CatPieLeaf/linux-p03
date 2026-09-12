@@ -57,9 +57,6 @@ p "posted-msi-enable-by-default.patch" \
 p "disable-split-lock.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0006-disable-split-lock.patch"
 
-p "mm_lazy_rss_stat.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0004-mm_lazy_rss_stat.patch"
-
 p "openRGB.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0014-OpenRGB.patch"
 

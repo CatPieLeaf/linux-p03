@@ -286,7 +286,7 @@
 Name:    kernel-%{_custom_tag}%{?_gccpacktag}
 Summary: Linux P03
 Version: %{_pkgver}
-Release: 3%{?dist}
+Release: 4%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 Packager: CatPieLeaf <catpieleaf@proton.me>
