@@ -69,7 +69,7 @@
 %define _lto_type 1
 
 # Optimization level: 0=size, 2=O2, 3=O3, other=default
-%define _opt_level 3
+%define _opt_level 2
 
 # Secure Boot: generates a per-machine MOK key on first install.
 # Enroll once with: mokutil --import /etc/kernel/certs/p03-kernel/mok.der
@@ -116,7 +116,7 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.2.4-300.fc45
+%define _koji_nvr  kernel-7.2.6-300.fc45
 
 # openSUSE only — paste the NVR from either:
 #   Kernel:HEAD OBS project (RCs, bleeding edge):
@@ -132,12 +132,12 @@
 # uncommenting one of:
 #   %%define _suse_tumbleweed 1   -- force Tumbleweed src-oss
 #   %%define _suse_tumbleweed 0   -- force Kernel:HEAD OBS
-%define _suse_nvr  kernel-source-7.2.3-1.1
+%define _suse_nvr  kernel-source-7.2.5-1.1
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.31
+%define _tag_ver   p03.32
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
