@@ -69,7 +69,7 @@
 %define _lto_type 1
 
 # Optimization level: 0=size, 2=O2, 3=O3, other=default
-%define _opt_level 2
+%define _opt_level 3
 
 # Secure Boot: generates a per-machine MOK key on first install.
 # Enroll once with: mokutil --import /etc/kernel/certs/p03-kernel/mok.der
