@@ -17,9 +17,11 @@ set -euo pipefail
 
 declare -A PATCHSET=()
 declare -A PATCHSET_NVIDIA=()
+declare -A PATCHES_P03=()
 
 p()   { PATCHSET["$1"]="$2"; }
 pnv() { PATCHSET_NVIDIA["$1"]="$2"; }
+p03() { PATCHES_P03["$1"]="$2"; }
 
 # ==============================================================================
 # PATCHSET
@@ -171,6 +173,16 @@ pnv "fix-dp.patch" \
     "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/nvidia/0003-fix-dp-add-Bigscreen-Beyond-VR-headset-to-WAR-databa.patch"
 
 # ==============================================================================
+# PATCHES-P03
+#
+# Downloaded like the others, then post-processed by fixup_aufs() below.
+# Do not hand-edit the downloaded file: the next run overwrites it.
+# ==============================================================================
+
+p03 "aufs.patch" \
+    "https://raw.githubusercontent.com/CachyOS/kernel-patches/refs/heads/master/7.2/misc/0001-aufs-7.2-merge-v20260907.patch"
+
+# ==============================================================================
 # — implementation — do not edit below this line —
 # ==============================================================================
 
@@ -205,6 +217,17 @@ process_section() {
             continue
         fi
 
+        # Post-process before comparing, so a patch p03 has to adjust still
+        # reports "unchanged" when upstream has not moved.
+        if declare -F "fixup_${name%.patch}" >/dev/null; then
+            "fixup_${name%.patch}" "${tmp}" || {
+                printf 'FAIL (fixup)\n'
+                failed+=("${section_dir}/${name} (fixup)")
+                rm -f "${tmp}"
+                continue
+            }
+        fi
+
         if [ -f "${dest}" ] && cmp -s "${dest}" "${tmp}"; then
             printf '=  (unchanged)\n'
             identical+=("${section_dir}/${name}")
@@ -217,8 +240,102 @@ process_section() {
     done
 }
 
+
+# ------------------------------------------------------------------------------
+# fixup_aufs — replace three aufs hunks with p03's reduced-context versions.
+#
+# Those hunks collide with openSUSE's patches.suse/vfs-add-super_operations-
+# get_inode_dev, which rewrites the very same lines of fs/proc/nommu.c,
+# fs/proc/task_nommu.c and include/linux/fs/super_types.h. openSUSE's series is
+# applied before p03's, so upstream aufs then meets context SUSE has already
+# edited and all three hunks fail. Measured on a SUSE-patched 7.2.6 tree: raw
+# upstream fails 3 hunks, these versions fail 0 -- and 0 on vanilla too, at
+# --fuzz=0.
+#
+# The replacements are verbatim, not computed: SUSE perturbs both the leading
+# and trailing context of the nommu hunks but only the leading context of
+# super_types.h, so there is no mechanical rule that produces all three. Each is
+# guarded by the sha256 of the upstream section it replaces; if aufs ever
+# rewrites one, the guard trips and the build is left alone for a human.
+# ------------------------------------------------------------------------------
+fixup_aufs() {
+    local f="$1"
+    [ -f "${f}" ] || return 0
+
+    python3 - "${f}" <<'PYEOF'
+import hashlib, re, sys
+
+path = sys.argv[1]
+
+# upstream section sha256 (first 16 hex) -> replacement section
+REPL = {
+    "fs/proc/nommu.c": ("45ff7ff181b5d0e7", """diff --git a/fs/proc/nommu.c b/fs/proc/nommu.c
+index c6e7ebc63..12c340dcd 100644
+--- a/fs/proc/nommu.c
++++ b/fs/proc/nommu.c
+@@ -42 +42 @@
+-		struct inode *inode = file_inode(region->vm_file);
++		struct inode *inode = file_user_inode(region->vm_file);
+"""),
+    "fs/proc/task_nommu.c": ("2a2140d8c32c2ac6", """diff --git a/fs/proc/task_nommu.c b/fs/proc/task_nommu.c
+index d362919f4..79a2590d4 100644
+--- a/fs/proc/task_nommu.c
++++ b/fs/proc/task_nommu.c
+@@ -140 +140 @@
+-		struct inode *inode = file_inode(vma->vm_file);
++		struct inode *inode = file_user_inode(vma->vm_file);
+"""),
+    "include/linux/fs/super_types.h": ("ccff62230129e8b2", """diff --git a/include/linux/fs/super_types.h b/include/linux/fs/super_types.h
+index ef7941e9d..b866d11ca 100644
+--- a/include/linux/fs/super_types.h
++++ b/include/linux/fs/super_types.h
+@@ -132,3 +132,8 @@
++
++#if IS_ENABLED(CONFIG_BLK_DEV_LOOP) || IS_ENABLED(CONFIG_BLK_DEV_LOOP_MODULE)
++	/* and aufs */
++	struct file *(*real_loop)(struct file *);
++#endif
+ };
+
+ struct super_block {
+"""),
+}
+
+txt = open(path, errors="surrogateescape").read()
+parts = re.split(r"(?m)^(diff --git a/\S+ b/\S+)$", txt)
+out = [parts[0]]
+done, stale = [], []
+
+for i in range(1, len(parts), 2):
+    hdr, body = parts[i], parts[i + 1]
+    fn = re.match(r"diff --git a/(\S+) b/", hdr).group(1)
+    sec = hdr + "\n" + body.lstrip("\n")
+    if fn in REPL:
+        want, repl = REPL[fn]
+        got = hashlib.sha256(sec.encode("utf-8", "surrogateescape")).hexdigest()[:16]
+        if got == want:
+            sec = repl
+            done.append(fn)
+        else:
+            stale.append(f"{fn} (sha {got}, expected {want})")
+    out.append(sec)
+
+if stale:
+    sys.stderr.write(
+        "    aufs: FIXUP GUARD TRIPPED - upstream rewrote:\n"
+        + "".join(f"      {x}\n" for x in stale)
+        + "    Re-derive the reduced-context hunks and update fixup_aufs(),\n"
+        "    then re-test against an openSUSE tree. Leaving the file untouched.\n")
+    sys.exit(1)
+
+open(path, "w", errors="surrogateescape").write("".join(out))
+sys.stderr.write("    aufs: reduced-context hunks applied (" + ", ".join(done) + ")\n")
+PYEOF
+}
+
 process_section "patchset"        PATCHSET
 process_section "patchset-nvidia" PATCHSET_NVIDIA
+process_section "patches-p03"     PATCHES_P03
 
 printf '\n────────────────────────────────────────────────────────────\n'
 printf ' Updated  : %d\n' "${#changed[@]}"
