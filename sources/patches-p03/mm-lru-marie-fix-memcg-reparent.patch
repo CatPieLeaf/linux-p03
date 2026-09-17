@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CatPieLeaf <149953009+CatPieLeaf@users.noreply.github.com>
+Date: Thu, 17 Sep 2026 01:00:00 -0300
+Subject: [PATCH] mm: lru_marie: read the per-memcg counter when reparenting
+
+lru_marie 0.11.1 makes mem_cgroup_get_zone_lru_size() a switch: with Marie
+enabled and an evictable lru it answers from Marie's node-global
+NR_ZONE_LRU_BASE total rather than from mz->lru_zone_size, and it
+deliberately stops maintaining mz->lru_zone_size ("that counter is left to
+legacy/orphan folios only").
+
+mem_cgroup_update_lru_size() is untouched and still writes mz->lru_zone_size.
+That is fine for every reader-only caller, but memcg offline reparenting
+pairs the two:
+
+	size = mem_cgroup_get_zone_lru_size(child_lruvec, lru, zid);
+	mem_cgroup_update_lru_size(parent_lruvec, lru, zid, size);
+	mem_cgroup_update_lru_size(child_lruvec, lru, zid, -(long)size);
+
+so it reads a node-wide number and subtracts it from a per-memcg counter
+holding only the dying cgroup's legacy folios. On a 7.2.6 desktop that trips
+on the first cgroup teardown of boot:
+
+  mem_cgroup_update_lru_size(0000000043a9708e, 0, -3105): lru_size -3105
+  WARNING: mm/memcontrol.c:1503 at mem_cgroup_update_lru_size+0x70/0xf0
+  Call Trace:
+   lru_reparent_memcg+0x1f6/0x300
+   mem_cgroup_css_offline+0x2bd/0x6e0
+   css_killed_work_fn+0x4d/0x110
+
+The WARN clamps the child to 0, but nothing clamps the parent: it has
+already been credited the whole node LRU total, and that repeats for every
+cgroup that exits. lruvec_lru_size() feeds those counters to reclaim.
+
+Add mem_cgroup_get_zone_lru_size_stock(), which reads mz->lru_zone_size with
+no Marie switch, and use it at the two sites that pair a read with an update
+-- lruvec_reparent_lru() in mm/swap.c and lru_gen_reparent_memcg() in
+mm/vmscan.c. Both now move the stock counter to the stock counter, which is
+what they were written to do. Marie's own totals need no reparenting: they
+are node-global, and the folios do not change node.
+
+lruvec_lru_size() in mm/vmscan.c is left alone; it is reader-only and wants
+the switched value.
+
+Present in upstream lru_marie 0.11.1 and 0.11.1r2 -- neither references the
+reparent path at all.
+---
+ 3 files changed
+
+--- a/include/linux/memcontrol.h
++++ b/include/linux/memcontrol.h
+@@ -937,6 +937,26 @@
+ 	return size;
+ }
+ 
++/*
++ * The per-memcg counter alone, with no CONFIG_LRU_MARIE switch applied.
++ *
++ * mem_cgroup_get_zone_lru_size() above may answer from Marie's node-global
++ * NR_ZONE_LRU_BASE total instead of mz->lru_zone_size, while
++ * mem_cgroup_update_lru_size() always writes mz->lru_zone_size. Any caller
++ * that pairs a read with an update -- memcg offline reparenting does exactly
++ * that -- must use this, or it feeds a node-wide number into a per-memcg
++ * counter and underflows it.
++ */
++static inline
++unsigned long mem_cgroup_get_zone_lru_size_stock(struct lruvec *lruvec,
++		enum lru_list lru, int zone_idx)
++{
++	struct mem_cgroup_per_node *mz;
++
++	mz = container_of(lruvec, struct mem_cgroup_per_node, lruvec);
++	return READ_ONCE(mz->lru_zone_size[zone_idx][lru]);
++}
++
+ void __mem_cgroup_handle_over_high(gfp_t gfp_mask);
+ 
+ static inline void mem_cgroup_handle_over_high(gfp_t gfp_mask)
+@@ -1365,6 +1385,13 @@
+ 		enum lru_list lru, int zone_idx)
+ {
+ 	return 0;
++}
++
++static inline
++unsigned long mem_cgroup_get_zone_lru_size_stock(struct lruvec *lruvec,
++		enum lru_list lru, int zone_idx)
++{
++	return 0;
+ }
+ 
+ static inline unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg)
+--- a/mm/swap.c
++++ b/mm/swap.c
+@@ -1405,7 +1405,7 @@
+ 		list_splice_tail_init(&child_lruvec->lists[lru], &parent_lruvec->lists[lru]);
+ 
+ 	for_each_managed_zone_pgdat(zone, NODE_DATA(nid), zid, MAX_NR_ZONES - 1) {
+-		unsigned long size = mem_cgroup_get_zone_lru_size(child_lruvec, lru, zid);
++		unsigned long size = mem_cgroup_get_zone_lru_size_stock(child_lruvec, lru, zid);
+ 
+ 		if (!size)
+ 			continue;
+--- a/mm/vmscan.c
++++ b/mm/vmscan.c
+@@ -4762,7 +4762,7 @@
+ 
+ 	for_each_lru(lru) {
+ 		for_each_managed_zone_pgdat(zone, NODE_DATA(nid), zid, MAX_NR_ZONES - 1) {
+-			unsigned long size = mem_cgroup_get_zone_lru_size(child_lruvec, lru, zid);
++			unsigned long size = mem_cgroup_get_zone_lru_size_stock(child_lruvec, lru, zid);
+ 
+ 			if (!size)
+ 				continue;
