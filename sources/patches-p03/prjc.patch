@@ -1,53 +1,53 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Alfred Chen <cchalpha@gmail.com>
-Date: Tue, 18 Aug 2026 02:04:57 +0000
-Subject: [PATCH] Project-C 7.2-r0 (BMQ/PDS), with automatic P/E core detection
+Date: Tue, 15 Sep 2026 10:57:03 +0800
+Subject: [PATCH] Project-C 7.2-r1 (BMQ/PDS), with automatic P/E core detection
 
 Alfred Chen's Project-C alternative CPU scheduler - BMQ and PDS - from
 
   https://gitlab.com/alfredchen/linux-prjc/-/tree/linux-7.2.y-prjc
 
-taken at 94281617 "Project-C 7.2-r0", 2026-08-18.
+taken at 88a198767cf2 "Project-C 7.2-r1", 2026-09-15. Generated against
+vanilla 7.2.6, which is both the branch's own base and what p03.32 builds,
+so it applies with no rejects and no fuzz.
 
-This replaces the LFBMQ patch p03 carried before. LFBMQ is alfredchen's
-experimental successor - a single global lock free run queue - and its
-newest branch is linux-7.1.y-lfbmq, last touched 2026-07-06. There is no
-7.2 LFBMQ branch, so carrying it meant hand porting 7.1.3 code onto 7.2.4,
-and the result froze this machine hard, twice, with no console output,
-alongside a reproducible lost wakeup that stalled any pipeline built from
-a multi stage pipe plus a multithreaded stage (dracut, lsinitrd and
-makeself installers all have that shape). PRJC is the maintained branch:
-it is generated against 7.2.0 and applies to 7.2.4 with no rejects and no
-fuzz, and it offers PDS as well as BMQ, which LFBMQ had disabled.
+Updated from 7.2-r0. Three commits upstream, one of which p03 needs:
 
-Generated as the diff between the branch and vanilla 7.2.4, restricted to
-the 46 files the patchset actually touches.
+ - e884f55047c3 "Fix for 7.2.3 fails to build on arm64" pulls in
+   <linux/irq-entry-common.h> when CONFIG_PREEMPT_DYNAMIC and
+   CONFIG_GENERIC_IRQ_ENTRY are both set.
 
-Two changes on top of upstream PRJC:
+ - 636a32612f68 "[Sync] b715872ef0cc futex: Provide rt_mutex_.*_schedule()
+   equivalents for futex scheduling" adds rt_mutex_futex_pre_schedule() and
+   rt_mutex_futex_post_schedule() to alt_core.c. This is a build fix, not a
+   cosmetic sync: kernel/locking/rtmutex_api.c calls both from
+   rt_mutex_wait_proxy_lock(), it is built whenever CONFIG_RT_MUTEXES is
+   set regardless of the scheduler, and the stock definitions live in
+   kernel/sched/core.c which SCHED_ALT does not build. r0 on a 7.2.6 base
+   would not link.
+
+ - 88a198767cf2 bumps ALT_SCHED_VERSION to "v7.2-r1".
+
+kernel/sched/alt_topology.c is untouched between r0 and r1, so p03's two
+local changes carry over unmodified:
 
  - kernel/sched/alt_topology.c: automatic performance/efficiency core
-   detection, so pcore_cpus= becomes an override rather than a
-   requirement. Upstream PRJC has no detection at all - sched_pcore_mask
-   is filled only by the pcore_cpus= kernel parameter, and without it
-   sched_init_topology() leaves ecore_present at 0 and the machine gets no
-   hybrid awareness whatsoever.
+   detection, so pcore_cpus= is an override rather than a requirement.
+   Upstream PRJC has no detection at all - sched_pcore_mask is filled only
+   by the kernel parameter, and without it sched_init_topology() leaves
+   ecore_present at 0 and the machine gets no hybrid awareness whatsoever.
 
-   Sources are tried strongest first:
+   Sources strongest first: the CPU type the hardware reports (x86 CPUID,
+   Intel ATOM vs CORE and AMD type 1 vs 0), then per CPU capacity, which
+   arm/arm64 set from the device tree. Each must produce a genuine split -
+   at least one core on each side - or it is discarded and the next tried.
+   An empty mask is a correct outcome, not a failure: sched_init_topology()
+   then skips the split, and the SMT topology it assigns does not depend on
+   the mask, so uniform parts keep exactly the behaviour they have today.
 
-     1. the CPU type the hardware reports (x86 CPUID: Intel ATOM vs CORE,
-        AMD type 1 vs 0), which is populated before sched_init_smp() runs;
-     2. per CPU capacity, which arm/arm64 set from the device tree.
-
-   Each must produce a genuine split - at least one core on each side - or
-   it is discarded and the next is tried. An empty mask is a correct
-   outcome, not a failure: sched_init_topology() then skips the pcore/ecore
-   split, and the SMT topology it assigns does not depend on the mask, so
-   uniform parts keep exactly the behaviour they have today. Unlike the
-   LFBMQ port this needs no SMT fallback for that reason.
-
-   Intel "Core Ultra" parts are handled: Meteor Lake and later add low
-   power efficiency cores on the SoC tile, which CPUID cannot distinguish
-   from ordinary efficiency cores - a Core Ultra 7 155H reports plain 0x20
+   Intel "Core Ultra" parts are handled. Meteor Lake and later add low
+   power efficiency cores on the SoC tile that CPUID cannot distinguish
+   from ordinary ones - a Core Ultra 7 155H reports plain 0x20
    ATOM/EFFICIENCY for cpu12-19 and cpu20-21 alike, and capacity 1024 for
    all 22 CPUs. The last level cache separates them: an efficiency core
    whose LLC domain holds no performance core is on such an island. PRJC
@@ -59,15 +59,8 @@ Two changes on top of upstream PRJC:
    __init either, so marking them would leave a permanent function calling
    into .init.text, which modpost reports as a section mismatch.
 
-   Simulated across Core Ultra 7 155H, Core Ultra 5 125U, Core Ultra 7
-   258V, i7-12700H, i9-13900K, Ryzen AI 9 365, Ryzen 5900X, i9-9900K,
-   SMT-off Xeon, Raspberry Pi 4, arm big.LITTLE and single core UP. Only
-   parts with a real split get one; every uniform machine, with or without
-   SMT, comes out byte for byte as it does today.
-
- - kernel/trace/rv/monitors/deadline/Kconfig: RV_MON_DEADLINE now also
-   "depends on !SCHED_ALT". 7.2 added a runtime verification monitor for
-   the deadline scheduler whose deadline.h calls dl_server() and
+ - kernel/trace/rv/monitors/deadline/Kconfig: RV_MON_DEADLINE also
+   "depends on !SCHED_ALT". Its deadline.h calls dl_server() and
    dl_task_of() and reads task->sched_class, none of which exist under
    SCHED_ALT - include/linux/sched/deadline.h puts dl_server() inside the
    !CONFIG_SCHED_ALT branch. Upstream PRJC does not guard it. p03 does not
@@ -75,7 +68,7 @@ Two changes on top of upstream PRJC:
 
 Signed-off-by: Alfred Chen <cchalpha@gmail.com>
 ---
- 46 files changed, 10466 insertions(+), 35 deletions(-)
+ 46 files changed, 10488 insertions(+), 35 deletions(-)
 
 --- a/Documentation/admin-guide/sysctl/kernel.rst
 +++ b/Documentation/admin-guide/sysctl/kernel.rst
@@ -645,7 +638,7 @@ new file mode 100644
  void rebuild_sched_domains_locked(void)
  {
  }
-@@ -3003,7 +3003,7 @@
+@@ -3012,7 +3012,7 @@
  	struct cpuset *cs, *oldcs;
  	struct task_struct *task;
  	bool setsched_check;
@@ -654,7 +647,7 @@ new file mode 100644
  
  	/* used later by cpuset_attach() */
  	cpuset_attach_old_cs = task_cs(cgroup_taskset_first(tset, &css));
-@@ -3047,6 +3047,7 @@
+@@ -3056,6 +3056,7 @@
  				goto out_unlock;
  		}
  
@@ -662,7 +655,7 @@ new file mode 100644
  		if (dl_task(task)) {
  			/*
  			 * Count all migrating DL tasks for cpuset task accounting.
-@@ -3057,12 +3058,14 @@
+@@ -3066,12 +3067,14 @@
  			if (dl_task_needs_bw_move(task, cs->effective_cpus))
  				cs->sum_migrate_dl_bw += task->dl.dl_bw;
  		}
@@ -678,7 +671,7 @@ new file mode 100644
  	if (unlikely(cpu >= nr_cpu_ids)) {
  		ret = -EINVAL;
  		goto out_unlock;
-@@ -3075,6 +3078,7 @@
+@@ -3084,6 +3087,7 @@
  	cs->dl_bw_cpu = cpu;
  
  out_success:
@@ -686,7 +679,7 @@ new file mode 100644
  	/*
  	 * Mark attach is in progress.  This makes validate_change() fail
  	 * changes which zero cpus/mems_allowed.
-@@ -3099,11 +3103,13 @@
+@@ -3108,11 +3112,13 @@
  	mutex_lock(&cpuset_mutex);
  	dec_attach_in_progress_locked(cs);
  
@@ -750,9 +743,9 @@ new file mode 100644
  	bool "Extensible Scheduling Class"
 -	depends on BPF_SYSCALL && BPF_JIT && DEBUG_INFO_BTF
 +	depends on BPF_SYSCALL && BPF_JIT && DEBUG_INFO_BTF && !SCHED_ALT
+ 	select GENERIC_ALLOCATOR
  	select STACKTRACE if STACKTRACE_SUPPORT
  	help
- 	  This option enables a new scheduler class sched_ext (SCX), which
 --- a/kernel/locking/rtmutex.c
 +++ b/kernel/locking/rtmutex.c
 @@ -372,7 +372,7 @@
@@ -842,7 +835,7 @@ diff --git a/kernel/sched/alt_core.c b/kernel/sched/alt_core.c
 new file mode 100644
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7694 @@
+@@ -0,0 +1,7716 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -880,6 +873,12 @@ new file mode 100644
 +#include <linux/nmi.h>
 +#include <linux/rseq.h>
 +#include <linux/scs.h>
++
++#ifdef CONFIG_PREEMPT_DYNAMIC
++# ifdef CONFIG_GENERIC_IRQ_ENTRY
++#  include <linux/irq-entry-common.h>
++# endif
++#endif
 +
 +#include <uapi/linux/sched/types.h>
 +
@@ -924,7 +923,7 @@ new file mode 100644
 +__read_mostly int sysctl_resched_latency_warn_ms = 100;
 +__read_mostly int sysctl_resched_latency_warn_once = 1;
 +
-+#define ALT_SCHED_VERSION "v7.2-r0"
++#define ALT_SCHED_VERSION "v7.2-r1"
 +
 +#define STOP_PRIO		(MAX_RT_PRIO - 1)
 +
@@ -5971,10 +5970,26 @@ new file mode 100644
 +	sched_submit_work(current);
 +}
 +
++/*
++ * Used within the futex syscall context, skips sched_submit_work() because none
++ * its work will be done. Asserts ensure that it is indeed the case.
++ */
++void rt_mutex_futex_pre_schedule(void)
++{
++	lockdep_assert(!(current->flags & (PF_WQ_WORKER | PF_IO_WORKER)));
++	lockdep_assert(!current->plug);
++	lockdep_assert(!fetch_and_set(current->sched_rt_mutex, 1));
++}
++
 +void rt_mutex_schedule(void)
 +{
 +	lockdep_assert(current->sched_rt_mutex);
 +	__schedule_loop(SM_NONE);
++}
++
++void rt_mutex_futex_post_schedule(void)
++{
++	lockdep_assert(fetch_and_set(current->sched_rt_mutex, 0));
 +}
 +
 +void rt_mutex_post_schedule(void)
