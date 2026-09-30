@@ -111,9 +111,6 @@ p "dm-crypt-async-queue.patch" \
 p "tcp-skip-collapse.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/tcp/0001-tcp-Add-a-sysctl-to-skip-tcp-collapse-processing-whe.patch?ref_type=heads"
 
-p "netfilter-flowoffload.patch" \
-  "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/netfilter/0001-netfilter-add-xt_FLOWOFFLOAD-target.patch?ref_type=heads"
-
 p "netfilter-fullcone.patch" \
   "https://gitlab.com/xanmod/linux-patches/-/raw/master/linux-7.2.y-xanmod/net/netfilter/0001-netfilter-Add-netfilter-nf_tables-fullcone-support.patch?ref_type=heads"
 
