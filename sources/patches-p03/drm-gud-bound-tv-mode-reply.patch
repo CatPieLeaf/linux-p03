@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: CatPieLeaf <catpieleaf@proton.me>
 Date: Tue, 29 Sep 2026 23:59:00 -0300
-Subject: [PATCH] drm/gud: bound TV mode reply length by the buffer size
+Subject: [PATCH] drm/gud: avoid compile-time fortify trap on TV mode names
 
 With clang ThinLTO and -O3, linking gud.o fails:
 
@@ -10,19 +10,28 @@ With clang ThinLTO and -O3, linking gud.o fails:
 
 gud_connector_add_tv_mode() kmallocs buf_len =
 GUD_CONNECTOR_TV_MODE_MAX_NUM * GUD_CONNECTOR_TV_MODE_NAME_LEN bytes and
-then walks ret / GUD_CONNECTOR_TV_MODE_NAME_LEN names with a fortified
-memchr(). usb_control_msg() never returns more than the requested
-length, but that is not visible at this call site, so nothing bounds
-num_modes by GUD_CONNECTOR_TV_MODE_MAX_NUM here. At -O3 the loop gets
-unrolled and peeled, producing a memchr() at a constant offset past the
-kmalloc() size, which FORTIFY_SOURCE turns into a hard link error.
+then checks each of the ret / GUD_CONNECTOR_TV_MODE_NAME_LEN names for a
+NUL with a fortified memchr(). usb_control_msg() never returns more
+than the requested length, but that is not visible at this call site.
+At -O3 the loop gets unrolled and peeled, and the compiler emits a
+memchr() at a constant offset past the kmalloc() size. FORTIFY_SOURCE
+turns that into a hard link error.
 
-Reject a reply longer than the buffer. This makes the bound explicit
-(it also keeps modes[] from being indexed past MAX_NUM) and is a no-op
-for any real device.
+Two changes:
+
+  - reject a reply longer than the buffer, which makes the bound
+    explicit (it also keeps modes[] from being indexed past MAX_NUM)
+    and is a no-op for any real device. This alone is enough for
+    clang 22, but not for clang 21 (Fedora 43) or clang 23
+    (openSUSE Tumbleweed), which still emit the peeled call.
+  - test for the terminator with strnlen() instead of memchr(). The
+    two are equivalent here: a name is valid iff a NUL occurs within
+    GUD_CONNECTOR_TV_MODE_NAME_LEN bytes. The fortified strnlen() only
+    checks at run time, so a path the optimizer cannot rule out no
+    longer becomes a link error.
 ---
- drivers/gpu/drm/gud/gud_connector.c | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ drivers/gpu/drm/gud/gud_connector.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/gpu/drm/gud/gud_connector.c b/drivers/gpu/drm/gud/gud_connector.c
 --- a/drivers/gpu/drm/gud/gud_connector.c
@@ -36,3 +45,12 @@ diff --git a/drivers/gpu/drm/gud/gud_connector.c b/drivers/gpu/drm/gud/gud_conne
  		ret = -EIO;
  		goto free;
  	}
+@@ -399,7 +399,7 @@
+ 	for (i = 0; i < num_modes; i++) {
+ 		char *mode = &buf[i * GUD_CONNECTOR_TV_MODE_NAME_LEN];
+ 
+-		if (!memchr(mode, '\0', GUD_CONNECTOR_TV_MODE_NAME_LEN)) {
++		if (strnlen(mode, GUD_CONNECTOR_TV_MODE_NAME_LEN) == GUD_CONNECTOR_TV_MODE_NAME_LEN) {
+ 			ret = -EIO;
+ 			goto free;
+ 		}
