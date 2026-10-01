@@ -8,9 +8,9 @@
 # | |     =========        =========      | |     LINUX    LINUX   LINUX
 # |_|         =====            =====      | |     NU   L  L   N L      L
 # | |                                     | |     XLINUX  I  I  X   LIN
-# | |                        =            | |     IN      N L   U      N
+# | |           ==            ==          | |     IN      N L   U      N
 # | |             ============            | |     UX       UXLIN   LINUX
-# | |           ==          =             | |
+# | |                                     | |
 # | |_____                           _____| |
 # |    =   \                       //  =  \ |
 # |  ===== |                       ||  =  | |
@@ -18,15 +18,14 @@
 #  \________________|_|_|_|________________/
 
 # ==============================================================================
-# Distro detection / RHEL & openSUSE compatibility
+# Distro detection / RHEL compatibility
 # ==============================================================================
 
 %define _distro_fedora %{?fedora:1}%{!?fedora:0}
 %define _distro_rhel   %{?rhel:1}%{!?rhel:0}
-%define _distro_suse   %{?suse_version:1}%{!?suse_version:0}
 
-%if !%{_distro_fedora} && !%{_distro_rhel} && !%{_distro_suse}
-  %{warn: could not detect distro (%%fedora/%%rhel/%%suse_version all unset) — falling back to Fedora packaging rules}
+%if !%{_distro_fedora} && !%{_distro_rhel}
+  %{warn: could not detect distro (%%fedora/%%rhel both unset) — falling back to Fedora packaging rules}
   %define _distro_fedora 1
 %endif
 
@@ -37,14 +36,8 @@
 %define _build_id_links       none
 %define _default_patch_fuzz   2
 %define _disable_source_fetch 0
-# openSUSE's mimalloc crashes short-lived host tools (fixdep, cc-version.sh's
-# self-check) under LD_PRELOAD; Fedora's is fine, so it's skipped on SUSE only.
-%if %{_distro_suse}
-%define make_build            make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
-%else
 %define _mimalloc_lib libmimalloc.so.2
 %define make_build            LD_PRELOAD=%{_mimalloc_lib} make %{?_clang_args} %{?_gcc_ld_args} %{?_smp_mflags}
-%endif
 %undefine __brp_mangle_shebangs
 %undefine _auto_set_build_flags
 
@@ -82,6 +75,15 @@
 # x86_64 ISA level: 1-4. Invalid value falls back to x86_64_v3.
 %{!?_x86_64_lvl: %define _x86_64_lvl 3}
 
+# Package name suffixes:
+#   ISA level (-v2/-v3/-v4; v1 adds nothing) is on by default;
+#   rpmbuild --without isa_tag ... to drop it.
+#   rpmbuild --with staging  ... appends -staging and also applies
+#                                sources/patches-staging/*.patch
+# e.g. kernel-p03-raku-staging-v3
+%bcond isa_tag 1
+%bcond staging  0
+
 # Minimal kernel via modprobed.db (CI only, not for production).
 # rpmbuild --with minimal ... to enable.
 %bcond minimal 0
@@ -102,6 +104,10 @@
 %bcond set_nr_cpus 0
 %define _nr_cpus     %(nproc)
 
+# Handheld drivers (CachyOS handheld patch, vendored in sources/patches-gated/).
+# Off on p03-raku; rpmbuild --with handheld ... to apply it.
+%bcond handheld 0
+
 # NVIDIA open kernel modules. rpmbuild --without nv ... to disable.
 %bcond nv 1
 %define _nv_ver   615.71.09
@@ -118,31 +124,14 @@
 #   kernel-7.1.8-200.fc44
 %define _koji_nvr  kernel-7.2.8-300.fc45
 
-# openSUSE only — paste the NVR from either:
-#   Kernel:HEAD OBS project (RCs, bleeding edge):
-#     https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src/
-#     kernel-source-7.2~rc7-2.1.gaf18d8c     (RC, git hash suffix always present)
-#     kernel-source-7.1.8-5.1.ga5cdd68       (stable, git hash suffix always present)
-#   Tumbleweed main src-oss repo (released stable kernels, no git hash):
-#     https://download.opensuse.org/tumbleweed/repo/src-oss/src/
-#     kernel-source-7.2.2-1.1                (stable, no git hash suffix)
-# Which one is auto-detected below from the trailing .g<hash> (or its
-# absence). If OBS's download_files source service can't evaluate that
-# (its spec parser may not run shell-exec macros), override it here by
-# uncommenting one of:
-#   %%define _suse_tumbleweed 1   -- force Tumbleweed src-oss
-#   %%define _suse_tumbleweed 0   -- force Kernel:HEAD OBS
-%define _suse_nvr  kernel-source-7.2.7-1.1
+# p03-raku build number — the RPM Release (7.2.8.p03raku.v3-<N>.fc44).
+%define _release    1
 
-# p03 release tag — sets the version suffix and the GitHub source ref.
-# Must match an existing tag in the repo when building %%{with fetch_tag}.
-# Format: p03.N
-%define _tag_ver   p03.33
-
-# with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
-# rpmbuild --without fetch_tag ... to fetch from the moving main branch
-# (COPR/OBS bleeding edge) instead.
-%bcond fetch_tag 1
+# raku-branch commit the patches and kconfig are fetched from. Full hash.
+# The spec can't name the commit that contains it: commit patch/kconfig
+# changes first, then bump this to that commit.
+# rpmbuild --define '_commit <hash>' ... to build another commit.
+%{!?_commit: %define _commit 6973e2676ba3c40c7008d09b394a29867df6b30d}
 
 # ==============================================================================
 # Cmdline overrides logic
@@ -169,46 +158,24 @@
 # ==============================================================================
 # Version string derivation — do not edit below this line
 # ==============================================================================
-# Each distro parses its own NVR into the same RPM version string
-# (e.g. 7.2.0~rc7.p03.18). openSUSE's tilde (7.2~rc7) is normalized to
-# Fedora's dotted form (7.2.0) for the base kernel version; the ~rc tag
-# is re-added ourselves so rc builds always sort below the final release
-# of the same kernel version (Fedora pre-release convention).
+# The Koji NVR is parsed into the RPM version string
+# (e.g. 7.2.0~rc7.p03.18); the ~rc tag is re-added ourselves so rc builds
+# always sort below the final release of the same kernel version (Fedora
+# pre-release convention).
 #
-# Our p03 buildnum must always be the deciding factor for "which build
-# is newer", but it lives at the tail of Version (after the kernel
-# version) purely for readability — this only holds because buildnums
-# are assigned in the same order the kernel base itself progresses.
+# The p03-raku build number is the RPM Release (%%_release), so it decides
+# "which build is newer" among builds of the same kernel version.
 # p03.21 was a one-time Epoch 1 release to unconditionally supersede
 # every package published under the old broken scheme (where "rc" could
 # outrank "p03" alphabetically); see the Obsoletes line below Version
 # for how packages moved back to Epoch 0 afterward.
 #
-%define _buildnum   %(echo "%{_tag_ver}" | sed -E 's/^p03\\.//')
 
-%if %{_distro_suse}
-%define _is_rc    %(echo "%{_suse_nvr}" | grep -cE -- '~rc[0-9]')
-%define _rcnum    %(echo "%{_suse_nvr}" | sed -nE 's/.*~rc([0-9]+).*/\\1/p')
-%define _kver_str %(echo "%{_suse_nvr}" | cut -d- -f3 | sed 's/~.*//;/^[0-9]*\\.[0-9]*$/s/$/.0/')
-%define _basekver %(echo "%{_suse_nvr}" | sed -E 's/^kernel-source-([0-9]+\\.[0-9]+).*/\\1/')
-
-# Kernel:HEAD OBS NVRs always carry a trailing git hash (.g<hash>); the
-# Tumbleweed src-oss repo's released NVRs never do. Skipped if the user
-# already forced _suse_tumbleweed above.
-%{!?_suse_tumbleweed: %define _suse_tumbleweed %(echo "%{_suse_nvr}" | grep -qE -- '\\.g[0-9a-f]+$' && echo 0 || echo 1)}
-
-%if %{_suse_tumbleweed}
-%define _suse_baseurl https://download.opensuse.org/tumbleweed/repo/src-oss/src
-%else
-%define _suse_baseurl https://download.opensuse.org/repositories/Kernel:/HEAD/standard/src
-%endif
-%else
 %define _kver_str %(echo "%{_koji_nvr}" | cut -d- -f2)
 %define _krel_str %(echo "%{_koji_nvr}" | cut -d- -f3-)
 %define _is_rc    %(echo "%{_koji_nvr}" | grep -cE -- '-0\\.rc[0-9]')
 %define _rcnum    %(echo "%{_koji_nvr}" | sed -nE 's/.*-0\\.rc([0-9]+)\\..*/\\1/p')
 %define _basekver %(echo "%{_koji_nvr}" | sed -E 's/^kernel-([0-9]+\\.[0-9]+)\\..*/\\1/')
-%endif
 
 %if %{_is_rc} && "%{_rcnum}" == ""
   %{error: could not parse the RC number from the pasted NVR}
@@ -219,13 +186,36 @@
     %define _gccpacktag -gcc
 %endif
 
-%define _custom_tag p03
+%if %{with staging}
+    %define _stagingreltag  .staging
+    %define _stagingpacktag -staging
+%endif
+
+# Mirrors the %%prep ISA check: 2-4 as given, 1 adds nothing, anything else
+# is built as v3 and named so.
+%if %{with isa_tag}
+  %if %{_x86_64_lvl} >= 2 && %{_x86_64_lvl} <= 4
+    %define _isalvl %{_x86_64_lvl}
+  %else
+    %if %{_x86_64_lvl} != 1
+      %define _isalvl 3
+    %endif
+  %endif
+%endif
+%if 0%{?_isalvl}
+    %define _isareltag  .v%{_isalvl}
+    %define _isapacktag -v%{_isalvl}
+%endif
+
+%define _custom_tag p03-raku
+# Version may not contain '-', so the version string drops it: 7.2.8.p03raku
+%define _ver_tag    p03raku
 %define _srcdir     linux-%{_kver_str}
 
 %if %{_is_rc}
-%define _pkgver_suffix ~rc%{_rcnum}.%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%define _pkgver_suffix ~rc%{_rcnum}.%{_ver_tag}%{?_stagingreltag}%{?_isareltag}%{?_gccreltag}
 %else
-%define _pkgver_suffix .%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%define _pkgver_suffix .%{_ver_tag}%{?_stagingreltag}%{?_isareltag}%{?_gccreltag}
 %endif
 %define _pkgver %{_kver_str}%{_pkgver_suffix}
 
@@ -240,12 +230,7 @@
 # every %%make_build call that touches KERNELRELEASE (module/image install
 # paths) must pass all of these consistently, or it silently reverts to
 # whatever the kernel's own Makefile hardcodes and installs under the wrong
-# /lib/modules/<rel> dir. This matters beyond EXTRAVERSION on openSUSE:
-# their Kernel:HEAD/Tumbleweed base tarball's own Makefile is NEVER bumped
-# for point releases (e.g. it still reads "SUBLEVEL = 0" even when the NVR
-# says kernel-source-7.2.2-*) — %%_kver_str, parsed from the NVR/koji name,
-# is the only place the real point-release version lives, so it must be
-# forced onto the command line too.
+# /lib/modules/<rel> dir.
 %define _kver_major %(echo "%{_kver_str}" | cut -d. -f1)
 %define _kver_minor %(echo "%{_kver_str}" | cut -d. -f2)
 %define _kver_sub   %(echo "%{_kver_str}" | cut -d. -f3)
@@ -283,10 +268,10 @@
 # ==============================================================================
 # Package metadata
 # ==============================================================================
-Name:    kernel-%{_custom_tag}%{?_gccpacktag}
-Summary: Linux P03
+Name:    kernel-%{_custom_tag}%{?_stagingpacktag}%{?_isapacktag}%{?_gccpacktag}
+Summary: Linux P03 RakuOS
 Version: %{_pkgver}
-Release: 2%{?dist}
+Release: %{_release}%{?dist}
 License: GPL-2.0-only
 URL:     https://github.com/CatPieLeaf/linux-p03
 Packager: CatPieLeaf <catpieleaf@proton.me>
@@ -295,9 +280,6 @@ Requires: %{name}-core    = %{?epoch:%{epoch}:}%{_rpmver}
 Requires: %{name}-modules = %{?epoch:%{epoch}:}%{_rpmver}
 
 Provides: installonlypkg(kernel)
-%if %{_distro_suse}
-Provides: multiversion(kernel)
-%endif
 
 # ==============================================================================
 # Build dependencies
@@ -320,44 +302,21 @@ BuildRequires: quilt
 BuildRequires: p7zip
 BuildRequires: ncurses-devel
 
-%if %{_distro_suse}
-BuildRequires: libelf-devel
-BuildRequires: libopenssl-devel
-%else
 BuildRequires: elfutils-devel
 BuildRequires: openssl-devel
-%endif
 
-%if %{_distro_suse}
-BuildRequires: perl
-%else
 BuildRequires: perl-Carp
 BuildRequires: perl-devel
 BuildRequires: perl-generators
 BuildRequires: perl-interpreter
-%endif
 
-%if %{_distro_suse}
-BuildRequires: python3-PyYAML
-%else
 BuildRequires: python3-pyyaml
-%endif
 
-%if %{_distro_suse}
-BuildRequires: rust-bindgen
-BuildRequires: cargo
-%else
 BuildRequires: bindgen
-%endif
 
-# openSUSE's "rust" package already bundles rustfmt; it has no standalone package.
-%if !%{_distro_suse}
 BuildRequires: rustfmt
-%endif
 
-%if !%{_distro_suse}
 BuildRequires: mimalloc
-%endif
 
 BuildRequires: lld
 
@@ -367,11 +326,7 @@ BuildRequires: llvm
 %endif
 
 %if %{without gcc} && %{_lto_type}
-%if %{_distro_suse}
-BuildRequires: llvm-polly
-%else
 BuildRequires: polly
-%endif
 %endif
 
 %if %{with nv}
@@ -379,30 +334,17 @@ BuildRequires: gcc-c++
 %endif
 
 %if %{with interactive}
-%if %{_distro_suse}
-BuildRequires: libqt5-qtbase-devel
-%else
 BuildRequires: qt5-qtbase-devel
-%endif
 %endif
 
 # ==============================================================================
 # Sources
 # ==============================================================================
 
-%if %{with fetch_tag}
-%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/tags/%{_tag_ver}/sources
-%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/tags/%{_tag_ver}.tar.gz
-%else
-%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/refs/heads/main/sources
-%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/refs/heads/main.tar.gz
-%endif
+%define _baseurl    https://raw.githubusercontent.com/CatPieLeaf/linux-p03/%{_commit}/sources
+%define _gh_archive https://github.com/CatPieLeaf/linux-p03/archive/%{_commit}.tar.gz#/linux-p03-%{_commit}.tar.gz
 
-%if !%{_distro_suse}
 Source0: https://koji.fedoraproject.org/packages/kernel/%{_kver_str}/%{_krel_str}/src/%{_koji_nvr}.src.rpm#/%{_koji_nvr}.srpm
-%else
-Source0: %{_suse_baseurl}/%{_suse_nvr}.src.rpm#/%{_suse_nvr}.srpm
-%endif
 
 Source1: %{_baseurl}/kconfig/linux-p03.config
 
@@ -468,69 +410,6 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     fi
 %endif
 
-%if %{_distro_suse}
-    # openSUSE: Source0 is the Kernel:HEAD SRPM, pre-fetched by OBS.
-    mkdir -p %{_builddir}/suse-srpm
-    cd %{_builddir}/suse-srpm
-    rpm2cpio %{SOURCE0} | cpio -idm
-    _suse_tarball=$(ls linux-*.tar.xz)
-    tar xf "${_suse_tarball}" --strip-components=1 -C %{_builddir}/%{_srcdir}
-    cd %{_builddir}/%{_srcdir}
-
-    # The SRPM ships the plain x.y tarball; every stable release on top of it
-    # lives in patches.kernel.org, ending with the Linux-%%{_kver_str} patch
-    # that bumps SUBLEVEL. Skipping that tarball leaves a tree that reports
-    # x.y.0 while the package claims %%{_suse_nvr} - roughly 150 upstream
-    # fixes short of what the NVR promises. series.conf already lists
-    # patches.kernel.org before rpmify and suse, so taking all three in
-    # series.conf order applies the stable series first, exactly as openSUSE
-    # itself does.
-    tar xjf %{_builddir}/suse-srpm/patches.kernel.org.tar.bz2 -C %{_builddir}/suse-srpm
-    tar xjf %{_builddir}/suse-srpm/patches.rpmify.tar.bz2     -C %{_builddir}/suse-srpm
-    tar xjf %{_builddir}/suse-srpm/patches.suse.tar.bz2       -C %{_builddir}/suse-srpm
-
-    mkdir -p %{_builddir}/suse-patches
-    export QUILT_PATCHES=%{_builddir}/suse-patches
-
-    # Flattened into one directory; the three sets share no basenames.
-    find "%{_builddir}/suse-srpm/patches.kernel.org" -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
-    find "%{_builddir}/suse-srpm/patches.rpmify"     -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
-    find "%{_builddir}/suse-srpm/patches.suse"       -maxdepth 1 -type f -exec cp {} "%{_builddir}/suse-patches/" \;
-
-    grep -oE '^[[:space:]]*patches\.(kernel\.org|rpmify|suse)/[^[:space:]]+' %{_builddir}/suse-srpm/series.conf \
-        | xargs -n1 basename >> %{_builddir}/suse-patches/series
-
-    quilt push -a --fuzz=2 --leave-rejects
-    if find . -name '*.rej' | grep -q .; then
-        echo "ERROR: openSUSE patchset (patches.kernel.org/rpmify/suse) left rejected hunks:"
-        find . -name '*.rej'
-        exit 1
-    fi
-
-    # The tree must now really be the version the NVR claims.
-    _got=$(sed -nE 's/^SUBLEVEL[[:space:]]*=[[:space:]]*//p' Makefile)
-    if [ "${_got}" != "%{_kver_sub}" ]; then
-        echo "ERROR: openSUSE tree is at SUBLEVEL=${_got}, expected %{_kver_sub} from %{_suse_nvr}"
-        echo "       patches.kernel.org did not apply as expected"
-        exit 1
-    fi
-
-    rm -rf %{_builddir}/%{_srcdir}/.pc
-
-    # Base kconfig: openSUSE's x86_64 "default" flavor, same role as
-    # Fedora's kernel-x86_64-fedora.config.
-    tar xjf %{_builddir}/suse-srpm/config.tar.bz2 -C %{_builddir}/suse-srpm
-    cp %{_builddir}/suse-srpm/config/x86_64/default .config
-
-    # openSUSE's "default" flavor bakes CONFIG_LOCALVERSION="-default" (their
-    # kernel-default flavor marker). Left alone, kbuild appends "-default" to
-    # KERNELRELEASE, so modules_install writes modules.builtin(.modinfo) under
-    # .../lib/modules/%%{_pkgver}-%%{release}.%%{_arch}-default while every path
-    # in this spec (%%{_kernel_dir}, %%files) expects the suffix-free release
-    # computed from our own EXTRAVERSION. Strip it so p03's version string is
-    # the only thing that ends up in KERNELRELEASE.
-    ./scripts/config --set-str LOCALVERSION ""
-%else
     # Fedora/RHEL: Source0 is the Koji SRPM, pre-fetched before build.
     cd %{_builddir}
     rpm2cpio %{SOURCE0} | cpio -idm
@@ -561,7 +440,6 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
     fi
 
     cp %{_builddir}/kernel-x86_64-fedora.config .config
-%endif
 %if %{with minimal}
     %make_build LSMOD=%{SOURCE2} localmodconfig
 %else
@@ -582,6 +460,12 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 %if %{without local_patches}
     find "${_gh_tmp}/sources/patchset" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
     find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%if %{with handheld}
+    cp "${_gh_tmp}/sources/patches-gated/handheld.patch" "%{_builddir}/patches/"
+%endif
+%if %{with staging}
+    find "${_gh_tmp}/sources/patches-staging" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%endif
 %endif
 
 find "%{_sourcedir}/local-patches" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
@@ -863,48 +747,25 @@ Summary: Linux P03
 AutoReq: no
 
 Conflicts: xfsprogs < 4.3.0-1
-%if %{_distro_suse}
-Conflicts: xf86-input-vmmouse < 13.0.99
-%else
 Conflicts: xorg-x11-drv-vmmouse < 13.0.99
-%endif
 
 Provides: installonlypkg(kernel)
-%if %{_distro_suse}
-Provides: multiversion(kernel)
-%endif
 Provides: kernel              = %{_rpmver}
 Provides: kernel-core-uname-r = %{_kver}
 Provides: kernel-uname-r      = %{_kver}
 
 
 Requires:      kernel-modules-uname-r = %{?epoch:%{epoch}:}%{_kver}
-%if !%{_distro_suse}
 Requires(pre): /usr/bin/kernel-install
-%else
-# openSUSE doesn't use kernel-install; boot entries go through sdbootutil
-# (or /usr/lib/bootloader/bootloader_entry) instead, checked at runtime —
-# neither is universally present across openSUSE bootloader setups, so this
-# stays a soft Recommends rather than a hard Requires.
-Recommends: sdbootutil
-%endif
 Requires(pre): coreutils
 Requires(pre): dracut >= 027
 Requires(pre): systemd >= 203-2
 
-%if %{_distro_suse}
-Requires(pre): ((kernel-firmware-all) if kernel-firmware-all)
-%else
 Requires(pre): ((linux-firmware >= 20150904-56.git6ebf5d57) if linux-firmware)
-%endif
 
 Requires(preun): systemd >= 200
 
-%if %{_distro_suse}
-Recommends: kernel-firmware-all
-%else
 Recommends: linux-firmware
-%endif
 
 %if %{with secureboot}
 Requires(post): openssl
@@ -939,7 +800,7 @@ Requires(post): sbsigntools
     #
     # Generating a *new* key is the dangerous part. It only makes sense on the
     # machine that will boot the kernel, because the key has to be the one
-    # enrolled in that machine's firmware. In an OBS/mock chroot, a container
+    # enrolled in that machine's firmware. In a mock chroot, a container
     # image build, or rpm-ostree's layering root, /etc is the image's rather
     # than the admin's, so a key minted here is a different key every time.
     #
@@ -955,7 +816,6 @@ Requires(post): sbsigntools
     chmod 700 "${MOK_DIR}"
 
     SB_CAN_GENERATE=1
-    [ -e /.buildenv ] && SB_CAN_GENERATE=0
     [ -d /sys/firmware/efi/efivars ] || SB_CAN_GENERATE=0
 
     if [ -f "${MOK_KEY}" ]; then
@@ -988,23 +848,8 @@ Requires(post): sbsigntools
         echo "vmlinuz signed."
     fi
 %endif
-    # OBS build/check chroots mark themselves with /.buildenv; real SUSE
-    # kernel packages skip bootloader integration entirely there too (see
-    # suse-module-tools/kernel-scriptlets/rpm-script) since there's no real
-    # /boot to manage and no bootloader tooling installed in that chroot.
-    if [ -e /.buildenv ]; then
-        :
-    elif [ ! -e /run/ostree-booted ]; then
-%if %{_distro_suse}
-        if [ -x /usr/bin/sdbootutil ] && /usr/bin/sdbootutil is-installed &>/dev/null; then
-            /usr/bin/sdbootutil --image=%{_kernel_dir}/vmlinuz add-kernel %{_kver} || exit $?
-        else
-            echo "sdbootutil not set up — you may need to add %{_kver} to your"
-            echo "bootloader manually (grub2-mkconfig, sdbootutil, etc.)."
-        fi
-%else
+    if [ ! -e /run/ostree-booted ]; then
         /usr/bin/kernel-install add %{_kver} %{_kernel_dir}/vmlinuz || exit $?
-%endif
         if [[ ! -e "/boot/symvers-%{_kver}.zst" ]]; then
             cp "%{_kernel_dir}/symvers.zst" "/boot/symvers-%{_kver}.zst"
             if command -v restorecon &>/dev/null; then
@@ -1029,17 +874,7 @@ Requires(post): sbsigntools
 %endif
 
 %preun core
-    if [ -e /.buildenv ]; then
-        :
-%if %{_distro_suse}
-    elif [ -x /usr/bin/sdbootutil ] && /usr/bin/sdbootutil is-installed &>/dev/null; then
-        /usr/bin/sdbootutil --image=%{_kernel_dir}/vmlinuz remove-kernel %{_kver} || exit $?
-    fi
-%else
-    else
-        /usr/bin/kernel-install remove %{_kver} || exit $?
-    fi
-%endif
+    /usr/bin/kernel-install remove %{_kver} || exit $?
     if [ -x /usr/sbin/weak-modules ]; then
         /usr/sbin/weak-modules --remove-kernel %{_kver} || exit $?
     fi
@@ -1051,7 +886,7 @@ Requires(post): sbsigntools
 %if %{with secureboot}
     # ghost: generated on the target machine by posttrans; tracked for removal
     # but not present in the RPM payload itself. Parent dirs need their own
-    # %%dir entries too — nothing else on openSUSE owns /etc/kernel(/certs).
+    # %%dir entries too.
     %ghost %attr(0755, root, root) %dir /etc/kernel
     %ghost %attr(0755, root, root) %dir /etc/kernel/certs
     %ghost %attr(0700, root, root) %dir %{_mok_dir}
@@ -1119,9 +954,6 @@ Summary:     Development package for building kernel modules against %{name}
 AutoReqProv: no
 
 Provides: installonlypkg(kernel)
-%if %{_distro_suse}
-Provides: multiversion(kernel)
-%endif
 Provides: kernel-devel         = %{_rpmver}
 Provides: kernel-devel-uname-r = %{_kver}
 
@@ -1131,15 +963,9 @@ Requires: findutils
 Requires: flex
 Requires: make
 
-%if %{_distro_suse}
-Requires: libelf-devel
-Requires: libopenssl-devel
-Requires: perl
-%else
 Requires: elfutils-libelf-devel
 Requires: openssl-devel
 Requires: perl-interpreter
-%endif
 
 Requires: lld
 
@@ -1147,11 +973,7 @@ Requires: lld
 Requires: clang
 Requires: llvm
 %if %{_lto_type}
-%if %{_distro_suse}
-Requires: llvm-polly
-%else
 Requires: polly
-%endif
 %endif
 %else
 Requires: gcc
@@ -1183,9 +1005,6 @@ Requires: gcc
 Summary: Meta package to install matching core, modules and devel for %{name}
 
 Provides: installonlypkg(kernel)
-%if %{_distro_suse}
-Provides: multiversion(kernel)
-%endif
 Provides: kernel-devel-matched = %{_rpmver}
 
 
@@ -1211,9 +1030,7 @@ Provides: installonlypkg(kernel-module)
 
 Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
 Requires: kmod
-%if !%{_distro_suse}
 Requires: nvidia-gpu-firmware
-%endif
 %if %{with secureboot}
 Requires: zstd
 %endif
@@ -1299,4 +1116,4 @@ Conflicts: nvidia-kmod
 
 %changelog
 * %(date '+%a %b %d %Y') CatPieLeaf <catpieleaf@proton.me> - %{version}-%{release}
-- See https://github.com/CatPieLeaf/linux-p03/releases/tag/%{_tag_ver}
+- See https://github.com/CatPieLeaf/linux-p03/commit/%{_commit}

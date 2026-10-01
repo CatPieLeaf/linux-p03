@@ -25,6 +25,9 @@ pnv() { PATCHSET_NVIDIA["$1"]="$2"; }
 # PATCHSET
 # ==============================================================================
 
+p "bore.patch" \
+  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.2-rc1-bore-7.0.0.patch"
+
 # STILL 7.1
 p "clang-polly.patch" \
   "https://raw.githubusercontent.com/CachyOS/kernel-patches/master/7.1/misc/0001-clang-polly.patch"
@@ -66,11 +69,14 @@ p "openRGB.patch" \
 p "add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch" \
   "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/refs/heads/master/linux-tkg-patches/7.2/0001-add-sysctl-to-disallow-unprivileged-CLONE_NEWUSER-by.patch"
 
-p "lru_marie.patch" \
-  "https://raw.githubusercontent.com/firelzrd/lru_marie/refs/heads/main/patches/testing/0001-linux7.2-rc1-lru_marie-0.11.1.patch"
-
 p "nap.patch" \
   "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
+
+p "reflex.patch" \
+  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.3r2.patch"
+
+p "sched-ratelimit-yield.patch" \
+  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0014-sched-ratelimit-yield.patch"
 
 p "mm-filemap-retry.patch" \
   "https://raw.githubusercontent.com/babiulep/my-kernel-patches/refs/heads/main/PATCHES/7.2/NEXT/15-mm-filemap-retry.patch"
@@ -153,9 +159,6 @@ p "cambyses.patch" \
 # STILL 7.1
 p "zram-ir.patch" \
   "https://raw.githubusercontent.com/firelzrd/zram-ir/refs/heads/main/patches/0001-linux7.1-rc1-zram-ir-1.3.patch"
-
-p "amdgpu-max-power-limit-115pct.patch" \
-  "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0023-amdgpu-max-power-limit-115pct.patch"
 
 # ==============================================================================
 # PATCHSET-NVIDIA
