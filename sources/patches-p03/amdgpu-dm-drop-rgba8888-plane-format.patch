@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: CatPieLeaf <catpieleaf@proton.me>
+Date: Thu, 1 Oct 2026 20:00:00 -0300
+Subject: [PATCH] drm/amd/display: stop advertising RGBA8888 plane format
+
+amdgpu_dm advertises DRM_FORMAT_RGBA8888 in rgb_formats and
+overlay_formats, but fill_dc_plane_info_and_addr() has no case for it
+and DC has no RGBA8888 surface format to map it to. A compositor that
+picks the advertised format gets its commit rejected:
+
+  amdgpu 0000:03:00.0: [drm] *ERROR* Unsupported screen format RA24 little-endian (0x34324152)
+  kwin_wayland: Atomic modeset commit failed! Invalid argument
+
+Seen with KWin on an RX 9070 (Navi 48) under Fedora 7.2.7, at session
+start and after resume. Mainline still has the mismatch.
+
+Drop RGBA8888 from both advertised lists, and from the per-pixel alpha
+list, which no framebuffer can reach any more. Nothing that works today
+is lost: every RGBA8888 framebuffer already failed in
+fill_dc_plane_info_and_addr().
+---
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
+@@ -50,7 +50,6 @@
+ static const uint32_t rgb_formats[] = {
+ 	DRM_FORMAT_XRGB8888,
+ 	DRM_FORMAT_ARGB8888,
+-	DRM_FORMAT_RGBA8888,
+ 	DRM_FORMAT_XRGB2101010,
+ 	DRM_FORMAT_XBGR2101010,
+ 	DRM_FORMAT_ARGB2101010,
+@@ -67,7 +66,6 @@
+ static const uint32_t overlay_formats[] = {
+ 	DRM_FORMAT_XRGB8888,
+ 	DRM_FORMAT_ARGB8888,
+-	DRM_FORMAT_RGBA8888,
+ 	DRM_FORMAT_XBGR8888,
+ 	DRM_FORMAT_ABGR8888,
+ 	DRM_FORMAT_RGB565,
+@@ -112,7 +110,6 @@
+ 		plane_state->pixel_blend_mode == DRM_MODE_BLEND_COVERAGE) {
+ 		static const uint32_t alpha_formats[] = {
+ 			DRM_FORMAT_ARGB8888,
+-			DRM_FORMAT_RGBA8888,
+ 			DRM_FORMAT_ABGR8888,
+ 			DRM_FORMAT_ARGB2101010,
+ 			DRM_FORMAT_ABGR2101010,
