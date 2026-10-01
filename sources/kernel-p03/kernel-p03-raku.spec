@@ -131,7 +131,7 @@
 # The spec can't name the commit that contains it: commit patch/kconfig
 # changes first, then bump this to that commit.
 # rpmbuild --define '_commit <hash>' ... to build another commit.
-%{!?_commit: %define _commit 6973e2676ba3c40c7008d09b394a29867df6b30d}
+%{!?_commit: %define _commit 403459a954e995ae2629a3a52728afa67220ee2f}
 
 # ==============================================================================
 # Cmdline overrides logic
