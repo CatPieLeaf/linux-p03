@@ -122,7 +122,7 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.2.8-300.fc45
+%define _koji_nvr  kernel-7.2.9-300.fc45
 
 # p03-raku build number — the RPM Release (7.2.8.p03raku.v3-<N>.fc44).
 %define _release    1
