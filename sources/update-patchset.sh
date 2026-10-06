@@ -26,7 +26,7 @@ pnv() { PATCHSET_NVIDIA["$1"]="$2"; }
 # ==============================================================================
 
 p "bore.patch" \
-  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/testing/0001-linux7.2-rc1-bore-7.0.0.patch"
+  "https://raw.githubusercontent.com/firelzrd/bore-scheduler/refs/heads/main/patches/stable/0001-linux7.2-rc1-bore-7.0.0.patch"
 
 # STILL 7.1
 p "clang-polly.patch" \
@@ -73,7 +73,7 @@ p "nap.patch" \
   "https://raw.githubusercontent.com/NikoMalik/nap/refs/heads/main/patches/stable/0001-6.18.3-nap-v0.5.1.patch"
 
 p "reflex.patch" \
-  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.1-reflex-v0.3.3r2.patch"
+  "https://raw.githubusercontent.com/firelzrd/reflex/refs/heads/main/patches/0001-linux7.2.8-reflex-v0.4.0.patch"
 
 p "sched-ratelimit-yield.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0014-sched-ratelimit-yield.patch"
