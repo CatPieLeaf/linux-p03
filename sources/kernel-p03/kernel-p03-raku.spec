@@ -125,13 +125,13 @@
 %define _koji_nvr  kernel-7.2.9-300.fc45
 
 # p03-raku build number — the RPM Release (7.2.8.p03raku.v3-<N>.fc44).
-%define _release    1
+%define _release    2
 
 # raku-branch commit the patches and kconfig are fetched from. Full hash.
 # The spec can't name the commit that contains it: commit patch/kconfig
 # changes first, then bump this to that commit.
 # rpmbuild --define '_commit <hash>' ... to build another commit.
-%{!?_commit: %define _commit be21ce360f24c4964076bbd5e8eee20dcfef6f57}
+%{!?_commit: %define _commit d5abddd536a26fa4cf0287300a654465a2c84f0c}
 
 # ==============================================================================
 # Cmdline overrides logic
