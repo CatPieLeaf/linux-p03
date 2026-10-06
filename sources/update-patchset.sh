@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # update-patchset.sh
-# Downloads patches from upstream URLs, saves them into ./patchset/ and
-# ./patchset-nvidia/, and commits any changes to the repo.
+# Downloads patches from upstream URLs, saves them into ./patchset/,
+# ./patchset-handheld/ and ./patchset-nvidia/, and commits any changes.
 #
 # Usage:  bash sources/update-patchset.sh
 #         (can be run from anywhere inside the repo)
@@ -10,15 +10,19 @@
 # Add entries with:
 #   p   "filename" \
 #       "url"
+#   ph  "filename" \
+#       "url"
 #   pnv "filename" \
 #       "url"
 # ==============================================================================
 set -euo pipefail
 
 declare -A PATCHSET=()
+declare -A PATCHSET_HANDHELD=()
 declare -A PATCHSET_NVIDIA=()
 
 p()   { PATCHSET["$1"]="$2"; }
+ph()  { PATCHSET_HANDHELD["$1"]="$2"; }
 pnv() { PATCHSET_NVIDIA["$1"]="$2"; }
 
 # ==============================================================================
@@ -155,6 +159,11 @@ p "amdgpu-max-power-limit-115pct.patch" \
   "https://raw.githubusercontent.com/mauri870/linux-kernel/refs/heads/7.2/0023-amdgpu-max-power-limit-115pct.patch"
 
 # ==============================================================================
+# PATCHSET-HANDHELD
+# Applied only with rpmbuild --with handheld (kernel-p03-deck.spec).
+# ==============================================================================
+
+# ==============================================================================
 # PATCHSET-NVIDIA
 # ==============================================================================
 
@@ -211,8 +220,9 @@ process_section() {
     done
 }
 
-process_section "patchset"        PATCHSET
-process_section "patchset-nvidia" PATCHSET_NVIDIA
+process_section "patchset"          PATCHSET
+process_section "patchset-handheld" PATCHSET_HANDHELD
+process_section "patchset-nvidia"   PATCHSET_NVIDIA
 
 printf '\n────────────────────────────────────────────────────────────\n'
 printf ' Updated  : %d\n' "${#changed[@]}"

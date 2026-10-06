@@ -102,6 +102,11 @@
 %bcond set_nr_cpus 0
 %define _nr_cpus     %(nproc)
 
+# Handheld patches (sources/patchset-handheld/ and sources/p03-patches-handheld/).
+# rpmbuild --with handheld ... to apply them; kernel-p03-deck.spec sets it.
+# Builds as kernel-p03-deck, with .deck in the version.
+%bcond handheld 0
+
 # NVIDIA open kernel modules. rpmbuild --without nv ... to disable.
 %bcond nv 1
 %define _nv_ver   615.71.09
@@ -219,13 +224,18 @@
     %define _gccpacktag -gcc
 %endif
 
+%if %{with handheld}
+    %define _handheldreltag  .deck
+    %define _handheldpacktag -deck
+%endif
+
 %define _custom_tag p03
 %define _srcdir     linux-%{_kver_str}
 
 %if %{_is_rc}
-%define _pkgver_suffix ~rc%{_rcnum}.%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%define _pkgver_suffix ~rc%{_rcnum}.%{_custom_tag}%{?_handheldreltag}%{?_gccreltag}.%{_buildnum}
 %else
-%define _pkgver_suffix .%{_custom_tag}%{?_gccreltag}.%{_buildnum}
+%define _pkgver_suffix .%{_custom_tag}%{?_handheldreltag}%{?_gccreltag}.%{_buildnum}
 %endif
 %define _pkgver %{_kver_str}%{_pkgver_suffix}
 
@@ -283,7 +293,7 @@
 # ==============================================================================
 # Package metadata
 # ==============================================================================
-Name:    kernel-%{_custom_tag}%{?_gccpacktag}
+Name:    kernel-%{_custom_tag}%{?_handheldpacktag}%{?_gccpacktag}
 Summary: Linux P03
 Version: %{_pkgver}
 Release: 1%{?dist}
@@ -421,6 +431,8 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 # Patches are NOT declared here individually.
 # Everything inside sources/patchset/, sources/patches-p03/, and
 # sources/patchset-nvidia/ in the GitHub repo is applied automatically
+# (plus sources/patchset-handheld/ and sources/p03-patches-handheld/
+# with --with handheld)
 # in %%prep. Drop a .patch into SOURCES/local-patches/ for local testing.
 
 # ==============================================================================
@@ -582,6 +594,10 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 %if %{without local_patches}
     find "${_gh_tmp}/sources/patchset" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
     find "${_gh_tmp}/sources/patches-p03" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%if %{with handheld}
+    find "${_gh_tmp}/sources/patchset-handheld" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+    find "${_gh_tmp}/sources/p03-patches-handheld" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%endif
 %endif
 
 find "%{_sourcedir}/local-patches" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
