@@ -174,8 +174,7 @@ diff --git a/drivers/hid/hid-multitouch.c b/drivers/hid/hid-multitouch.c
 index c92ab7949..331e1553d 100644
 --- a/drivers/hid/hid-multitouch.c
 +++ b/drivers/hid/hid-multitouch.c
-@@ -83,7 +83,8 @@ MODULE_LICENSE("GPL");
- #define MT_INPUTMODE_TOUCHPAD		0x03
+@@ -86,6 +86,7 @@
  
  #define MT_BUTTONTYPE_CLICKPAD		0
  #define MT_BUTTONTYPE_PRESSUREPAD	1
@@ -183,17 +182,17 @@ index c92ab7949..331e1553d 100644
  
  enum latency_mode {
  	HID_LATENCY_NORMAL = 0,
-@@ -236,6 +237,7 @@ static void mt_post_parse(struct mt_device *td, struct mt_application *app);
- #define MT_CLS_APPLE_TOUCHBAR			0x0114
- #define MT_CLS_YOGABOOK9I			0x0115
+@@ -238,6 +239,7 @@
  #define MT_CLS_EGALAX_P80H84			0x0116
+ #define MT_CLS_ASUS_ROG_Z13_FOLIO		0x0117
  #define MT_CLS_SIS				0x0457
 +#define MT_CLS_SURFACE_TOUCHPAD		0x0118
  
  #define MT_DEFAULT_MAXCONTACT	10
-@@ -479,6 +481,10 @@ static const struct mt_class mt_classes[] = {
- 			MT_QUIRK_WIN8_PTP_BUTTONS,
- 		.export_all_inputs = true
+ #define MT_MAX_MAXCONTACT	250
+@@ -469,6 +471,10 @@
+ 			MT_QUIRK_IGNORE_DUPLICATES |
+ 			MT_QUIRK_CONTACT_CNT_ACCURATE,
  	},
 +	{ .name = MT_CLS_SURFACE_TOUCHPAD,
 +		.quirks = MT_QUIRK_ALWAYS_VALID |
@@ -202,7 +201,7 @@ index c92ab7949..331e1553d 100644
  	{ }
  };
  
-@@ -2276,6 +2286,17 @@ static void mt_remove(struct hid_device *hdev)
+@@ -2268,6 +2274,17 @@
  
  static void mt_on_hid_hw_open(struct hid_device *hdev)
  {
@@ -220,7 +219,7 @@ index c92ab7949..331e1553d 100644
  	mt_set_modes(hdev, HID_LATENCY_NORMAL, TOUCHPAD_REPORT_ALL);
  }
  
-@@ -2283,6 +2304,15 @@ static void mt_on_hid_hw_close(struct hid_device *hdev)
+@@ -2275,6 +2292,15 @@
  {
  	struct mt_device *td = hid_get_drvdata(hdev);
  
@@ -236,9 +235,9 @@ index c92ab7949..331e1553d 100644
  	if (td->mtclass.quirks & MT_QUIRK_KEEP_LATENCY_ON_CLOSE)
  		mt_set_modes(hdev, HID_LATENCY_NORMAL, TOUCHPAD_REPORT_NONE);
  	else
-@@ -2740,6 +2770,11 @@ static const struct hid_device_id mt_devices[] = {
- 		HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY,
- 			USB_VENDOR_ID_MICROSOFT, 0x09c0) },
+@@ -2727,6 +2753,11 @@
+ 		HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
+ 			USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY) },
  
 +	/* Microsoft Surface touch pad */
 +	{ .driver_data = MT_CLS_SURFACE_TOUCHPAD,

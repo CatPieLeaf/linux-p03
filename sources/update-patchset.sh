@@ -138,9 +138,6 @@ p "surface-sam.patch" \
 p "surface-sam-over-hid.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0008-surface-sam-over-hid.patch"
 
-p "surface-typecover.patch" \
-  "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0010-surface-typecover.patch"
-
 p "surface-gpe.patch" \
   "https://raw.githubusercontent.com/linux-surface/linux-surface/refs/heads/master/patches/6.19/0012-surface-gpe.patch"
 

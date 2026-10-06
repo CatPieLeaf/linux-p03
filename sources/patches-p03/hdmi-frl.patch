@@ -3903,8 +3903,8 @@ diff --git a/drivers/gpu/drm/amd/display/dc/link/link_dpms.c b/drivers/gpu/drm/a
  			dp_is_128b_132b_signal(pipe_ctx))
  		update_sst_payload(pipe_ctx, false);
  
--	if (dc_is_hdmi_signal(pipe_ctx->stream->signal)) {
-+	if (dc_is_hdmi_tmds_signal(pipe_ctx->stream->signal)) {
+-	if (dc_is_hdmi_signal(stream->signal)) {
++	if (dc_is_hdmi_tmds_signal(stream->signal)) {
  		struct ext_hdmi_settings settings = {0};
  		enum engine_id eng_id = pipe_ctx->stream_res.stream_enc->id;
  
