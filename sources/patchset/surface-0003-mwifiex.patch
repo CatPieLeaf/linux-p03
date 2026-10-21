@@ -1,4 +1,4 @@
-From 1cb8b0055cccf3a466b21fdbb507cef8425980dd Mon Sep 17 00:00:00 2001
+From 9bf4998058dcedd4d2e83e7a2d62e5760dd344e6 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Jonas=20Dre=C3=9Fler?= <verdre@v0yd.nl>
 Date: Tue, 3 Nov 2020 13:28:04 +0100
 Subject: [PATCH] mwifiex: Add quirk resetting the PCI bridge on MS Surface
@@ -32,7 +32,7 @@ Patchset: mwifiex
  3 files changed, 31 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/net/wireless/marvell/mwifiex/pcie.c b/drivers/net/wireless/marvell/mwifiex/pcie.c
-index a760de191..db9b20322 100644
+index a9425e9a9..75c3a0377 100644
 --- a/drivers/net/wireless/marvell/mwifiex/pcie.c
 +++ b/drivers/net/wireless/marvell/mwifiex/pcie.c
 @@ -1702,9 +1702,21 @@ mwifiex_pcie_send_boot_cmd(struct mwifiex_adapter *adapter, struct sk_buff *skb)
@@ -163,9 +163,9 @@ index d6ff964ae..5d30ae39d 100644
  void mwifiex_initialize_quirks(struct pcie_service_card *card);
  int mwifiex_pcie_reset_d3cold_quirk(struct pci_dev *pdev);
 -- 
-2.53.0
+2.55.0
 
-From f5454fb0678f6a0a451cf0da228c9b1b993437c2 Mon Sep 17 00:00:00 2001
+From 90bf276e0dfcb1c1338c3263b6024e0dae666a6d Mon Sep 17 00:00:00 2001
 From: Tsuchiya Yuto <kitakar@gmail.com>
 Date: Sun, 4 Oct 2020 00:11:49 +0900
 Subject: [PATCH] mwifiex: pcie: disable bridge_d3 for Surface gen4+
@@ -187,7 +187,7 @@ Patchset: mwifiex
  3 files changed, 27 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/net/wireless/marvell/mwifiex/pcie.c b/drivers/net/wireless/marvell/mwifiex/pcie.c
-index db9b20322..ffd0c1fe9 100644
+index 75c3a0377..b82158821 100644
 --- a/drivers/net/wireless/marvell/mwifiex/pcie.c
 +++ b/drivers/net/wireless/marvell/mwifiex/pcie.c
 @@ -377,6 +377,7 @@ static int mwifiex_pcie_probe(struct pci_dev *pdev,
@@ -318,9 +318,9 @@ index 5d30ae39d..c14eb56eb 100644
  void mwifiex_initialize_quirks(struct pcie_service_card *card);
  int mwifiex_pcie_reset_d3cold_quirk(struct pci_dev *pdev);
 -- 
-2.53.0
+2.55.0
 
-From 901b2af94faae241a5d8c1b91dd844a4cb6b3ac2 Mon Sep 17 00:00:00 2001
+From 2550b587b31fe710d61f82f91cf58c4cd58fe3ed Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Jonas=20Dre=C3=9Fler?= <verdre@v0yd.nl>
 Date: Thu, 25 Mar 2021 11:33:02 +0100
 Subject: [PATCH] Bluetooth: btusb: Lower passive lescan interval on Marvell
@@ -356,32 +356,26 @@ Patchset: mwifiex
  1 file changed, 15 insertions(+)
 
 diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
-index a41bb1e2a..572a9bcd2 100644
+index bf9a93d5c..d8687a38b 100644
 --- a/drivers/bluetooth/btusb.c
 +++ b/drivers/bluetooth/btusb.c
-@@ -62,6 +62,13 @@ static struct usb_driver btusb_driver;
- #define BTUSB_WIDEBAND_SPEECH		BIT(21)
- #define BTUSB_INVALID_LE_STATES		BIT(22)
- #define BTUSB_QCA_WCN6855		BIT(23)
-+/*
-+ * Anchored here, not after BTUSB_BARROT: on Fedora builds p03 applies
-+ * Fedora's downstream patch-<ver>-redhat.patch, which appends its own
-+ * BTUSB_BROKEN_EXT_SCAN BIT(29) right after BARROT. Keeping the hunk
-+ * above that spot lets this patch apply on Fedora and openSUSE alike.
-+ */
+@@ -69,6 +69,7 @@ static struct usb_driver btusb_driver;
+ #define BTUSB_ACTIONS_SEMI		BIT(27)
+ #define BTUSB_BARROT			BIT(28)
+ #define BTUSB_BROKEN_EXT_SCAN		BIT(29)
 +#define BTUSB_LOWER_LESCAN_INTERVAL	BIT(30)
- #define BTUSB_INTEL_BROKEN_SHUTDOWN_LED	BIT(24)
- #define BTUSB_INTEL_BROKEN_INITIAL_NCMD BIT(25)
- #define BTUSB_INTEL_NO_WBS_SUPPORT	BIT(26)
-@@ -472,6 +473,7 @@ static const struct usb_device_id quirks_table[] = {
+ 
+ static const struct usb_device_id btusb_table[] = {
+ 	/*
+@@ -485,6 +486,7 @@ static const struct usb_device_id quirks_table[] = {
  	{ USB_DEVICE(0x1286, 0x2044), .driver_info = BTUSB_MARVELL },
  	{ USB_DEVICE(0x1286, 0x2046), .driver_info = BTUSB_MARVELL },
  	{ USB_DEVICE(0x1286, 0x204e), .driver_info = BTUSB_MARVELL },
 +	{ USB_DEVICE(0x1286, 0x204c), .driver_info = BTUSB_LOWER_LESCAN_INTERVAL },
  
- 	/* Intel Bluetooth devices */
- 	{ USB_DEVICE(0x8087, 0x0025), .driver_info = BTUSB_INTEL_COMBINED },
-@@ -4236,6 +4238,19 @@ static int btusb_probe(struct usb_interface *intf,
+ 	/*
+ 	 * NXP IW610 BT interfaces (Marvell-lineage silicon, same quirk as
+@@ -4360,6 +4362,19 @@ static int btusb_probe(struct usb_interface *intf,
  	if (id->driver_info & BTUSB_MARVELL)
  		hdev->set_bdaddr = btusb_set_bdaddr_marvell;
  
@@ -402,5 +396,5 @@ index a41bb1e2a..572a9bcd2 100644
  	    (id->driver_info & BTUSB_MEDIATEK)) {
  		hdev->setup = btusb_mtk_setup;
 -- 
-2.53.0
+2.55.0
 

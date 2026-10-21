@@ -1,4 +1,4 @@
-From 3ea6bdb7f77252d22d062947f8aa00f383864777 Mon Sep 17 00:00:00 2001
+From f2a5f4db2636dc2a3ab4c82e363398bdaf6f6d01 Mon Sep 17 00:00:00 2001
 From: Maximilian Luz <luzmaximilian@gmail.com>
 Date: Sat, 25 Jul 2020 17:19:53 +0200
 Subject: [PATCH] i2c: acpi: Implement RawBytes read access
@@ -55,10 +55,10 @@ Patchset: surface-sam-over-hid
  1 file changed, 34 insertions(+)
 
 diff --git a/drivers/i2c/i2c-core-acpi.c b/drivers/i2c/i2c-core-acpi.c
-index ed90858a2..070c36637 100644
+index e5fddacae..6336fca33 100644
 --- a/drivers/i2c/i2c-core-acpi.c
 +++ b/drivers/i2c/i2c-core-acpi.c
-@@ -662,6 +662,27 @@ static int acpi_gsb_i2c_write_bytes(struct i2c_client *client,
+@@ -666,6 +666,27 @@ static int acpi_gsb_i2c_write_bytes(struct i2c_client *client,
  	return (ret == 1) ? 0 : -EIO;
  }
  
@@ -86,7 +86,7 @@ index ed90858a2..070c36637 100644
  static acpi_status
  i2c_acpi_space_handler(u32 function, acpi_physical_address command,
  			u32 bits, u64 *value64,
-@@ -763,6 +784,19 @@ i2c_acpi_space_handler(u32 function, acpi_physical_address command,
+@@ -767,6 +788,19 @@ i2c_acpi_space_handler(u32 function, acpi_physical_address command,
  		}
  		break;
  
@@ -107,9 +107,9 @@ index ed90858a2..070c36637 100644
  		dev_warn(&adapter->dev, "protocol 0x%02x not supported for client 0x%02x\n",
  			 accessor_type, client->addr);
 -- 
-2.53.0
+2.55.0
 
-From 2b9da1194a4f203a0707700a59393e6920393c34 Mon Sep 17 00:00:00 2001
+From 59d46503f27edba2693db431492656e906cd115b Mon Sep 17 00:00:00 2001
 From: Maximilian Luz <luzmaximilian@gmail.com>
 Date: Sat, 13 Feb 2021 16:41:18 +0100
 Subject: [PATCH] platform/surface: Add driver for Surface Book 1 dGPU switch
@@ -304,5 +304,5 @@ index 000000000..68db23773
 +MODULE_DESCRIPTION("Discrete GPU Power-Switch for Surface Book 1");
 +MODULE_LICENSE("GPL");
 -- 
-2.53.0
+2.55.0
 

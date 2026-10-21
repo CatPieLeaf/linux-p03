@@ -1,4 +1,4 @@
-From ecae0cc0c11be8bf32d363f0c7f3e6d3242bdc9f Mon Sep 17 00:00:00 2001
+From 3e50eec89c7f4bc9b89a3f8a34f9b75102921c4b Mon Sep 17 00:00:00 2001
 From: Maximilian Luz <luzmaximilian@gmail.com>
 Date: Fri, 17 Jun 2022 02:14:00 +0200
 Subject: [PATCH] rtc: Add basic support for RTC via Surface System Aggregator
@@ -14,10 +14,10 @@ Patchset: surface-sam
  create mode 100644 drivers/rtc/rtc-surface.c
 
 diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
-index 50ba48609..c0afe893e 100644
+index 01def8231..9580bc4bb 100644
 --- a/drivers/rtc/Kconfig
 +++ b/drivers/rtc/Kconfig
-@@ -1424,6 +1424,13 @@ config RTC_DRV_NTXEC
+@@ -1425,6 +1425,13 @@ config RTC_DRV_NTXEC
  	  embedded controller found in certain e-book readers designed by the
  	  original design manufacturer Netronix.
  
@@ -32,10 +32,10 @@ index 50ba48609..c0afe893e 100644
  
  config RTC_DRV_ASM9260
 diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
-index 6cf7e0663..18bd33b84 100644
+index 0347645b0..34f2cacd0 100644
 --- a/drivers/rtc/Makefile
 +++ b/drivers/rtc/Makefile
-@@ -186,6 +186,7 @@ obj-$(CONFIG_RTC_DRV_SUN4V)	+= rtc-sun4v.o
+@@ -185,6 +185,7 @@ obj-$(CONFIG_RTC_DRV_SUN4V)	+= rtc-sun4v.o
  obj-$(CONFIG_RTC_DRV_SUN6I)	+= rtc-sun6i.o
  obj-$(CONFIG_RTC_DRV_SUNPLUS)	+= rtc-sunplus.o
  obj-$(CONFIG_RTC_DRV_SUNXI)	+= rtc-sunxi.o
@@ -179,9 +179,9 @@ index 000000000..f6c17c4e9
 +MODULE_DESCRIPTION("RTC driver for Surface System Aggregator Module");
 +MODULE_LICENSE("GPL");
 -- 
-2.53.0
+2.55.0
 
-From 3d1173c2c4513aa4da28ac1f3fd883671769ca02 Mon Sep 17 00:00:00 2001
+From 439034492be0bb9fbba3f7d60f897a1db7fe8d37 Mon Sep 17 00:00:00 2001
 From: Maximilian Luz <luzmaximilian@gmail.com>
 Date: Sun, 20 Apr 2025 01:05:14 +0200
 Subject: [PATCH] platform/surface: aggregator_registry: Add Surface Laptop 7
@@ -193,10 +193,10 @@ Patchset: surface-sam
  1 file changed, 3 insertions(+)
 
 diff --git a/drivers/platform/surface/surface_aggregator_registry.c b/drivers/platform/surface/surface_aggregator_registry.c
-index 78ac3a8fb..10fe004e4 100644
+index d37a7e4c6..e0c07e5d8 100644
 --- a/drivers/platform/surface/surface_aggregator_registry.c
 +++ b/drivers/platform/surface/surface_aggregator_registry.c
-@@ -460,6 +460,9 @@ static const struct acpi_device_id ssam_platform_hub_acpi_match[] = {
+@@ -487,6 +487,9 @@ static const struct acpi_device_id ssam_platform_hub_acpi_match[] = {
  	/* Surface Laptop 6 */
  	{ "MSHW0530", (unsigned long)ssam_node_group_sl6 },
  
@@ -207,5 +207,5 @@ index 78ac3a8fb..10fe004e4 100644
  	{ "MSHW0118", (unsigned long)ssam_node_group_slg1 },
  
 -- 
-2.53.0
+2.55.0
 

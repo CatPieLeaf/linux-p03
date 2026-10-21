@@ -110,7 +110,7 @@
 
 # NVIDIA open kernel modules. rpmbuild --without nv ... to disable.
 %bcond nv 1
-%define _nv_ver   615.71.09
+%define _nv_ver   615.78.08
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
 
 # ==============================================================================
@@ -122,10 +122,10 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.2.9-300.fc45
+%define _koji_nvr  kernel-7.3.0-65.fc46
 
 # p03-raku build number — the RPM Release (7.2.8.p03raku.v3-<N>.fc44).
-%define _release    2
+%define _release    1
 
 # raku-branch commit the patches and kconfig are fetched from. Full hash.
 # The spec can't name the commit that contains it: commit patch/kconfig

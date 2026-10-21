@@ -152,10 +152,10 @@ index 355a731..57ef248 100644
  	 * bic associated with the task issuing current bio for
  	 * merging. This and the next field are used as a support to
 diff --git a/block/mq-deadline.c b/block/mq-deadline.c
-index 824bfc1..3e8da39 100644
+index e5db1ee..948110c 100644
 --- a/block/mq-deadline.c
 +++ b/block/mq-deadline.c
-@@ -607,7 +607,19 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,
+@@ -604,7 +604,19 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,
  	struct request *free = NULL;
  	bool ret;
  
@@ -176,7 +176,7 @@ index 824bfc1..3e8da39 100644
  	ret = blk_mq_sched_try_merge(q, bio, nr_segs, &free);
  	spin_unlock(&dd->lock);
  
-@@ -620,10 +632,9 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,
+@@ -617,10 +629,9 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,
  /*
   * add rq to rbtree and fifo
   */
@@ -188,7 +188,7 @@ index 824bfc1..3e8da39 100644
  	struct deadline_data *dd = q->elevator->elevator_data;
  	const enum dd_data_dir data_dir = rq_data_dir(rq);
  	u16 ioprio = req_get_ioprio(rq);
-@@ -681,7 +692,7 @@ static void dd_insert_requests(struct blk_mq_hw_ctx *hctx,
+@@ -678,7 +689,7 @@ static void dd_insert_requests(struct blk_mq_hw_ctx *hctx,
  
  		rq = list_first_entry(list, struct request, queuelist);
  		list_del_init(&rq->queuelist);

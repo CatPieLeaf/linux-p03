@@ -1,4 +1,4 @@
-From 2ffa10c995b5823878f9b56f4d5eceb3a87d9cb4 Mon Sep 17 00:00:00 2001
+From 5cfaa4404f6f9f1d96cd2c2ec54549d742a4afc9 Mon Sep 17 00:00:00 2001
 From: Sachi King <nakato@nakato.io>
 Date: Sat, 29 May 2021 17:47:38 +1000
 Subject: [PATCH] ACPI: Add quirk for Surface Laptop 4 AMD missing irq 7
@@ -21,7 +21,7 @@ Patchset: amd-gpio
  1 file changed, 17 insertions(+)
 
 diff --git a/arch/x86/kernel/acpi/boot.c b/arch/x86/kernel/acpi/boot.c
-index d6138b2b6..67094184c 100644
+index ceba24f65..b9bb37486 100644
 --- a/arch/x86/kernel/acpi/boot.c
 +++ b/arch/x86/kernel/acpi/boot.c
 @@ -22,6 +22,7 @@
@@ -32,7 +32,7 @@ index d6138b2b6..67094184c 100644
  
  #include <xen/xen.h>
  
-@@ -1175,6 +1176,17 @@ static void __init mp_config_acpi_legacy_irqs(void)
+@@ -1176,6 +1177,17 @@ static void __init mp_config_acpi_legacy_irqs(void)
  	}
  }
  
@@ -50,7 +50,7 @@ index d6138b2b6..67094184c 100644
  /*
   * Parse IOAPIC related entries in MADT
   * returns 0 on success, < 0 on error
-@@ -1231,6 +1243,11 @@ static int __init acpi_parse_madt_ioapic_entries(void)
+@@ -1232,6 +1244,11 @@ static int __init acpi_parse_madt_ioapic_entries(void)
  		acpi_sci_ioapic_setup(acpi_gbl_FADT.sci_interrupt, 0, 0,
  				      acpi_gbl_FADT.sci_interrupt);
  
@@ -63,9 +63,9 @@ index d6138b2b6..67094184c 100644
  	mp_config_acpi_legacy_irqs();
  
 -- 
-2.53.0
+2.55.0
 
-From 3b8b8afd11fb27fc4d120a260e0c0cbdf3d86b01 Mon Sep 17 00:00:00 2001
+From 7439b275bd6e529b66152ad7df3cb2bc395173ad Mon Sep 17 00:00:00 2001
 From: Maximilian Luz <luzmaximilian@gmail.com>
 Date: Thu, 3 Jun 2021 14:04:26 +0200
 Subject: [PATCH] ACPI: Add AMD 13" Surface Laptop 4 model to irq 7 override
@@ -80,10 +80,10 @@ Patchset: amd-gpio
  1 file changed, 8 insertions(+), 1 deletion(-)
 
 diff --git a/arch/x86/kernel/acpi/boot.c b/arch/x86/kernel/acpi/boot.c
-index 67094184c..9c1d2883e 100644
+index b9bb37486..07384e771 100644
 --- a/arch/x86/kernel/acpi/boot.c
 +++ b/arch/x86/kernel/acpi/boot.c
-@@ -1178,12 +1178,19 @@ static void __init mp_config_acpi_legacy_irqs(void)
+@@ -1179,12 +1179,19 @@ static void __init mp_config_acpi_legacy_irqs(void)
  
  static const struct dmi_system_id surface_quirk[] __initconst = {
  	{
@@ -105,5 +105,5 @@ index 67094184c..9c1d2883e 100644
  };
  
 -- 
-2.53.0
+2.55.0
 

@@ -1,7 +1,7 @@
-From 02a1894fa15a0604ecb4bfd2ed3b6bacbf0bbe1d Mon Sep 17 00:00:00 2001
+From 53c4d50a40ffe7453648b696582c63918bc35901 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
 Date: Sat, 3 Oct 2026 01:16:59 +0900
-Subject: [PATCH] linux7.2.8-reflex-v0.4.0
+Subject: [PATCH] linux7.3-rc1-reflex-v0.4.0
 
 ---
  arch/x86/kernel/cpu/aperfmperf.c        |    1 +
@@ -96,7 +96,7 @@ index 6c7a39b7f8..8e461d1102 100644
  obj-$(CONFIG_CPUFREQ_DT)		+= cpufreq-dt.o
  obj-$(CONFIG_CPUFREQ_DT_RUST)		+= rcpufreq_dt.o
 diff --git a/drivers/cpufreq/cpufreq.c b/drivers/cpufreq/cpufreq.c
-index 196c50f26f..28ac4199d6 100644
+index 0d0df986fa..1fa125b2d9 100644
 --- a/drivers/cpufreq/cpufreq.c
 +++ b/drivers/cpufreq/cpufreq.c
 @@ -2045,6 +2045,7 @@ bool cpufreq_driver_test_flags(u16 flags)
@@ -107,15 +107,15 @@ index 196c50f26f..28ac4199d6 100644
  
  /**
   * cpufreq_get_current_driver - Return the current driver's name.
-@@ -2248,6 +2249,7 @@ void cpufreq_driver_adjust_perf(struct cpufreq_policy *policy,
+@@ -2252,6 +2253,7 @@ void cpufreq_driver_adjust_perf(struct cpufreq_policy *policy,
  {
- 	cpufreq_driver->adjust_perf(policy, min_perf, target_perf, capacity);
+ 	cpufreq_driver->adjust_perf(policy, min_perf, target_perf, max_perf, capacity);
  }
 +EXPORT_SYMBOL_GPL(cpufreq_driver_adjust_perf);
  
  /**
   * cpufreq_driver_has_adjust_perf - Check "direct fast switch" callback.
-@@ -2259,6 +2261,7 @@ bool cpufreq_driver_has_adjust_perf(void)
+@@ -2263,6 +2265,7 @@ bool cpufreq_driver_has_adjust_perf(void)
  {
  	return !!cpufreq_driver->adjust_perf;
  }
@@ -1293,7 +1293,7 @@ index 0000000000..650b934f47
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/cpufreq/cpufreq_reflex_compat.h b/drivers/cpufreq/cpufreq_reflex_compat.h
 new file mode 100644
-index 0000000000..bd5b8e4759
+index 0000000000..4780e7ed9d
 --- /dev/null
 +++ b/drivers/cpufreq/cpufreq_reflex_compat.h
 @@ -0,0 +1,21 @@
@@ -1302,8 +1302,7 @@ index 0000000000..bd5b8e4759
 + * Reflex CPUFreq governor: the only kernel-version differences.
 + * cpufreq_reflex.c is byte-identical across versions; this file is not.
 + *
-+ * Linux 7.2: cpufreq_driver_adjust_perf() takes the policy but no
-+ * max_perf.
++ * Linux 7.3: cpufreq_driver_adjust_perf() takes the policy and max_perf.
 + */
 +#ifndef _CPUFREQ_REFLEX_COMPAT_H
 +#define _CPUFREQ_REFLEX_COMPAT_H
@@ -1314,7 +1313,8 @@ index 0000000000..bd5b8e4759
 +				   unsigned long max_perf,
 +				   unsigned long capacity)
 +{
-+	cpufreq_driver_adjust_perf(policy, min_perf, target_perf, capacity);
++	cpufreq_driver_adjust_perf(policy, min_perf, target_perf, max_perf,
++				   capacity);
 +}
 +
 +#endif /* _CPUFREQ_REFLEX_COMPAT_H */
@@ -1359,10 +1359,10 @@ index 742fb9e62e..5abbe2f17b 100644
  }
 +EXPORT_SYMBOL_GPL(cpufreq_this_cpu_can_update);
 diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
-index 835df03e3d..7260869024 100644
+index 49ccd6f1c1..5bbf408b7b 100644
 --- a/kernel/sched/cpufreq_schedutil.c
 +++ b/kernel/sched/cpufreq_schedutil.c
-@@ -959,3 +959,58 @@ bool sugov_is_governor(struct cpufreq_policy *policy)
+@@ -961,3 +961,58 @@ bool sugov_is_governor(struct cpufreq_policy *policy)
  }
  
  cpufreq_governor_init(schedutil_gov);
@@ -1422,7 +1422,7 @@ index 835df03e3d..7260869024 100644
 +}
 +EXPORT_SYMBOL_GPL(cpufreq_cpu_dl_bw_exceeded);
 diff --git a/kernel/sched/pelt.c b/kernel/sched/pelt.c
-index 897790889b..c55c88b1a1 100644
+index 779eb58a42..df03659eb7 100644
 --- a/kernel/sched/pelt.c
 +++ b/kernel/sched/pelt.c
 @@ -55,6 +55,21 @@ static u64 decay_load(u64 val, u64 n)
