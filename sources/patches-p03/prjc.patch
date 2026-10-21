@@ -27,6 +27,18 @@ p03 changes on top, carried over from the 7.2-r1 patch:
    "depends on !SCHED_ALT" (its deadline.h uses dl_server()/dl_task_of(),
    which do not exist under SCHED_ALT). Upstream PRJC still does not guard it.
 
+ - kernel/sched/alt_topology.c reads the x86 CPU type from
+   cpu_data(cpu).topo.cpu_type. 7.3 made get_topology_cpu_type() private
+   (only get_topology_cpu_type_name() is exported) and caches the same
+   value in cpuinfo_topology.cpu_type during CPU setup.
+
+ - kernel/sched/debug.c: 7.3 merged the fair-class cgroup_mode debugfs
+   knob, whose backend __sched_cgroup_mode_update() lives in fair.c.
+   SCHED_ALT builds debug.c but not fair.c, so with FAIR_GROUP_SCHED=y
+   (Fedora's config) the build failed on an undeclared function. The knob
+   and its registration are now also conditional on !CONFIG_SCHED_ALT.
+   Upstream 7.3-r0 does not guard it.
+
  - include/linux/sched.h: the first task_struct hunk is anchored on
    wakee_flip_decay_ts/last_wakee instead of wakee_flips. Fedora's 7.3
    redhat patch moves stack_canary into that spot and wakee_flips below
@@ -9905,7 +9917,6 @@ index 000000000000..e494d6401460
 +#endif /* _KERNEL_SCHED_ALT_SCHED_H */
 diff --git a/kernel/sched/alt_topology.c b/kernel/sched/alt_topology.c
 new file mode 100644
-index 000000000000..cf5921e8268b
 --- /dev/null
 +++ b/kernel/sched/alt_topology.c
 @@ -0,0 +1,460 @@
@@ -9979,7 +9990,7 @@ index 000000000000..cf5921e8268b
 +	cpumask_clear(&sched_hybrid_lowpower_mask);
 +
 +	for_each_online_cpu(cpu) {
-+		switch (get_topology_cpu_type(&cpu_data(cpu))) {
++		switch (cpu_data(cpu).topo.cpu_type) {
 +		case TOPO_CPU_TYPE_PERFORMANCE:
 +			cpumask_set_cpu(cpu, &sched_pcore_mask);
 +			break;
@@ -10766,7 +10777,7 @@ index 06bddaa738e5..0bc9d146fd83 100644
  
  	if (task_cputime(p, &cputime.utime, &cputime.stime))
 diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
-index 72236db67983..70b7c3425509 100644
+index 72236db67..b87415ff6 100644
 --- a/kernel/sched/debug.c
 +++ b/kernel/sched/debug.c
 @@ -11,6 +11,7 @@
@@ -10805,15 +10816,19 @@ index 72236db67983..70b7c3425509 100644
  static void debugfs_fair_server_init(void)
  {
  	struct dentry *d_fair;
-@@ -632,6 +639,7 @@ static void debugfs_fair_server_init(void)
+@@ -632,8 +639,10 @@ static void debugfs_fair_server_init(void)
  		debugfs_create_file("period", 0644, d_cpu, (void *) cpu, &fair_server_period_fops);
  	}
  }
 +#endif /* !CONFIG_SCHED_ALT */
  
- #ifdef CONFIG_FAIR_GROUP_SCHED
+-#ifdef CONFIG_FAIR_GROUP_SCHED
++/* cgroup_mode's backend (__sched_cgroup_mode_update) lives in fair.c, which SCHED_ALT does not build. */
++#if defined(CONFIG_FAIR_GROUP_SCHED) && !defined(CONFIG_SCHED_ALT)
  static int cgroup_mode = 2;
-@@ -715,14 +723,17 @@ static __init int sched_init_debug(void)
+ 
+ /* See __sched_cgroup_mode_update(). */
+@@ -715,14 +724,17 @@ static __init int sched_init_debug(void)
  
  	debugfs_sched = debugfs_create_dir("sched", NULL);
  
@@ -10831,13 +10846,14 @@ index 72236db67983..70b7c3425509 100644
  	debugfs_create_u32("latency_warn_ms", 0644, debugfs_sched, &sysctl_resched_latency_warn_ms);
  	debugfs_create_u32("latency_warn_once", 0644, debugfs_sched, &sysctl_resched_latency_warn_once);
  
-@@ -761,20 +772,25 @@ static __init int sched_init_debug(void)
+@@ -761,20 +773,25 @@ static __init int sched_init_debug(void)
  #endif
  
  	debugfs_create_file("debug", 0444, debugfs_sched, NULL, &sched_debug_fops);
 +#endif /* !CONFIG_SCHED_ALT */
  
- #ifdef CONFIG_FAIR_GROUP_SCHED
+-#ifdef CONFIG_FAIR_GROUP_SCHED
++#if defined(CONFIG_FAIR_GROUP_SCHED) && !defined(CONFIG_SCHED_ALT)
  	debugfs_create_file("cgroup_mode", 0644, debugfs_sched, NULL, &sched_cgroup_fops);
  #endif
  
@@ -10857,7 +10873,7 @@ index 72236db67983..70b7c3425509 100644
  static cpumask_var_t		sd_sysctl_cpus;
  
  static int sd_flags_show(struct seq_file *m, void *v)
-@@ -1520,6 +1536,11 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
+@@ -1520,6 +1537,11 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
  
  	sched_show_numa(p, m);
  }
