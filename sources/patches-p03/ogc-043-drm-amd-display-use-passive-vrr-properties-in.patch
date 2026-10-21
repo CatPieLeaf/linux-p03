@@ -1,4 +1,4 @@
-From c42b59c1fe3631a16f2599ae53bb9a036651f560 Mon Sep 17 00:00:00 2001
+From 13d0b9ea9fcf1ca64e485bedae44ef9e4bb953b7 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Tomasz=20Paku=C5=82a?= <tomasz.pakula.oficjalny@gmail.com>
 Date: Tue, 1 Sep 2026 15:12:50 -0400
 Subject: [PATCH] [FROM-ML] drm/amd/display: Use passive_vrr properties in
@@ -26,13 +26,23 @@ Link: https://lore.kernel.org/r/20260901191251.2653684-3-jerry.zuo@amd.com
 ---
  .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 19 +++++++++++++++++--
  .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h |  1 +
- 2 files changed, 18 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-index 6a4dc90cb2801..47e19081c405b 100644
---- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-+++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-@@ -8205,6 +8205,7 @@ amdgpu_dm_connector_atomic_duplicate_state(struct drm_connector *connector)
+ 2 files changed, 18 insertions(+), 2 deletions(-)diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
+index 881c8d1c3..20095d28b 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
+@@ -1075,6 +1075,7 @@ struct dm_connector_state {
+ 	uint8_t underscan_hborder;
+ 	bool underscan_enable;
+ 	bool freesync_capable;
++	bool freesync_on_desktop_capable;
+ 	bool update_hdcp;
+ 	bool abm_sysfs_forbidden;
+ 	uint8_t abm_level;
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
+index 1d2526ee0..ffb70f598 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
+@@ -2007,6 +2007,7 @@ amdgpu_dm_connector_atomic_duplicate_state(struct drm_connector *connector)
  	__drm_atomic_helper_connector_duplicate_state(connector, &new_state->base);
  
  	new_state->freesync_capable = state->freesync_capable;
@@ -40,19 +50,39 @@ index 6a4dc90cb2801..47e19081c405b 100644
  	new_state->abm_level = state->abm_level;
  	new_state->scaling = state->scaling;
  	new_state->underscan_enable = state->underscan_enable;
-@@ -9418,8 +9419,10 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
- 	    connector_type == DRM_MODE_CONNECTOR_eDP) {
- 		drm_connector_attach_hdr_output_metadata_property(&aconnector->base);
+@@ -3316,6 +3317,7 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
  
--		if (!aconnector->mst_root)
-+		if (!aconnector->mst_root) {
+ 		if (!aconnector->mst_root) {
  			drm_connector_attach_vrr_capable_property(&aconnector->base);
 +			drm_connector_attach_passive_vrr_capable_property(&aconnector->base);
-+		}
+ 			drm_connector_attach_color_format_property(&aconnector->base,
+ 								   supported_colorformats);
+ 		}
+@@ -4051,8 +4053,10 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
+ 	}
  
- 		if (adev->dm.hdcp_workqueue)
- 			drm_connector_attach_content_protection_property(&aconnector->base, true);
-@@ -11985,6 +11988,12 @@ static void get_freesync_config_for_crtc(
+ update:
+-	if (dm_con_state)
++	if (dm_con_state) {
+ 		dm_con_state->freesync_capable = freesync_capable;
++		dm_con_state->freesync_on_desktop_capable = freesync_capable;
++	}
+ 
+ 	drm_dbg_driver(adev_to_drm(adev),
+ 		       "VRR: caps result: freesync_capable=%d min_vfreq=%d max_vfreq=%d\n",
+@@ -4068,4 +4072,7 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
+ 	if (connector->vrr_capable_property)
+ 		drm_connector_set_vrr_capable_property(connector,
+ 						       freesync_capable);
++
++	if (connector->passive_vrr_capable_property)
++		drm_connector_set_passive_vrr_capable_property(connector, freesync_capable);
+ }
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_freesync.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_freesync.c
+index 9cd04ad5b..d91833ded 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_freesync.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_freesync.c
+@@ -137,6 +137,12 @@ void amdgpu_dm_get_freesync_config_for_crtc(
  		config.vsif_supported = true;
  		config.btr = true;
  
@@ -65,7 +95,7 @@ index 6a4dc90cb2801..47e19081c405b 100644
  		if (fs_vid_mode) {
  			config.state = VRR_STATE_ACTIVE_FIXED;
  			config.fixed_refresh_in_uhz = new_crtc_state->freesync_config.fixed_refresh_in_uhz;
-@@ -11996,6 +12005,7 @@ static void get_freesync_config_for_crtc(
+@@ -148,6 +154,7 @@ void amdgpu_dm_get_freesync_config_for_crtc(
  		}
  	} else {
  		config.state = VRR_STATE_UNSUPPORTED;
@@ -73,37 +103,3 @@ index 6a4dc90cb2801..47e19081c405b 100644
  	}
  out:
  	new_crtc_state->freesync_config = config;
-@@ -14124,8 +14134,10 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
- 	}
- 
- update:
--	if (dm_con_state)
-+	if (dm_con_state) {
- 		dm_con_state->freesync_capable = freesync_capable;
-+		dm_con_state->freesync_on_desktop_capable = freesync_capable;
-+	}
- 
- 	drm_dbg_driver(adev_to_drm(adev),
- 		       "VRR: caps result: freesync_capable=%d min_vfreq=%d max_vfreq=%d\n",
-@@ -14141,6 +14153,9 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
- 	if (connector->vrr_capable_property)
- 		drm_connector_set_vrr_capable_property(connector,
- 						       freesync_capable);
-+
-+	if (connector->passive_vrr_capable_property)
-+		drm_connector_set_passive_vrr_capable_property(connector, freesync_capable);
- }
- 
- void amdgpu_dm_trigger_timing_sync(struct drm_device *dev)
-diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
-index dd199e0b79226..8acde054d7e90 100644
---- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
-+++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
-@@ -1051,6 +1051,7 @@ struct dm_connector_state {
- 	uint8_t underscan_hborder;
- 	bool underscan_enable;
- 	bool freesync_capable;
-+	bool freesync_on_desktop_capable;
- 	bool update_hdcp;
- 	bool abm_sysfs_forbidden;
- 	uint8_t abm_level;

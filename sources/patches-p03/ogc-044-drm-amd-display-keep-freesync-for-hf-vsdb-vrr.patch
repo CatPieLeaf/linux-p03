@@ -1,4 +1,4 @@
-From 7e1b4daf78c92ee2b0bab4c20cb6396894b367d9 Mon Sep 17 00:00:00 2001
+From 7f35368c270d5886bb07924dc09e18e88b7efd8d Mon Sep 17 00:00:00 2001
 From: Fangzhi Zuo <Jerry.Zuo@amd.com>
 Date: Tue, 1 Sep 2026 15:12:51 -0400
 Subject: [PATCH] [FROM-ML] drm/amd/display: Keep FreeSync for HF-VSDB VRR
@@ -19,11 +19,11 @@ Link: https://lore.kernel.org/r/20260901191251.2653684-4-jerry.zuo@amd.com
  drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 3 ++-
  1 file changed, 2 insertions(+), 1 deletion(-)
 
-diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-index 47e19081c405b..3967bc19366b0 100644
---- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-+++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-@@ -14126,7 +14126,8 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
+index ffb70f598..d8de6c925 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
+@@ -4045,7 +4045,8 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
  	if (do_mccs) {
  		dm_helpers_read_mccs_caps(adev->dm.dc->ctx, amdgpu_dm_connector->dc_link, sink);
  

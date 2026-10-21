@@ -1,4 +1,4 @@
-From 20d9cf5746464e6fdfe44cc8edff2e51fb906399 Mon Sep 17 00:00:00 2001
+From e6a85187207551802f483bbb13cffb13be35fb61 Mon Sep 17 00:00:00 2001
 From: Idotoho Reimon Simanjuntak <idotohors@gmail.com>
 Date: Thu, 3 Sep 2026 00:47:17 +0700
 Subject: [PATCH] [FROM-ML] platform/x86: asus-wmi: enable TUF RGB state for
@@ -32,7 +32,7 @@ Signed-off-by: ido <106871003+idobutidont@users.noreply.github.com>
  3 files changed, 17 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/platform/x86/asus-nb-wmi.c b/drivers/platform/x86/asus-nb-wmi.c
-index 8005c088e9eee..c89f492f889a1 100644
+index 8005c088..c89f492f 100644
 --- a/drivers/platform/x86/asus-nb-wmi.c
 +++ b/drivers/platform/x86/asus-nb-wmi.c
 @@ -155,6 +155,10 @@ static struct quirk_entry quirk_asus_z13 = {
@@ -63,7 +63,7 @@ index 8005c088e9eee..c89f492f889a1 100644
  };
  
 diff --git a/drivers/platform/x86/asus-wmi.c b/drivers/platform/x86/asus-wmi.c
-index 45d6ab3a72307..88e3b815f3245 100644
+index e568cbf4..cc1a4d75 100644
 --- a/drivers/platform/x86/asus-wmi.c
 +++ b/drivers/platform/x86/asus-wmi.c
 @@ -5213,7 +5213,9 @@ static int asus_wmi_add(struct platform_device *pdev)
@@ -78,7 +78,7 @@ index 45d6ab3a72307..88e3b815f3245 100644
  	if (asus_wmi_dev_is_present(asus, ASUS_WMI_DEVID_MINI_LED_MODE))
  		asus->mini_led_dev_id = ASUS_WMI_DEVID_MINI_LED_MODE;
 diff --git a/drivers/platform/x86/asus-wmi.h b/drivers/platform/x86/asus-wmi.h
-index 5cd4392b964eb..9bc0b6145fed6 100644
+index 5cd4392b..9bc0b614 100644
 --- a/drivers/platform/x86/asus-wmi.h
 +++ b/drivers/platform/x86/asus-wmi.h
 @@ -52,6 +52,7 @@ struct quirk_entry {

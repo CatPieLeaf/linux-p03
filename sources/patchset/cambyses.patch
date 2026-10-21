@@ -1,28 +1,66 @@
-From 9b7a2a0ba547d14681169d2755700557871e2310 Mon Sep 17 00:00:00 2001
+From 6d8bc5303b5ac983d218254b4fb43c5b632aa6df Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Mon, 27 Jul 2026 21:34:28 +0900
-Subject: [PATCH] 7.2.0-rc4-cambyses-v0.6.0
+Date: Fri, 2 Oct 2026 06:23:19 +0900
+Subject: [PATCH] 7.3.0-rc5-cambyses-v0.6.0
 
+Port Cambyses CFS Load Balancer modification v0.6.0 onto linux-7.3-rc5.
+
+linux-7.3-rc5 contains d6013e2465d9 ("sched/cache: Honor migrate_llc_task
+semantics in active load balance, to fix LLC mis-scheduling bug"), which
+adds LBF_ACTIVE_LB_LLC 0x40 right after LBF_LLC_PINNED.  That collides
+with LBF_MOVED 0x40 both textually (hunk #1 no longer applies) and in
+value, so LBF_MOVED moves to 0x80.  This is the only source change
+relative to 7.3.0-rc1-cambyses-v0.6.0 (preserved as 7.3-cambyses-rc1).
+See firelzrd/cambyses#8.
+
+Sharing 0x40 would compile cleanly but break silently: after the first
+detach in a passive balance, migrate_llc_task_wrong_dst() would read
+LBF_MOVED as LBF_ACTIVE_LB_LLC and reject every remaining candidate that
+does not prefer the destination LLC.
+
+The rc1..rc5 changes in the load-balance region were re-checked:
+- LBF_ACTIVE_LB_LLC is only set in the fresh lb_env built by
+  __active_load_balance_cpu_stop(); LBF_MOVED is only set and tested in
+  detach_tasks() on the passive path, so the two never meet.
+- The other changes (task_misfits_asym_cpu(), can_migrate_llc_task()
+  taking the lb_env, the migrate_misfit early-out in alb_break_llc(),
+  the asym check in llc_balance()) all sit behind can_migrate_task() or
+  in group classification.  Cambyses only calls can_migrate_task(), and
+  the concession candidate is recorded only after it has passed, so the
+  new LLC/misfit filters are honoured.
+- sched_balance_rq() flag handling is unchanged: env.flags is still
+  never cleared wholesale between more_balance retries, so LBF_MOVED
+  stays sticky as the concession comment claims.
+- detach_tasks() and kernel/sched/features.h are byte-identical to the
+  rc1 port apart from the LBF_MOVED value.
+
+Tested: x86_64_defconfig + SCHED_CACHE=y builds kernel/sched/ with W=1
+and no warnings; bzImage boots under QEMU/KVM (8 vCPUs), prints the
+Cambyses banner, and 12 busy loops spread evenly over 8 CPUs for 15 s
+with no BUG/WARNING in dmesg.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01PPbUicGvSLe5VCvLtf7sC5
 ---
  kernel/sched/fair.c     | 156 ++++++++++++++++++++++++++++++++++++----
  kernel/sched/features.h |  39 ++++++++++
  2 files changed, 181 insertions(+), 14 deletions(-)
 
 diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
-index d78467ec6e..937a73869d 100644
+index 57360f5cdd..0e4198c78b 100644
 --- a/kernel/sched/fair.c
 +++ b/kernel/sched/fair.c
-@@ -10254,6 +10254,9 @@ enum migration_type {
- #define LBF_SOME_PINNED	0x08
+@@ -10612,6 +10612,9 @@ enum migration_type {
  #define LBF_ACTIVE_LB	0x10
  #define LBF_LLC_PINNED	0x20
+ #define LBF_ACTIVE_LB_LLC	0x40
 +/* This balance operation has detached at least one task. Sticky across the
 + * more_balance retries, so it reflects the whole operation, not one scan. */
-+#define LBF_MOVED	0x40
++#define LBF_MOVED	0x80
  
  struct lb_env {
  	struct sched_domain	*sd;
-@@ -10884,6 +10887,62 @@ static struct task_struct *detach_one_task(struct lb_env *env)
+@@ -11288,6 +11291,62 @@ static struct task_struct *detach_one_task(struct lb_env *env)
  	return NULL;
  }
  
@@ -85,7 +123,7 @@ index d78467ec6e..937a73869d 100644
  /*
   * detach_tasks() -- tries to detach up to imbalance load/util/tasks from
   * busiest_rq, as part of a balancing operation within domain "sd".
-@@ -10893,8 +10952,10 @@ static struct task_struct *detach_one_task(struct lb_env *env)
+@@ -11297,8 +11356,10 @@ static struct task_struct *detach_one_task(struct lb_env *env)
  static int detach_tasks(struct lb_env *env)
  {
  	struct list_head *tasks = &env->src_rq->cfs_tasks;
@@ -97,7 +135,7 @@ index d78467ec6e..937a73869d 100644
  	int detached = 0;
  
  	lockdep_assert_rq_held(env->src_rq);
-@@ -10911,27 +10972,49 @@ static int detach_tasks(struct lb_env *env)
+@@ -11315,27 +11376,49 @@ static int detach_tasks(struct lb_env *env)
  	if (env->imbalance <= 0)
  		return 0;
  
@@ -151,7 +189,7 @@ index d78467ec6e..937a73869d 100644
  
  		if (!can_migrate_task(p, env))
  			goto next;
-@@ -10951,13 +11034,8 @@ static int detach_tasks(struct lb_env *env)
+@@ -11355,13 +11438,8 @@ static int detach_tasks(struct lb_env *env)
  			    load < 16 && !env->sd->nr_balance_failed)
  				goto next;
  
@@ -167,7 +205,7 @@ index d78467ec6e..937a73869d 100644
  				goto next;
  
  			env->imbalance -= load;
-@@ -10966,7 +11044,7 @@ static int detach_tasks(struct lb_env *env)
+@@ -11370,7 +11448,7 @@ static int detach_tasks(struct lb_env *env)
  		case migrate_util:
  			util = task_util_est(p);
  
@@ -176,7 +214,7 @@ index d78467ec6e..937a73869d 100644
  				goto next;
  
  			env->imbalance -= util;
-@@ -10992,6 +11070,7 @@ static int detach_tasks(struct lb_env *env)
+@@ -11396,6 +11474,7 @@ static int detach_tasks(struct lb_env *env)
  		detach_task(p, env);
  		list_add(&p->se.group_node, &env->tasks);
  
@@ -184,7 +222,7 @@ index d78467ec6e..937a73869d 100644
  		detached++;
  
  #ifdef CONFIG_PREEMPTION
-@@ -11016,9 +11095,58 @@ static int detach_tasks(struct lb_env *env)
+@@ -11420,9 +11499,58 @@ static int detach_tasks(struct lb_env *env)
  		if (p->sched_task_hot)
  			schedstat_inc(p->stats.nr_failed_migrations_hot);
  

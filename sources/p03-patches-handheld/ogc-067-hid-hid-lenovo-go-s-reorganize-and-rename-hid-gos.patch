@@ -1,4 +1,4 @@
-From 3c387aa1ddfd50fe80838d55599cb92e15978327 Mon Sep 17 00:00:00 2001
+From 48ff7414e299745b128d9eccc9bfd878ac6a5e8a Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:53:01 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Reorganize and rename hid_gos_cfg
@@ -17,7 +17,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 22 insertions(+), 17 deletions(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index f1a0bcfcdb71..e5c4104a3adb 100644
+index f1a0bcfc..e5c4104a 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -32,36 +32,41 @@

@@ -1,4 +1,4 @@
-From 41b3babd6dc397e9f0a2aa89f82882342df8d439 Mon Sep 17 00:00:00 2001
+From 6c16789e59caddc6d17d216f699fe4240d6cbdae Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Sat, 26 Jul 2025 13:40:40 -0700
 Subject: [PATCH] [FROM-ML] platform/x86: (ayn-ec) Add RGB Interface
@@ -29,7 +29,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  2 files changed, 288 insertions(+)
 
 diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
-index dde81298afe0c..96f3b7ad497aa 100644
+index dde81298..96f3b7ad 100644
 --- a/drivers/platform/x86/Kconfig
 +++ b/drivers/platform/x86/Kconfig
 @@ -334,6 +334,9 @@ config AYN_EC
@@ -43,7 +43,7 @@ index dde81298afe0c..96f3b7ad497aa 100644
  	  This is a driver for AYN and Tectoy x86 handheld devices. It provides
  	  temperature monitoring, manual fan speed control, fan curve control,
 diff --git a/drivers/platform/x86/ayn-ec.c b/drivers/platform/x86/ayn-ec.c
-index 466cc33adcb08..25f748d7db18e 100644
+index 466cc33a..25f748d7 100644
 --- a/drivers/platform/x86/ayn-ec.c
 +++ b/drivers/platform/x86/ayn-ec.c
 @@ -28,6 +28,8 @@

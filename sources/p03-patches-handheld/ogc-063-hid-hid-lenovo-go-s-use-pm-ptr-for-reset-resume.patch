@@ -1,4 +1,4 @@
-From e63b23b89776c025c8be1f9a75a825cec0de8be0 Mon Sep 17 00:00:00 2001
+From e2ca26817336ef562666e8cc9234364a0b1fdcbc Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:52:57 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Use pm_ptr for reset_resume callback
@@ -14,7 +14,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index 8b16fc7d151e..b6850cf2c029 100644
+index 8b16fc7d..b6850cf2 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -1556,7 +1556,7 @@ static struct hid_driver hid_lenovo_go_s = {

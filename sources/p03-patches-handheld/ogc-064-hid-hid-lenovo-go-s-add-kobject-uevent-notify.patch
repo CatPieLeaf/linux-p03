@@ -1,4 +1,4 @@
-From 1ed7a7e943ac84dd791e56c3a99d2417b479d4ff Mon Sep 17 00:00:00 2001
+From 711c9e20a91f7db7b3cab4bb0e612a1b9de7b437 Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:52:58 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Add kobject_uevent notify during
@@ -15,7 +15,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 1 insertion(+)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index b6850cf2c029..712823e22bea 100644
+index b6850cf2..712823e2 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -1467,6 +1467,7 @@ static int hid_gos_cfg_reset_resume(struct hid_device *hdev)

@@ -1,4 +1,4 @@
-From f88003ca896bbd4ffa3f2e44e0c419da5a9f3f8c Mon Sep 17 00:00:00 2001
+From 8a38a628441ff5cc9b9575affc09278bcf63ae4c Mon Sep 17 00:00:00 2001
 From: Antheas Kapenekakis <lkml@antheas.dev>
 Date: Mon, 16 Feb 2026 21:45:38 +0100
 Subject: [PATCH] [FROM-ML] drm: panel-orientation-quirks: Add OneXPlayer X1
@@ -19,7 +19,7 @@ Link: https://patch.msgid.link/20260216204547.293291-6-lkml@antheas.dev
  1 file changed, 12 insertions(+)
 
 diff --git a/drivers/gpu/drm/drm_panel_orientation_quirks.c b/drivers/gpu/drm/drm_panel_orientation_quirks.c
-index 2efffe962460c..1ee66e4db0e9e 100644
+index 2efffe96..1ee66e4d 100644
 --- a/drivers/gpu/drm/drm_panel_orientation_quirks.c
 +++ b/drivers/gpu/drm/drm_panel_orientation_quirks.c
 @@ -516,6 +516,18 @@ static const struct dmi_system_id orientation_data[] = {

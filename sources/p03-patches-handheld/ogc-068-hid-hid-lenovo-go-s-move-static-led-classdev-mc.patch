@@ -1,4 +1,4 @@
-From 001fbe956d5e1a26dbe8bc2bbbc7f4bb9b5f01fe Mon Sep 17 00:00:00 2001
+From 0df222006981a32347ccb9b881dda350069702aa Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:53:02 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Move static led_classdev_mc to drvdata
@@ -19,7 +19,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 36 insertions(+), 37 deletions(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index e5c4104a3adb..c77c297a04cb 100644
+index e5c4104a..c77c297a 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -60,7 +60,7 @@ static struct gos_cfg_drvdata {

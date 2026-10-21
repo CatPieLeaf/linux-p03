@@ -1,4 +1,4 @@
-From 4c6e38204087ec80e6e68c79a1476a389bd36312 Mon Sep 17 00:00:00 2001
+From 2fb1becf682b17a152a24b581e77b1a9c0731811 Mon Sep 17 00:00:00 2001
 From: Philip Mueller <philm@manjaro.org>
 Date: Fri, 31 Jul 2026 21:53:22 +0200
 Subject: [PATCH] [FROM-ML] iio: imu: bmi270: Match PNP ID found on OrangePi
@@ -18,7 +18,7 @@ Signed-off-by: Philip Mueller <philm@manjaro.org>
  1 file changed, 2 insertions(+)
 
 diff --git a/drivers/iio/imu/bmi270/bmi270_i2c.c b/drivers/iio/imu/bmi270/bmi270_i2c.c
-index 7c035e82e6e9c..036c6f0f7cd43 100644
+index 7c035e82..036c6f0f 100644
 --- a/drivers/iio/imu/bmi270/bmi270_i2c.c
 +++ b/drivers/iio/imu/bmi270/bmi270_i2c.c
 @@ -43,6 +43,8 @@ static const struct acpi_device_id bmi270_acpi_match[] = {

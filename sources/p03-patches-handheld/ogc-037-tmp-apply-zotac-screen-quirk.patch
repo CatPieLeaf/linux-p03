@@ -1,4 +1,4 @@
-From 78cf90d918bb0b1dd7dd09cdf058293bbabf6e12 Mon Sep 17 00:00:00 2001
+From a0f7d9a293aca0c40079f98f0d8fbdc5d752a00b Mon Sep 17 00:00:00 2001
 From: Luke Jones <luke@ljones.dev>
 Date: Sat, 12 Apr 2025 14:20:08 +1200
 Subject: [PATCH] [MAINTAINED-EXTERNALLY] tmp: apply zotac screen quirk
@@ -9,7 +9,7 @@ Subject: [PATCH] [MAINTAINED-EXTERNALLY] tmp: apply zotac screen quirk
  1 file changed, 6 insertions(+)
 
 diff --git a/drivers/gpu/drm/drm_panel_orientation_quirks.c b/drivers/gpu/drm/drm_panel_orientation_quirks.c
-index b1915c1f92da0..bed69253f0c18 100644
+index b1915c1f..bed69253 100644
 --- a/drivers/gpu/drm/drm_panel_orientation_quirks.c
 +++ b/drivers/gpu/drm/drm_panel_orientation_quirks.c
 @@ -606,6 +606,12 @@ static const struct dmi_system_id orientation_data[] = {

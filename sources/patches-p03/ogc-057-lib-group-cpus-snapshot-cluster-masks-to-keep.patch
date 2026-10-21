@@ -1,4 +1,4 @@
-From 54d878dd68eda708f896e3b04bdbdf211df222e7 Mon Sep 17 00:00:00 2001
+From f35311108fe256ea63e90979684842638b528291 Mon Sep 17 00:00:00 2001
 From: Vishal Badole <Vishal.Badole@amd.com>
 Date: Wed, 26 Aug 2026 22:45:37 +0530
 Subject: [PATCH] [FROM-ML] lib/group_cpus: Snapshot cluster masks to keep
@@ -59,7 +59,7 @@ Signed-off-by: Xiao Han <hanxiao@live.com>
  1 file changed, 85 insertions(+), 2 deletions(-)
 
 diff --git a/lib/group_cpus.c b/lib/group_cpus.c
-index e6e18d7a49bb..3c2229feb9c3 100644
+index e6e18d7a..3c2229fe 100644
 --- a/lib/group_cpus.c
 +++ b/lib/group_cpus.c
 @@ -6,6 +6,7 @@

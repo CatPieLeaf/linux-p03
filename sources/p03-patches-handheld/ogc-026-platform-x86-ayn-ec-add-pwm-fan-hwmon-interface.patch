@@ -1,4 +1,4 @@
-From f72893bd9d057801d9abd3813648dfe06a1d13ef Mon Sep 17 00:00:00 2001
+From 335b595bb873d5e8ba5eafd67db5a573fc5ec08f Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Sat, 26 Jul 2025 13:40:38 -0700
 Subject: [PATCH] [FROM-ML] platform/x86: (ayn-ec) Add PWM Fan HWMON Interface
@@ -30,7 +30,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  create mode 100644 drivers/platform/x86/ayn-ec.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 8014b9f8253ed..9472521965bcb 100644
+index 95cd976a..ee53e99d 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -4459,6 +4459,12 @@ F:	Documentation/devicetree/bindings/spi/axiado,ax3000-spi.yaml
@@ -47,7 +47,7 @@ index 8014b9f8253ed..9472521965bcb 100644
  M:	Antheas Kapenekakis <lkml@antheas.dev>
  L:	platform-driver-x86@vger.kernel.org
 diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
-index b54b5212b2047..dde81298afe0c 100644
+index b54b5212..dde81298 100644
 --- a/drivers/platform/x86/Kconfig
 +++ b/drivers/platform/x86/Kconfig
 @@ -330,6 +330,18 @@ config ASUS_TF103C_DOCK
@@ -70,7 +70,7 @@ index b54b5212b2047..dde81298afe0c 100644
  	tristate "Ayaneo EC platform control"
  	depends on DMI
 diff --git a/drivers/platform/x86/Makefile b/drivers/platform/x86/Makefile
-index 872ac3842391f..31b4fd9083948 100644
+index 872ac384..31b4fd90 100644
 --- a/drivers/platform/x86/Makefile
 +++ b/drivers/platform/x86/Makefile
 @@ -40,6 +40,9 @@ obj-$(CONFIG_ASUS_TF103C_DOCK)	+= asus-tf103c-dock.o
@@ -85,7 +85,7 @@ index 872ac3842391f..31b4fd9083948 100644
  
 diff --git a/drivers/platform/x86/ayn-ec.c b/drivers/platform/x86/ayn-ec.c
 new file mode 100644
-index 0000000000000..8bd3ed1c69ebb
+index 00000000..8bd3ed1c
 --- /dev/null
 +++ b/drivers/platform/x86/ayn-ec.c
 @@ -0,0 +1,520 @@

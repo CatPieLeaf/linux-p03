@@ -1,4 +1,4 @@
-From 4895ea2aef5f3a8b19804e3f41d86adea7d3114c Mon Sep 17 00:00:00 2001
+From bb7aa95768766cbcc3295d8c49598f5f3c5d7c05 Mon Sep 17 00:00:00 2001
 From: Philip Mueller <philm@manjaro.org>
 Date: Fri, 31 Jul 2026 21:53:24 +0200
 Subject: [PATCH] [FROM-ML] iio: imu: bmi270: add BOSC0160 PNP ID for gaming
@@ -15,7 +15,7 @@ Signed-off-by: Philip Mueller <philm@manjaro.org>
  1 file changed, 1 insertion(+)
 
 diff --git a/drivers/iio/imu/bmi270/bmi270_i2c.c b/drivers/iio/imu/bmi270/bmi270_i2c.c
-index d7faebcbd2fae..839e71b65f059 100644
+index d7faebcb..839e71b6 100644
 --- a/drivers/iio/imu/bmi270/bmi270_i2c.c
 +++ b/drivers/iio/imu/bmi270/bmi270_i2c.c
 @@ -41,6 +41,7 @@ MODULE_DEVICE_TABLE(i2c, bmi270_i2c_id);

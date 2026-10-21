@@ -1,4 +1,4 @@
-From 7fa8b4a47ccf7233353801b5e94d39f31c9a2b9b Mon Sep 17 00:00:00 2001
+From 5b9e5675675ac0677b207da332e320de0a56d39c Mon Sep 17 00:00:00 2001
 From: Idotoho Reimon Simanjuntak <idotohors@gmail.com>
 Date: Thu, 3 Sep 2026 00:47:18 +0700
 Subject: [PATCH] [FROM-ML] platform/x86: asus-wmi: re-assert FA401 keyboard
@@ -27,7 +27,7 @@ Signed-off-by: ido <106871003+idobutidont@users.noreply.github.com>
  1 file changed, 63 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/platform/x86/asus-wmi.c b/drivers/platform/x86/asus-wmi.c
-index 88e3b815f3245..2fc208e91ee5e 100644
+index cc1a4d75..313fa804 100644
 --- a/drivers/platform/x86/asus-wmi.c
 +++ b/drivers/platform/x86/asus-wmi.c
 @@ -257,6 +257,7 @@ struct asus_wmi {

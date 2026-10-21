@@ -1,4 +1,4 @@
-From d396f7fde6426e41a89b529d9b1a23e2ee037f5e Mon Sep 17 00:00:00 2001
+From a6c4d2bd24441a5f300d1c38378da27a8fb3c9a3 Mon Sep 17 00:00:00 2001
 From: Philip Mueller <philm@manjaro.org>
 Date: Fri, 31 Jul 2026 21:53:25 +0200
 Subject: [PATCH] [FROM-ML] iio: imu: bmi270: fix typo found in dc757dc
@@ -13,7 +13,7 @@ Signed-off-by: Philip Mueller <philm@manjaro.org>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/iio/imu/bmi270/bmi270_i2c.c b/drivers/iio/imu/bmi270/bmi270_i2c.c
-index 839e71b65f059..9bdd4d7a821f7 100644
+index 839e71b6..9bdd4d7a 100644
 --- a/drivers/iio/imu/bmi270/bmi270_i2c.c
 +++ b/drivers/iio/imu/bmi270/bmi270_i2c.c
 @@ -42,7 +42,7 @@ static const struct acpi_device_id bmi270_acpi_match[] = {

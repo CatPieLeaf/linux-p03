@@ -1,4 +1,4 @@
-From 8584c137b433fdddd42c13d6ef3fca808db9cc6f Mon Sep 17 00:00:00 2001
+From b55d40b05f7ec4c30f1a4444eb8b76e0712d6dfb Mon Sep 17 00:00:00 2001
 From: Matthew Schwartz <matthew.schwartz@linux.dev>
 Date: Sat, 20 Dec 2025 19:59:53 -0800
 Subject: [PATCH] [FROM-ML] misc: rtsx_pcr: prevent pm_schedule_suspend for
@@ -16,10 +16,10 @@ Signed-off-by: Matthew Schwartz <matthew.schwartz@linux.dev>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/misc/cardreader/rtsx_pcr.c b/drivers/misc/cardreader/rtsx_pcr.c
-index c4d54ca2fa804..ff41842b4dd94 100644
+index c6e60252..58380722 100644
 --- a/drivers/misc/cardreader/rtsx_pcr.c
 +++ b/drivers/misc/cardreader/rtsx_pcr.c
-@@ -1760,7 +1760,7 @@ static int rtsx_pci_runtime_idle(struct device *device)
+@@ -1762,7 +1762,7 @@ static int rtsx_pci_runtime_idle(struct device *device)
  
  	mutex_unlock(&pcr->pcr_mutex);
  

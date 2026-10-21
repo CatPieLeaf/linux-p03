@@ -1,4 +1,4 @@
-From 64b7bb8e40ac03307e913ae3b0a006ec32ec4662 Mon Sep 17 00:00:00 2001
+From 1f8d3dfad3d92997fd7da125d8fbd8ff3eebe862 Mon Sep 17 00:00:00 2001
 From: Ahmed Yaseen <yaseen@ghoul.dev>
 Date: Fri, 28 Aug 2026 16:07:51 +0000
 Subject: [PATCH] [FROM-ML] platform/x86: asus-wmi: validate custom fan curves
@@ -24,7 +24,7 @@ Signed-off-by: Ahmed Yaseen <yaseen@ghoul.dev>
  1 file changed, 32 insertions(+)
 
 diff --git a/drivers/platform/x86/asus-wmi.c b/drivers/platform/x86/asus-wmi.c
-index 0adb5cebf5233..fd5fbdb0cd8b8 100644
+index a6509042..3b743fec 100644
 --- a/drivers/platform/x86/asus-wmi.c
 +++ b/drivers/platform/x86/asus-wmi.c
 @@ -3714,6 +3714,33 @@ static int fan_curve_write(struct asus_wmi *asus,

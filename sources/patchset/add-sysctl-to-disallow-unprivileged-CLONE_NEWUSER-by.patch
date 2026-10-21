@@ -128,7 +128,7 @@ index c6d9dec11b749d..9a4514ad481b21 100644
 +		.proc_handler	= proc_dointvec,
 +	},
 +#endif
- #ifdef CONFIG_PROC_SYSCTL
+ #ifdef CONFIG_SYSCTL
  	{
  		.procname	= "sysctl_writes_strict",
 diff --git a/kernel/user_namespace.c b/kernel/user_namespace.c

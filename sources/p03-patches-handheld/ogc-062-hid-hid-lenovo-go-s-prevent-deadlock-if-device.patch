@@ -1,4 +1,4 @@
-From 71e7d31ea297b47de711037580201a8ebecb7d37 Mon Sep 17 00:00:00 2001
+From 5bf899e0d94ffe29885c5ab7158fcfe875adaebb Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:52:56 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Prevent deadlock if device removed
@@ -19,7 +19,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 1 insertion(+), 2 deletions(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index 36505d8402ff..8b16fc7d151e 100644
+index 36505d84..8b16fc7d 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -1442,8 +1442,7 @@ static int hid_gos_cfg_probe(struct hid_device *hdev,

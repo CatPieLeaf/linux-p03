@@ -1,4 +1,4 @@
-From 27d3686854e7f3d1f80648f5598e76e990b47bda Mon Sep 17 00:00:00 2001
+From 35373ee2421ba49ffd0c3978a1cbe9ce6a5e76de Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Sat, 26 Jul 2025 13:40:39 -0700
 Subject: [PATCH] [FROM-ML] platform/x86: (ayn-ec) Add Temperature Sensors
@@ -28,7 +28,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 86 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/platform/x86/ayn-ec.c b/drivers/platform/x86/ayn-ec.c
-index 8bd3ed1c69ebb..466cc33adcb08 100644
+index 8bd3ed1c..466cc33a 100644
 --- a/drivers/platform/x86/ayn-ec.c
 +++ b/drivers/platform/x86/ayn-ec.c
 @@ -61,6 +61,14 @@

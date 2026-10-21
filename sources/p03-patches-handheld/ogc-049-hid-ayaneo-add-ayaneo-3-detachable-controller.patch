@@ -1,4 +1,4 @@
-From 7f7b9a48470d6a459d12c5b1a881b8d13fbdf705 Mon Sep 17 00:00:00 2001
+From 0d651a2a7e073a975069df2683fb471e17f4c688 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Mat=C3=ADas=20Mart=C3=ADnez?= <hello@matias.me>
 Date: Thu, 17 Sep 2026 13:10:28 -0300
 Subject: [PATCH] [FROM-ML] HID: ayaneo: Add AYANEO 3 detachable controller
@@ -49,7 +49,7 @@ Link: https://lore.kernel.org/r/20260917160722.89391-1-hello@matias.me
 
 diff --git a/Documentation/ABI/testing/sysfs-class-led-driver-hid-ayaneo b/Documentation/ABI/testing/sysfs-class-led-driver-hid-ayaneo
 new file mode 100644
-index 000000000000..00f100dba74e
+index 00000000..00f100db
 --- /dev/null
 +++ b/Documentation/ABI/testing/sysfs-class-led-driver-hid-ayaneo
 @@ -0,0 +1,15 @@
@@ -70,7 +70,7 @@ index 000000000000..00f100dba74e
 +		non-zero. Any other pattern is rejected.
 diff --git a/Documentation/ABI/testing/sysfs-driver-hid-ayaneo b/Documentation/ABI/testing/sysfs-driver-hid-ayaneo
 new file mode 100644
-index 000000000000..807c4fc9d768
+index 00000000..807c4fc9
 --- /dev/null
 +++ b/Documentation/ABI/testing/sysfs-driver-hid-ayaneo
 @@ -0,0 +1,36 @@
@@ -111,7 +111,7 @@ index 000000000000..807c4fc9d768
 +		Write-only. Writing "1" asks the controller firmware to
 +		perform a quick reset of the controller configuration.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 8d84eede6c6a..2e4446054378 100644
+index 8d84eede..2e444605 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -4466,6 +4466,14 @@ S:	Maintained
@@ -130,7 +130,7 @@ index 8d84eede6c6a..2e4446054378 100644
  M:	Antheas Kapenekakis <lkml@antheas.dev>
  L:	platform-driver-x86@vger.kernel.org
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 48934c4f3c45..a0dcace8e005 100644
+index 48934c4f..a0dcace8 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
 @@ -205,6 +205,20 @@ config HID_AUREAL
@@ -155,7 +155,7 @@ index 48934c4f3c45..a0dcace8e005 100644
  	tristate "Belkin Flip KVM and Wireless keyboard"
  	help
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index 23e6e3dd0c56..6dced58a2b6f 100644
+index 23e6e3dd..6dced58a 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -35,6 +35,7 @@ obj-$(CONFIG_HID_APPLETB_KBD)	+= hid-appletb-kbd.o
@@ -168,7 +168,7 @@ index 23e6e3dd0c56..6dced58a2b6f 100644
  obj-$(CONFIG_HID_BIGBEN_FF)	+= hid-bigbenff.o
 diff --git a/drivers/hid/hid-ayaneo.c b/drivers/hid/hid-ayaneo.c
 new file mode 100644
-index 000000000000..3a7af5918ee1
+index 00000000..3a7af591
 --- /dev/null
 +++ b/drivers/hid/hid-ayaneo.c
 @@ -0,0 +1,594 @@

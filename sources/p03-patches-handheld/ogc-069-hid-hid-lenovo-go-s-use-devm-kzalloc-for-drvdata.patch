@@ -1,4 +1,4 @@
-From 2b6eb2c8a95c84fb6ed9f97213b68b65981ff409 Mon Sep 17 00:00:00 2001
+From 69af401f1acdb4a7a558527410dc6c8a574e0a9f Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:53:03 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Use devm_kzalloc for drvdata
@@ -14,7 +14,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 300 insertions(+), 201 deletions(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index c77c297a04cb..7102786ce124 100644
+index c77c297a..7102786c 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -10,6 +10,7 @@

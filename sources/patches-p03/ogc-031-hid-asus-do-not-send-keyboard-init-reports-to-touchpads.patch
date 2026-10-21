@@ -1,4 +1,4 @@
-From 8d460768a92509033234dac9cfdd7ca28991d520 Mon Sep 17 00:00:00 2001
+From 28603fff661d1bb9ceff487972f10c186fd87d39 Mon Sep 17 00:00:00 2001
 From: Panz Dev <panz.development@gmail.com>
 Date: Tue, 18 Aug 2026 17:14:31 +0200
 Subject: [PATCH] HID: asus: do not send keyboard init reports to touchpads
@@ -26,10 +26,10 @@ Signed-off-by: Panz Dev <panz.development@gmail.com>
  1 file changed, 8 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/hid/hid-asus.c b/drivers/hid/hid-asus.c
-index 641dc1c84119a..b428315eaa11f 100644
+index f90061d8..592da5ef 100644
 --- a/drivers/hid/hid-asus.c
 +++ b/drivers/hid/hid-asus.c
-@@ -1314,12 +1314,14 @@ static int asus_probe(struct hid_device *hdev, const struct hid_device_id *id)
+@@ -1500,12 +1500,14 @@ static int asus_probe(struct hid_device *hdev, const struct hid_device_id *id)
  		return ret;
  	}
  

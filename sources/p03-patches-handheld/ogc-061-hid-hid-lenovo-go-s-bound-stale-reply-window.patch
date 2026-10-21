@@ -1,4 +1,4 @@
-From ce7cfbf03ced1133cb8bdfa2cca5871e151cb09c Mon Sep 17 00:00:00 2001
+From b0d502f36ba374574bef8689ec48324742245fb0 Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:52:55 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Bound stale reply window before reusing
@@ -28,7 +28,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 17 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index 68301d4c762a..36505d8402ff 100644
+index 68301d4c..36505d84 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -37,6 +37,7 @@ static struct hid_gos_cfg {

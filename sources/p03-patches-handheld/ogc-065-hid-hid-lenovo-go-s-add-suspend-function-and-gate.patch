@@ -1,4 +1,4 @@
-From d8503617af292bc86fc4a98296863db57e28fb73 Mon Sep 17 00:00:00 2001
+From 2f339933cf366710718b2c15ec2105bf7e59197b Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:52:59 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Add suspend function and gate access
@@ -18,7 +18,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 149 insertions(+)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index 712823e22bea..6d98fff6d987 100644
+index 712823e2..6d98fff6 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -39,6 +39,8 @@ static struct hid_gos_cfg {

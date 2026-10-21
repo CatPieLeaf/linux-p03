@@ -1,4 +1,4 @@
-From 95f0576ef464332e7946a369036fb83ca4071354 Mon Sep 17 00:00:00 2001
+From a3bc3a9742609aeb3eaaaed67421cc6c92e0fe2f Mon Sep 17 00:00:00 2001
 From: Yaroslav Bolyukin <iam@lach.pw>
 Date: Tue, 2 Dec 2025 12:02:16 +0100
 Subject: [PATCH] [FROM-ML] drm/edid: for consistency, use mask everywhere for
@@ -15,7 +15,7 @@ Reviewed-by: Jani Nikula <jani.nikula@intel.com>
  2 files changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/gpu/drm/drm_displayid_internal.h b/drivers/gpu/drm/drm_displayid_internal.h
-index 09053055ca9a..5fc8d81cd8eb 100644
+index 09053055..5fc8d81c 100644
 --- a/drivers/gpu/drm/drm_displayid_internal.h
 +++ b/drivers/gpu/drm/drm_displayid_internal.h
 @@ -139,6 +139,7 @@ struct displayid_formula_timings_9 {
@@ -27,7 +27,7 @@ index 09053055ca9a..5fc8d81cd8eb 100644
  	struct displayid_block base;
  	struct displayid_formula_timings_9 timings[];
 diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
-index 957c9d8ca268..f90b46325d25 100644
+index 957c9d8c..f90b4632 100644
 --- a/drivers/gpu/drm/drm_edid.c
 +++ b/drivers/gpu/drm/drm_edid.c
 @@ -6980,7 +6980,8 @@ static int add_displayid_formula_modes(struct drm_connector *connector,

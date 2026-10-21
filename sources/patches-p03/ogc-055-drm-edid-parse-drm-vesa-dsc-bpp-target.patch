@@ -1,4 +1,4 @@
-From b18e8cde6567f064a1e6ee057f6ddba38429e0a6 Mon Sep 17 00:00:00 2001
+From 89b065f9b240538309ef6fa1e1ff463f61b681fb Mon Sep 17 00:00:00 2001
 From: Yaroslav Bolyukin <iam@lach.pw>
 Date: Tue, 2 Dec 2025 12:02:17 +0100
 Subject: [PATCH] [FROM-ML] drm/edid: parse DRM VESA dsc bpp target
@@ -21,7 +21,7 @@ Reviewed-by: Jani Nikula <jani.nikula@intel.com>
  3 files changed, 27 insertions(+)
 
 diff --git a/drivers/gpu/drm/drm_displayid_internal.h b/drivers/gpu/drm/drm_displayid_internal.h
-index 5fc8d81cd8eb..56e48d6afa56 100644
+index 5fc8d81c..56e48d6a 100644
 --- a/drivers/gpu/drm/drm_displayid_internal.h
 +++ b/drivers/gpu/drm/drm_displayid_internal.h
 @@ -148,6 +148,8 @@ struct displayid_formula_timing_block {
@@ -43,7 +43,7 @@ index 5fc8d81cd8eb..56e48d6afa56 100644
  
  /*
 diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
-index f90b46325d25..cf53ac02b433 100644
+index f90b4632..cf53ac02 100644
 --- a/drivers/gpu/drm/drm_edid.c
 +++ b/drivers/gpu/drm/drm_edid.c
 @@ -45,6 +45,7 @@
@@ -85,7 +85,7 @@ index f90b46325d25..cf53ac02b433 100644
  	kfree(info->vics);
  	info->vics = NULL;
 diff --git a/include/drm/drm_connector.h b/include/drm/drm_connector.h
-index 5f5ca023cd65..6bc40504ebc8 100644
+index 5f5ca023..6bc40504 100644
 --- a/include/drm/drm_connector.h
 +++ b/include/drm/drm_connector.h
 @@ -892,6 +892,12 @@ struct drm_display_info {

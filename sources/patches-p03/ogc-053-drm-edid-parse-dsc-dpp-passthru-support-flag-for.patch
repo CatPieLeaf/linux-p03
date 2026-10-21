@@ -1,4 +1,4 @@
-From 7f073d469dc14a035b2e13a4c2a810e8b5c0b388 Mon Sep 17 00:00:00 2001
+From 889094b550a911da36441f5f86e3de18b491f7fd Mon Sep 17 00:00:00 2001
 From: Yaroslav Bolyukin <iam@lach.pw>
 Date: Tue, 2 Dec 2025 12:02:15 +0100
 Subject: [PATCH] [FROM-ML] drm/edid: parse DSC DPP passthru support flag for
@@ -17,7 +17,7 @@ Reviewed-by: Jani Nikula <jani.nikula@intel.com>
  3 files changed, 20 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/gpu/drm/drm_displayid_internal.h b/drivers/gpu/drm/drm_displayid_internal.h
-index 39c5e9995bd0..09053055ca9a 100644
+index 39c5e999..09053055 100644
 --- a/drivers/gpu/drm/drm_displayid_internal.h
 +++ b/drivers/gpu/drm/drm_displayid_internal.h
 @@ -97,6 +97,7 @@ struct displayid_header {
@@ -37,7 +37,7 @@ index 39c5e9995bd0..09053055ca9a 100644
  	struct displayid_block base;
  	struct displayid_detailed_timings_1 timings[];
 diff --git a/drivers/gpu/drm/drm_edid.c b/drivers/gpu/drm/drm_edid.c
-index 236eb56b2256..957c9d8ca268 100644
+index 236eb56b..957c9d8c 100644
 --- a/drivers/gpu/drm/drm_edid.c
 +++ b/drivers/gpu/drm/drm_edid.c
 @@ -6866,8 +6866,8 @@ out:
@@ -86,7 +86,7 @@ index 236eb56b2256..957c9d8ca268 100644
  			continue;
  
 diff --git a/include/drm/drm_modes.h b/include/drm/drm_modes.h
-index b9bb92e4b029..312e5c03af9a 100644
+index b9bb92e4..312e5c03 100644
 --- a/include/drm/drm_modes.h
 +++ b/include/drm/drm_modes.h
 @@ -417,6 +417,16 @@ struct drm_display_mode {

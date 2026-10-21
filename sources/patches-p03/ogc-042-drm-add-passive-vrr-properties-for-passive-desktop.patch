@@ -1,4 +1,4 @@
-From 5bddd6497a5af727263b51c791c55563a1686156 Mon Sep 17 00:00:00 2001
+From c8ad2d786851a43d1ef74d0096b547222af8a0f0 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Tomasz=20Paku=C5=82a?= <tomasz.pakula.oficjalny@gmail.com>
 Date: Tue, 1 Sep 2026 15:12:49 -0400
 Subject: [PATCH] [FROM-ML] drm: Add passive_vrr properties for passive/desktop
@@ -33,7 +33,7 @@ Link: https://lore.kernel.org/r/20260901191251.2653684-2-jerry.zuo@amd.com
  7 files changed, 115 insertions(+)
 
 diff --git a/drivers/gpu/drm/drm_atomic_uapi.c b/drivers/gpu/drm/drm_atomic_uapi.c
-index e997917819e8e..c50c83360ba2f 100644
+index 66b591b3..a953e0b8 100644
 --- a/drivers/gpu/drm/drm_atomic_uapi.c
 +++ b/drivers/gpu/drm/drm_atomic_uapi.c
 @@ -420,6 +420,8 @@ static int drm_atomic_crtc_set_property(struct drm_crtc *crtc,
@@ -55,7 +55,7 @@ index e997917819e8e..c50c83360ba2f 100644
  		*val = (state->degamma_lut) ? state->degamma_lut->base.id : 0;
  	else if (property == config->ctm_property)
 diff --git a/drivers/gpu/drm/drm_connector.c b/drivers/gpu/drm/drm_connector.c
-index 11646453aaac9..f2f45674fa47f 100644
+index 11646453..f2f45674 100644
 --- a/drivers/gpu/drm/drm_connector.c
 +++ b/drivers/gpu/drm/drm_connector.c
 @@ -2367,6 +2367,16 @@ EXPORT_SYMBOL(drm_mode_create_scaling_mode_property);
@@ -160,7 +160,7 @@ index 11646453aaac9..f2f45674fa47f 100644
   * drm_connector_set_panel_orientation - sets the connector's panel_orientation
   * @connector: connector for which to set the panel-orientation property.
 diff --git a/drivers/gpu/drm/drm_crtc.c b/drivers/gpu/drm/drm_crtc.c
-index 63ead8ba67564..bd666dbc30f29 100644
+index 63ead8ba..bd666dbc 100644
 --- a/drivers/gpu/drm/drm_crtc.c
 +++ b/drivers/gpu/drm/drm_crtc.c
 @@ -322,6 +322,8 @@ static int __drm_crtc_init_with_planes(struct drm_device *dev, struct drm_crtc *
@@ -173,7 +173,7 @@ index 63ead8ba67564..bd666dbc30f29 100644
  
  	return 0;
 diff --git a/drivers/gpu/drm/drm_mode_config.c b/drivers/gpu/drm/drm_mode_config.c
-index 66f7dc37b5970..dc1ca08655ca6 100644
+index 66f7dc37..dc1ca086 100644
 --- a/drivers/gpu/drm/drm_mode_config.c
 +++ b/drivers/gpu/drm/drm_mode_config.c
 @@ -345,6 +345,12 @@ static int drm_mode_create_standard_properties(struct drm_device *dev)
@@ -190,7 +190,7 @@ index 66f7dc37b5970..dc1ca08655ca6 100644
  			DRM_MODE_PROP_BLOB,
  			"DEGAMMA_LUT", 0);
 diff --git a/include/drm/drm_connector.h b/include/drm/drm_connector.h
-index 78d117d4de991..2a64297d97c53 100644
+index 78d117d4..2a64297d 100644
 --- a/include/drm/drm_connector.h
 +++ b/include/drm/drm_connector.h
 @@ -2206,6 +2206,17 @@ struct drm_connector {
@@ -230,7 +230,7 @@ index 78d117d4de991..2a64297d97c53 100644
  	struct drm_connector *connector,
  	enum drm_panel_orientation panel_orientation);
 diff --git a/include/drm/drm_crtc.h b/include/drm/drm_crtc.h
-index c6dbe8b7db9ee..642a374f403e6 100644
+index c6dbe8b7..642a374f 100644
 --- a/include/drm/drm_crtc.h
 +++ b/include/drm/drm_crtc.h
 @@ -311,6 +311,15 @@ struct drm_crtc_state {
@@ -250,7 +250,7 @@ index c6dbe8b7db9ee..642a374f403e6 100644
  	 * @self_refresh_active:
  	 *
 diff --git a/include/drm/drm_mode_config.h b/include/drm/drm_mode_config.h
-index e584652ddf676..e312e6ae4d7ee 100644
+index e584652d..e312e6ae 100644
 --- a/include/drm/drm_mode_config.h
 +++ b/include/drm/drm_mode_config.h
 @@ -701,6 +701,12 @@ struct drm_mode_config {

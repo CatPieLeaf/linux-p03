@@ -1,4 +1,4 @@
-From 1c43de43514e909dc474019eaf6addffeeaab850 Mon Sep 17 00:00:00 2001
+From fa6be741a959de455db62c613c54a28f565f604b Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Tomasz=20Paku=C5=82a?= <tomasz.pakula.oficjalny@gmail.com>
 Date: Tue, 3 Feb 2026 18:56:14 +0000
 Subject: [PATCH] [FROM-ML] drm/amd/display: Add CH7218 PCON ID
@@ -19,25 +19,26 @@ Add CH7218's ID to dm_helpers_is_vrr_pcon_allowed()
 Closes: https://gitlab.freedesktop.org/drm/amd/-/issues/4773
 
 Signed-off-by: Tomasz Pakuła <tomasz.pakula.oficjalny@gmail.com>
+(cherry picked from commit 7b2436287ed953496ad1c9eb5820f00b75db597f)
 ---
  drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c | 1 +
  drivers/gpu/drm/amd/display/include/ddc_service_types.h   | 1 +
  2 files changed, 2 insertions(+)
 
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
-index 6be7f6edd0b29..1ccdfba35ad3e 100644
+index d451082552e83f..07fde634814ea4 100644
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
 +++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_helpers.c
-@@ -1574,6 +1574,7 @@ static bool dm_is_freesync_pcon_whitelist(const uint32_t branch_dev_id)
- 	case DP_BRANCH_DEVICE_ID_90CC24:
- 	case DP_BRANCH_DEVICE_ID_001CF8:
- 	case DP_BRANCH_DEVICE_ID_001FF2:
-+	case DP_BRANCH_DEVICE_ID_2B02F0:
- 		ret_val = true;
- 		break;
- 	default:
+@@ -1647,6 +1647,7 @@ STATIC_IFN_KUNIT const uint32_t dm_freesync_pcon_whitelist[] = {
+ 	DP_BRANCH_DEVICE_ID_90CC24,
+ 	DP_BRANCH_DEVICE_ID_001CF8,
+ 	DP_BRANCH_DEVICE_ID_001FF2,
++	DP_BRANCH_DEVICE_ID_2B02F0,
+ };
+ EXPORT_IF_KUNIT(dm_freesync_pcon_whitelist);
+ 
 diff --git a/drivers/gpu/drm/amd/display/include/ddc_service_types.h b/drivers/gpu/drm/amd/display/include/ddc_service_types.h
-index 53210e3aa0e0d..c5776ae6d4cb4 100644
+index 827e9bd7c5cff3..d2a8e712d4a712 100644
 --- a/drivers/gpu/drm/amd/display/include/ddc_service_types.h
 +++ b/drivers/gpu/drm/amd/display/include/ddc_service_types.h
 @@ -37,6 +37,7 @@

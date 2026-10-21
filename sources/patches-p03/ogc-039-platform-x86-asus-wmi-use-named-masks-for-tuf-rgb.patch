@@ -1,4 +1,4 @@
-From 2667f2d92a37137785145fd1acc9b43531f09558 Mon Sep 17 00:00:00 2001
+From 51c98901783aad56af1332fef21e0732533ff5c7 Mon Sep 17 00:00:00 2001
 From: Idotoho Reimon Simanjuntak <idotohors@gmail.com>
 Date: Thu, 3 Sep 2026 00:47:16 +0700
 Subject: [PATCH] [FROM-ML] platform/x86: asus-wmi: use named masks for TUF RGB
@@ -36,7 +36,7 @@ Signed-off-by: ido <106871003+idobutidont@users.noreply.github.com>
  1 file changed, 38 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/platform/x86/asus-wmi.c b/drivers/platform/x86/asus-wmi.c
-index fd5fbdb0cd8b8..45d6ab3a72307 100644
+index 3b743fec..e568cbf4 100644
 --- a/drivers/platform/x86/asus-wmi.c
 +++ b/drivers/platform/x86/asus-wmi.c
 @@ -15,6 +15,7 @@

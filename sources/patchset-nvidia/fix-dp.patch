@@ -1,7 +1,7 @@
-From d74fdb228b67be4c6d94fc85c0c924c3535b25be Mon Sep 17 00:00:00 2001
+From 98728cf11a5b152656015769c36e84cfa3630fa8 Mon Sep 17 00:00:00 2001
 From: triple-groove <triple-groove@users.noreply.github.com>
 Date: Sun, 22 Feb 2026 16:08:46 -0800
-Subject: [PATCH 5/5] fix(dp): add Bigscreen Beyond VR headset to WAR database
+Subject: [PATCH 2/3] fix(dp): add Bigscreen Beyond VR headset to WAR database
 
 Add the Bigscreen Beyond (ManufacturerID 0x2709, ProductID 0x1234)
 to the DisplayPort workaround database. Force maximum link
@@ -42,5 +42,5 @@ index 74daf1e7028e..4fafb5fc85e5 100644
          case 0xAE0D:
              if (ProductID == 0x1747)
 -- 
-2.53.0
+2.55.0
 

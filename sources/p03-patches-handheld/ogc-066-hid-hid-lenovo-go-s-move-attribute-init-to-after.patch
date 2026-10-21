@@ -1,4 +1,4 @@
-From 4d0a9ef18cc39ac3c6fcb15a382c486e3215a001 Mon Sep 17 00:00:00 2001
+From 12034145aba545cd2a168e3fd0e48117299c8269 Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Mon, 14 Sep 2026 15:53:00 -0700
 Subject: [PATCH] HID: hid-lenovo-go-s: Move attribute init to after device
@@ -22,7 +22,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 45 insertions(+), 23 deletions(-)
 
 diff --git a/drivers/hid/hid-lenovo-go-s.c b/drivers/hid/hid-lenovo-go-s.c
-index 6d98fff6d987..f1a0bcfcdb71 100644
+index 6d98fff6..f1a0bcfc 100644
 --- a/drivers/hid/hid-lenovo-go-s.c
 +++ b/drivers/hid/hid-lenovo-go-s.c
 @@ -1452,6 +1452,7 @@ static struct led_classdev_mc gos_cdev_rgb = {

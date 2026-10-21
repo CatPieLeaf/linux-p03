@@ -1,4 +1,4 @@
-From 1c61ff274adb5723bda1a136ad9d8a924ba5a449 Mon Sep 17 00:00:00 2001
+From 4dd80ade68f44e93accd77712d8f1361f599d104 Mon Sep 17 00:00:00 2001
 From: Kyle Gospodnetich <me@kylegospodneti.ch>
 Date: Fri, 18 Sep 2026 14:21:05 -0700
 Subject: [PATCH] Merge pull request #120 from
@@ -10,10 +10,10 @@ Subject: [PATCH] Merge pull request #120 from
  1 file changed, 26 insertions(+), 21 deletions(-)
 
 diff --git a/drivers/bluetooth/btusb.c b/drivers/bluetooth/btusb.c
-index cdc4850d1f17..86f3b7d08623 100644
+index e92ac76a..69892ba6 100644
 --- a/drivers/bluetooth/btusb.c
 +++ b/drivers/bluetooth/btusb.c
-@@ -3735,7 +3735,6 @@ static int btusb_setup_qca(struct hci_dev *hdev)
+@@ -3754,7 +3754,6 @@ static int btusb_setup_qca(struct hci_dev *hdev)
  	const struct qca_device_info *info = NULL;
  	struct qca_version ver;
  	u32 ver_rom;
@@ -21,7 +21,7 @@ index cdc4850d1f17..86f3b7d08623 100644
  	int i, err;
  
  	err = btusb_qca_send_vendor_req(udev, QCA_GET_TARGET_VERSION, &ver,
-@@ -3761,17 +3760,25 @@ static int btusb_setup_qca(struct hci_dev *hdev)
+@@ -3780,17 +3779,25 @@ static int btusb_setup_qca(struct hci_dev *hdev)
  		return -ENODEV;
  	}
  
@@ -56,7 +56,7 @@ index cdc4850d1f17..86f3b7d08623 100644
  	err = btusb_qca_send_vendor_req(udev, QCA_GET_TARGET_VERSION, &ver,
  					sizeof(ver));
  	if (err)
-@@ -3782,18 +3789,16 @@ static int btusb_setup_qca(struct hci_dev *hdev)
+@@ -3801,18 +3808,16 @@ static int btusb_setup_qca(struct hci_dev *hdev)
  		btdata->qca_dump.controller_id = le32_to_cpu(ver.rom_version);
  	}
  

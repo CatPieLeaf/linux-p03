@@ -279,10 +279,10 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Patches from [babiulep's Custom Kernel](https://github.com/babiulep/my-kernel-patches)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Patches from [XanMod Kernel](https://gitlab.com/xanmod/linux-patches)
- - MuQSS tree from [ckolivas's Custom Kernel](https://github.com/ckolivas/linux)
+ - PRJC tree from [alfredchen](https://gitlab.com/alfredchen/linux-prjc/-/tree/linux-7.2.y-prjc?ref_type=heads)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
  - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
- - Nap patches from [NikoMalik/nap](https://github.com/NikoMalik/nap/)
+ - Nap patches from [firelzrd/nap](https://github.com/firelzrd/nap)
  - Surface patches from [Linux-surface](https://github.com/linux-surface/linux-surface)
 
 ---

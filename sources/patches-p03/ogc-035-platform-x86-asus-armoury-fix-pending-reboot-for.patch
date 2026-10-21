@@ -1,4 +1,4 @@
-From 4fe49472971f63030306a60c728a582db8c00158 Mon Sep 17 00:00:00 2001
+From 10b8b1ceaab19f10b9bcb940c52e9f7bb290f65b Mon Sep 17 00:00:00 2001
 From: Ahmed Yaseen <yaseen@ghoul.dev>
 Date: Fri, 28 Aug 2026 11:12:57 +0000
 Subject: [PATCH] [FROM-ML] platform/x86: asus-armoury: fix pending_reboot for
@@ -22,7 +22,7 @@ Signed-off-by: Ahmed Yaseen <yaseen@ghoul.dev>
  1 file changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/platform/x86/asus-armoury.c b/drivers/platform/x86/asus-armoury.c
-index 974274e3c5c25..1ccdd778c6615 100644
+index 974274e3..1ccdd778 100644
 --- a/drivers/platform/x86/asus-armoury.c
 +++ b/drivers/platform/x86/asus-armoury.c
 @@ -127,10 +127,10 @@ static ssize_t pending_reboot_show(struct kobject *kobj, struct kobj_attribute *

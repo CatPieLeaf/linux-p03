@@ -1,7 +1,7 @@
-From 8f21490cff41bf054ea34fd2654561c8e79e4fda Mon Sep 17 00:00:00 2001
+From 12d83ad6720c59940f5abea4b62e49bea095b5ad Mon Sep 17 00:00:00 2001
 From: Piotr Gorski <lucjan.lucjanov@gmail.com>
-Date: Tue, 29 Sep 2026 16:51:50 +0200
-Subject: [PATCH] aufs-7.2: merge v20260914
+Date: Tue, 29 Sep 2026 16:53:04 +0200
+Subject: [PATCH] aufs-7.3: merge v20260914
 
 Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
 ---
@@ -46,14 +46,14 @@ Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
  fs/aufs/dinfo.c                               |  544 +++++
  fs/aufs/dir.c                                 |  752 +++++++
  fs/aufs/dir.h                                 |  121 ++
- fs/aufs/dirren.c                              | 1294 +++++++++++
+ fs/aufs/dirren.c                              | 1293 +++++++++++
  fs/aufs/dirren.h                              |  127 ++
- fs/aufs/dynop.c                               |  351 +++
+ fs/aufs/dynop.c                               |  350 +++
  fs/aufs/dynop.h                               |   64 +
- fs/aufs/export.c                              |  826 +++++++
+ fs/aufs/export.c                              |  827 +++++++
  fs/aufs/f_op.c                                |  823 +++++++
  fs/aufs/fhsm.c                                |  413 ++++
- fs/aufs/file.c                                |  835 +++++++
+ fs/aufs/file.c                                |  832 +++++++
  fs/aufs/file.h                                |  324 +++
  fs/aufs/finfo.c                               |  135 ++
  fs/aufs/fsctx.c                               | 1234 +++++++++++
@@ -63,7 +63,7 @@ Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
  fs/aufs/hfsplus.c                             |   47 +
  fs/aufs/hnotify.c                             |  702 ++++++
  fs/aufs/i_op.c                                | 1504 +++++++++++++
- fs/aufs/i_op_add.c                            |  943 ++++++++
+ fs/aufs/i_op_add.c                            |  939 ++++++++
  fs/aufs/i_op_del.c                            |  504 +++++
  fs/aufs/i_op_ren.c                            | 1229 +++++++++++
  fs/aufs/iinfo.c                               |  275 +++
@@ -95,7 +95,7 @@ Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
  fs/aufs/sysrq.c                               |  144 ++
  fs/aufs/vdir.c                                |  883 ++++++++
  fs/aufs/vfsub.c                               | 1039 +++++++++
- fs/aufs/vfsub.h                               |  423 ++++
+ fs/aufs/vfsub.h                               |  422 ++++
  fs/aufs/wbr_policy.c                          |  828 +++++++
  fs/aufs/whout.c                               | 1060 +++++++++
  fs/aufs/whout.h                               |   74 +
@@ -135,7 +135,7 @@ Signed-off-by: Piotr Gorski <lucjan.lucjanov@gmail.com>
  usr/dummy-include/sys/stat.h                  |    0
  usr/dummy-include/unistd.h                    |   12 +
  usr/include/Makefile                          |    2 +
- 130 files changed, 37843 insertions(+), 11 deletions(-)
+ 130 files changed, 37834 insertions(+), 11 deletions(-)
  create mode 100644 Documentation/ABI/testing/debugfs-aufs
  create mode 100644 Documentation/ABI/testing/sysfs-aufs
  create mode 100644 Documentation/filesystems/aufs/README
@@ -1960,10 +1960,10 @@ index 000000000..6d74c81b5
 +Currently this approach is applied to address_space_operations for
 +regular files only.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 95cd976a0..40f6e7c66 100644
+index 72294ddfa..725d355a5 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -4323,6 +4323,19 @@ F:	kernel/audit*
+@@ -4364,6 +4364,19 @@ F:	kernel/audit*
  F:	lib/*audit.c
  K:	\baudit_[a-z_0-9]\+\b
  
@@ -1984,7 +1984,7 @@ index 95cd976a0..40f6e7c66 100644
  M:	Rong Xu <xur@google.com>
  M:	Han Shen <shenhan@google.com>
 diff --git a/drivers/block/loop.c b/drivers/block/loop.c
-index 1faecef33..eb2432ac1 100644
+index 758c20678..19849d720 100644
 --- a/drivers/block/loop.c
 +++ b/drivers/block/loop.c
 @@ -52,7 +52,7 @@ struct loop_device {
@@ -1994,9 +1994,9 @@ index 1faecef33..eb2432ac1 100644
 -	struct file	*lo_backing_file;
 +	struct file	*lo_backing_file, *lo_backing_virt_file;
  	unsigned int	lo_min_dio_size;
+ 	unsigned int	lo_dio_mem_align;
  	struct block_device *lo_device;
- 
-@@ -435,6 +435,15 @@ static int do_req_filebacked(struct loop_device *lo, struct request *rq)
+@@ -436,6 +436,15 @@ static int do_req_filebacked(struct loop_device *lo, struct request *rq)
  	}
  }
  
@@ -2012,7 +2012,7 @@ index 1faecef33..eb2432ac1 100644
  static void loop_reread_partitions(struct loop_device *lo)
  {
  	int rc;
-@@ -536,6 +545,7 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
+@@ -550,6 +559,7 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
  {
  	struct file *file = fget(arg);
  	struct file *old_file;
@@ -2020,7 +2020,7 @@ index 1faecef33..eb2432ac1 100644
  	unsigned int memflags;
  	int error;
  	bool partscan;
-@@ -566,11 +576,19 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
+@@ -580,11 +590,19 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
  	if (!(lo->lo_flags & LO_FLAGS_READ_ONLY))
  		goto out_err;
  
@@ -2040,7 +2040,7 @@ index 1faecef33..eb2432ac1 100644
  
  	error = -EINVAL;
  
-@@ -590,6 +608,7 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
+@@ -604,6 +622,7 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
  	memflags = blk_mq_freeze_queue(lo->lo_queue);
  	mapping_set_gfp_mask(old_file->f_mapping, lo->old_gfp_mask);
  	loop_assign_backing_file(lo, file);
@@ -2048,7 +2048,7 @@ index 1faecef33..eb2432ac1 100644
  	loop_update_dio(lo);
  	blk_mq_unfreeze_queue(lo->lo_queue, memflags);
  	partscan = lo->lo_flags & LO_FLAGS_PARTSCAN;
-@@ -609,6 +628,9 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
+@@ -623,6 +642,9 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
  	 * dependency.
  	 */
  	fput(old_file);
@@ -2058,7 +2058,7 @@ index 1faecef33..eb2432ac1 100644
  	dev_set_uevent_suppress(disk_to_dev(lo->lo_disk), 0);
  	if (partscan)
  		loop_reread_partitions(lo);
-@@ -622,10 +644,38 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
+@@ -636,10 +658,38 @@ static int loop_change_fd(struct loop_device *lo, struct block_device *bdev,
  	loop_global_unlock(lo, is_loop);
  out_putf:
  	fput(file);
@@ -2097,7 +2097,7 @@ index 1faecef33..eb2432ac1 100644
  /* loop sysfs attributes */
  
  static ssize_t loop_attr_show(struct device *dev, char *page,
-@@ -979,6 +1029,7 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
+@@ -1007,6 +1057,7 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
  			  const struct loop_config *config)
  {
  	struct file *file = fget(config->fd);
@@ -2105,7 +2105,7 @@ index 1faecef33..eb2432ac1 100644
  	struct queue_limits lim;
  	int error;
  	loff_t size;
-@@ -999,6 +1050,13 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
+@@ -1027,6 +1078,13 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
  	/* This is safe, since we have a reference from open(). */
  	__module_get(THIS_MODULE);
  
@@ -2119,7 +2119,7 @@ index 1faecef33..eb2432ac1 100644
  	/*
  	 * If we don't hold exclusive handle for the device, upgrade to it
  	 * here to avoid changing device under exclusive owner.
-@@ -1053,6 +1111,7 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
+@@ -1081,6 +1139,7 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
  
  	lo->lo_device = bdev;
  	loop_assign_backing_file(lo, file);
@@ -2127,7 +2127,7 @@ index 1faecef33..eb2432ac1 100644
  
  	lim = queue_limits_start_update(lo->lo_queue);
  	loop_update_limits(lo, &lim, config->block_size);
-@@ -1103,6 +1162,8 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
+@@ -1131,6 +1190,8 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
  		bd_abort_claiming(bdev, loop_configure);
  out_putf:
  	fput(file);
@@ -2136,7 +2136,7 @@ index 1faecef33..eb2432ac1 100644
  	/* This is safe: open() is still holding a reference. */
  	module_put(THIS_MODULE);
  	return error;
-@@ -1112,12 +1173,14 @@ static void __loop_clr_fd(struct loop_device *lo)
+@@ -1140,12 +1201,14 @@ static void __loop_clr_fd(struct loop_device *lo)
  {
  	struct queue_limits lim;
  	struct file *filp;
@@ -2151,7 +2151,7 @@ index 1faecef33..eb2432ac1 100644
  	spin_unlock_irq(&lo->lo_lock);
  
  	lo->lo_device = NULL;
-@@ -1179,6 +1242,8 @@ static void __loop_clr_fd(struct loop_device *lo)
+@@ -1207,6 +1270,8 @@ static void __loop_clr_fd(struct loop_device *lo)
  	 * fput can take open_mutex which is usually taken before lo_mutex.
  	 */
  	fput(filp);
@@ -2161,10 +2161,10 @@ index 1faecef33..eb2432ac1 100644
  
  static int loop_clr_fd(struct loop_device *lo)
 diff --git a/fs/Kconfig b/fs/Kconfig
-index cf6ae6477..05f81cabe 100644
+index e05917adc..0dd0d6671 100644
 --- a/fs/Kconfig
 +++ b/fs/Kconfig
-@@ -333,6 +333,7 @@ source "fs/pstore/Kconfig"
+@@ -331,6 +331,7 @@ source "fs/pstore/Kconfig"
  source "fs/ufs/Kconfig"
  source "fs/erofs/Kconfig"
  source "fs/vboxsf/Kconfig"
@@ -2173,12 +2173,12 @@ index cf6ae6477..05f81cabe 100644
  endif # MISC_FILESYSTEMS
  
 diff --git a/fs/Makefile b/fs/Makefile
-index 89a8a9d20..9a8ab5cd2 100644
+index 055dfc23d..133c0f95d 100644
 --- a/fs/Makefile
 +++ b/fs/Makefile
 @@ -18,6 +18,12 @@ obj-y :=	open.o read_write.o file_table.o super.o \
  		kernel_read_file.o mnt_idmapping.o remap_range.o pidfs.o \
- 		file_attr.o fserror.o nullfs.o
+ 		file_attr.o fserror.o nullfs.o failfs.o
  
 +# don't move au_mf.o to the bottom of this file, otherwise it will
 +# conflict with aufs-kbuild.patch.
@@ -2189,7 +2189,7 @@ index 89a8a9d20..9a8ab5cd2 100644
  obj-$(CONFIG_BUFFER_HEAD)	+= buffer.o mpage.o
  obj-$(CONFIG_PROC_FS)		+= proc_namespace.o
  obj-$(CONFIG_LEGACY_DIRECT_IO)	+= direct-io.o
-@@ -129,3 +135,4 @@ obj-$(CONFIG_VBOXSF_FS)		+= vboxsf/
+@@ -128,3 +134,4 @@ obj-$(CONFIG_VBOXSF_FS)		+= vboxsf/
  obj-$(CONFIG_ZONEFS_FS)		+= zonefs/
  obj-$(CONFIG_BPF_LSM)		+= bpf_fs_kfuncs.o
  obj-$(CONFIG_RESCTRL_FS)	+= resctrl/
@@ -4410,7 +4410,7 @@ index 000000000..12782f8e0
 +-include ${srctree}/${src}/conf_priv.mk
 diff --git a/fs/aufs/cpup.c b/fs/aufs/cpup.c
 new file mode 100644
-index 000000000..66414b455
+index 000000000..ffdea423a
 --- /dev/null
 +++ b/fs/aufs/cpup.c
 @@ -0,0 +1,1439 @@
@@ -5075,7 +5075,7 @@ index 000000000..66414b455
 +	switch (mode & S_IFMT) {
 +	case S_IFREG:
 +		isreg = 1;
-+		err = vfsub_create(h_dir, &h_path, 0600, /*want_excl*/true);
++		err = vfsub_create(h_dir, &h_path, 0600);
 +		if (!err)
 +			err = au_do_cpup_regular(cpg, h_src_attr);
 +		break;
@@ -6863,7 +6863,7 @@ index 000000000..445d2bdf5
 +#endif /* __AUFS_DCSUB_H__ */
 diff --git a/fs/aufs/debug.c b/fs/aufs/debug.c
 new file mode 100644
-index 000000000..6a8a9fba3
+index 000000000..6bef4f325
 --- /dev/null
 +++ b/fs/aufs/debug.c
 @@ -0,0 +1,435 @@
@@ -7162,11 +7162,11 @@ index 000000000..6a8a9fba3
 +		goto out;
 +
 +	dpri("s%d: {perm 0x%x, id %d, wbr %p}, "
-+	     "%s, dev 0x%02x%02x, flags 0x%lx, cnt %d, active %d, "
++	     "%s, dev 0x%02x%02x, flags 0x%lx, active %d, "
 +	     "xino %d\n",
 +	     bindex, br->br_perm, br->br_id, br->br_wbr,
 +	     au_sbtype(sb), MAJOR(sb->s_dev), MINOR(sb->s_dev),
-+	     sb->s_flags, sb->s_count,
++	     sb->s_flags,
 +	     atomic_read(&sb->s_active),
 +	     !!au_xino_file(br->br_xino, /*idx*/-1));
 +	return 0;
@@ -10445,10 +10445,10 @@ index 000000000..17633d897
 +#endif /* __AUFS_DIR_H__ */
 diff --git a/fs/aufs/dirren.c b/fs/aufs/dirren.c
 new file mode 100644
-index 000000000..a27bc8e16
+index 000000000..35883a764
 --- /dev/null
 +++ b/fs/aufs/dirren.c
-@@ -0,0 +1,1294 @@
+@@ -0,0 +1,1293 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2017-2026 Junjiro R. Okajima
@@ -10728,8 +10728,7 @@ index 000000000..a27bc8e16
 +			}
 +			goto out_mnt_write;
 +		} else if (!d_is_positive(hinopath.dentry)) {
-+			err = vfsub_create(dir, &hinopath, 0600,
-+					   /*want_excl*/false);
++			err = vfsub_create(dir, &hinopath, 0600);
 +			AuTraceErr(err);
 +			if (unlikely(err))
 +				goto out_mnt_write;
@@ -11071,7 +11070,7 @@ index 000000000..a27bc8e16
 +	err = 0;
 +	h_dir = d_inode(w->h_ppath.dentry);
 +	if (elm && d_is_negative(infopath.dentry)) {
-+		err = vfsub_create(h_dir, &infopath, 0600, /*want_excl*/true);
++		err = vfsub_create(h_dir, &infopath, 0600);
 +		AuTraceErr(err);
 +		if (unlikely(err))
 +			goto out_dput;
@@ -11878,10 +11877,10 @@ index 000000000..5f933e95c
 +#endif /* __AUFS_DIRREN_H__ */
 diff --git a/fs/aufs/dynop.c b/fs/aufs/dynop.c
 new file mode 100644
-index 000000000..237ef5c53
+index 000000000..9dc81e74a
 --- /dev/null
 +++ b/fs/aufs/dynop.c
-@@ -0,0 +1,351 @@
+@@ -0,0 +1,350 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2010-2026 Junjiro R. Okajima
@@ -12064,7 +12063,6 @@ index 000000000..237ef5c53
 +	DySetAop(error_remove_folio);
 +	DySetAop(swap_activate);
 +	DySetAop(swap_deactivate);
-+	DySetAop(swap_rw);
 +
 +	DyDbgSize(cnt, *h_aop);
 +}
@@ -12305,10 +12303,10 @@ index 000000000..8cd1c7c5c
 +#endif /* __AUFS_DYNOP_H__ */
 diff --git a/fs/aufs/export.c b/fs/aufs/export.c
 new file mode 100644
-index 000000000..59debe75a
+index 000000000..21251550e
 --- /dev/null
 +++ b/fs/aufs/export.c
-@@ -0,0 +1,826 @@
+@@ -0,0 +1,827 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2005-2026 Junjiro R. Okajima
@@ -12577,7 +12575,8 @@ index 000000000..59debe75a
 +	const struct path *paths, *p;
 +	struct path a[8];
 +
-+	get_fs_root(current->fs, &root);
++	scoped_with_init_fs()
++		get_fs_root(current->fs, &root);
 +	/*
 +	 * as long as this sb is alive, this temporary unlock is safe.
 +	 * Really?
@@ -14385,10 +14384,10 @@ index 000000000..690ae40fb
 +}
 diff --git a/fs/aufs/file.c b/fs/aufs/file.c
 new file mode 100644
-index 000000000..81a3532da
+index 000000000..915e4b3ef
 --- /dev/null
 +++ b/fs/aufs/file.c
-@@ -0,0 +1,835 @@
+@@ -0,0 +1,832 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2005-2026 Junjiro R. Okajima
@@ -15198,8 +15197,6 @@ index 000000000..81a3532da
 +{ AuUnsupport(); return 0; }
 +static void aufs_swap_deactivate(struct file *file)
 +{ AuUnsupport(); }
-+static int aufs_swap_rw(struct kiocb *iocb, struct iov_iter *iter)
-+{ AuUnsupport(); return 0; }
 +#endif /* CONFIG_AUFS_DEBUG */
 +
 +const struct address_space_operations aufs_aop = {
@@ -15220,8 +15217,7 @@ index 000000000..81a3532da
 +	.is_dirty_writeback	= aufs_is_dirty_writeback,
 +	.error_remove_folio	= aufs_error_remove_folio,
 +	.swap_activate		= aufs_swap_activate,
-+	.swap_deactivate	= aufs_swap_deactivate,
-+	.swap_rw		= aufs_swap_rw
++	.swap_deactivate	= aufs_swap_deactivate
 +#endif /* CONFIG_AUFS_DEBUG */
 +};
 diff --git a/fs/aufs/file.h b/fs/aufs/file.h
@@ -19962,10 +19958,10 @@ index 000000000..eb64cc494
 +};
 diff --git a/fs/aufs/i_op_add.c b/fs/aufs/i_op_add.c
 new file mode 100644
-index 000000000..0d724c0dd
+index 000000000..d8494940e
 --- /dev/null
 +++ b/fs/aufs/i_op_add.c
-@@ -0,0 +1,943 @@
+@@ -0,0 +1,939 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Copyright (C) 2005-2026 Junjiro R. Okajima
@@ -20181,7 +20177,6 @@ index 000000000..0d724c0dd
 +	union {
 +		struct {
 +			umode_t			mode;
-+			bool			want_excl;
 +			bool			try_aopen;
 +			struct vfsub_aopen_args	*aopen;
 +		} c;
@@ -20252,8 +20247,7 @@ index 000000000..0d724c0dd
 +	switch (arg->type) {
 +	case Creat:
 +		if (!try_aopen || !h_dir->i_op->atomic_open) {
-+			err = vfsub_create(h_dir, &a->h_path, arg->u.c.mode,
-+					   arg->u.c.want_excl);
++			err = vfsub_create(h_dir, &a->h_path, arg->u.c.mode);
 +			created = !err;
 +			if (!err && try_aopen)
 +				aopen->file->f_mode |= FMODE_CREATED;
@@ -20343,13 +20337,12 @@ index 000000000..0d724c0dd
 +}
 +
 +int aufs_create(struct mnt_idmap *idmap, struct inode *dir,
-+		struct dentry *dentry, umode_t mode, bool want_excl)
++		struct dentry *dentry, umode_t mode)
 +{
 +	struct simple_arg arg = {
 +		.type = Creat,
 +		.u.c = {
-+			.mode		= mode,
-+			.want_excl	= want_excl
++			.mode		= mode
 +		}
 +	};
 +	return add_simple(dir, dentry, &arg);
@@ -20362,7 +20355,6 @@ index 000000000..0d724c0dd
 +		.type = Creat,
 +		.u.c = {
 +			.mode		= aopen_args->create_mode,
-+			.want_excl	= aopen_args->open_flag & O_EXCL,
 +			.try_aopen	= true,
 +			.aopen		= aopen_args
 +		}
@@ -23463,7 +23455,7 @@ index 000000000..57d78d793
 +}
 diff --git a/fs/aufs/inode.h b/fs/aufs/inode.h
 new file mode 100644
-index 000000000..a58e73e55
+index 000000000..ef106ab5b
 --- /dev/null
 +++ b/fs/aufs/inode.h
 @@ -0,0 +1,716 @@
@@ -23698,7 +23690,7 @@ index 000000000..a58e73e55
 +int aufs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 +		 struct dentry *dentry, const char *symname);
 +int aufs_create(struct mnt_idmap *idmap, struct inode *dir,
-+		struct dentry *dentry, umode_t mode, bool want_excl);
++		struct dentry *dentry, umode_t mode);
 +struct vfsub_aopen_args;
 +int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 +		       struct vfsub_aopen_args *args);
@@ -32008,7 +32000,7 @@ index 000000000..4d7bcbc05
 +}
 diff --git a/fs/aufs/vfsub.c b/fs/aufs/vfsub.c
 new file mode 100644
-index 000000000..dd716181b
+index 000000000..0a09a540b
 --- /dev/null
 +++ b/fs/aufs/vfsub.c
 @@ -0,0 +1,1039 @@
@@ -32293,7 +32285,7 @@ index 000000000..dd716181b
 +
 +/* ---------------------------------------------------------------------- */
 +
-+int vfsub_create(struct inode *dir, struct path *path, int mode, bool want_excl)
++int vfsub_create(struct inode *dir, struct path *path, int mode)
 +{
 +	int err, e;
 +	struct dentry *d;
@@ -33053,10 +33045,10 @@ index 000000000..dd716181b
 +}
 diff --git a/fs/aufs/vfsub.h b/fs/aufs/vfsub.h
 new file mode 100644
-index 000000000..39e419d87
+index 000000000..b5874fb28
 --- /dev/null
 +++ b/fs/aufs/vfsub.h
-@@ -0,0 +1,423 @@
+@@ -0,0 +1,422 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +/*
 + * Copyright (C) 2005-2026 Junjiro R. Okajima
@@ -33254,8 +33246,7 @@ index 000000000..39e419d87
 +void vfsub_unlock_rename(struct dentry *d1, struct au_hinode *hdir1,
 +			 struct dentry *d2, struct au_hinode *hdir2);
 +
-+int vfsub_create(struct inode *dir, struct path *path, int mode,
-+		 bool want_excl);
++int vfsub_create(struct inode *dir, struct path *path, int mode);
 +int vfsub_symlink(struct inode *dir, struct path *path,
 +		  const char *symname);
 +int vfsub_mknod(struct inode *dir, struct path *path, int mode, dev_t dev);
@@ -34316,7 +34307,7 @@ index 000000000..451f8c191
 +};
 diff --git a/fs/aufs/whout.c b/fs/aufs/whout.c
 new file mode 100644
-index 000000000..6064f96b9
+index 000000000..6d0d23237
 --- /dev/null
 +++ b/fs/aufs/whout.c
 @@ -0,0 +1,1060 @@
@@ -34722,7 +34713,7 @@ index 000000000..6064f96b9
 +	h_dir = d_inode(h_root);
 +	if (d_is_negative(base[AuBrWh_BASE].dentry)) {
 +		h_path->dentry = base[AuBrWh_BASE].dentry;
-+		err = vfsub_create(h_dir, h_path, WH_MASK, /*want_excl*/true);
++		err = vfsub_create(h_dir, h_path, WH_MASK);
 +	} else if (d_is_reg(base[AuBrWh_BASE].dentry))
 +		err = 0;
 +	else
@@ -34997,7 +34988,7 @@ index 000000000..6064f96b9
 +	}
 +
 +	/* return this error in this context */
-+	err = vfsub_create(h_dir, &h_path, WH_MASK, /*want_excl*/true);
++	err = vfsub_create(h_dir, &h_path, WH_MASK);
 +	if (!err)
 +		au_fhsm_wrote(sb, bindex, /*force*/0);
 +
@@ -38178,7 +38169,7 @@ index 000000000..65957bc6a
 +	return err;
 +}
 diff --git a/fs/dcache.c b/fs/dcache.c
-index 073c2ce2d..8a0a622e9 100644
+index a66be85f9..08c379caf 100644
 --- a/fs/dcache.c
 +++ b/fs/dcache.c
 @@ -1429,6 +1429,10 @@ enum d_walk_ret {
@@ -38210,7 +38201,7 @@ index 073c2ce2d..8a0a622e9 100644
  struct check_mount {
  	struct vfsmount *mnt;
 diff --git a/fs/exec.c b/fs/exec.c
-index 834d62277..afe831443 100644
+index a5269b5e0..a160305d2 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
 @@ -122,6 +122,7 @@ bool path_noexec(const struct path *path)
@@ -38302,7 +38293,7 @@ index ae19e5136..3725f6730 100644
  			 (flags & FSPICK_EMPTY_PATH) ? LOOKUP_EMPTY : 0);
  	ret = filename_lookup(dfd, filename, lookup_flags, &target, NULL);
 diff --git a/fs/namei.c b/fs/namei.c
-index 19ce43c9a..8b7197952 100644
+index 20a6534ea..ebfe0ca6e 100644
 --- a/fs/namei.c
 +++ b/fs/namei.c
 @@ -3779,7 +3779,7 @@ static struct dentry *lock_two_directories(struct dentry *p1, struct dentry *p2)
@@ -38340,10 +38331,10 @@ index 19ce43c9a..8b7197952 100644
  /**
   * __start_renaming - lookup and lock names for rename
 diff --git a/fs/namespace.c b/fs/namespace.c
-index 3d5cd5bf3..aef48d29d 100644
+index 580877e46..e9c724b64 100644
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
-@@ -3215,6 +3215,9 @@ static struct file *vfs_open_tree(int dfd, const char __user *filename, unsigned
+@@ -3218,6 +3218,9 @@ static struct file *vfs_open_tree(int dfd, const char __user *filename, unsigned
  		lookup_flags &= ~LOOKUP_AUTOMOUNT;
  	if (flags & AT_SYMLINK_NOFOLLOW)
  		lookup_flags &= ~LOOKUP_FOLLOW;
@@ -38353,7 +38344,7 @@ index 3d5cd5bf3..aef48d29d 100644
  
  	/*
  	 * If we create a new mount namespace with the cloned mount tree we
-@@ -5161,6 +5164,9 @@ SYSCALL_DEFINE5(mount_setattr, int, dfd, const char __user *, path,
+@@ -5168,6 +5171,9 @@ SYSCALL_DEFINE5(mount_setattr, int, dfd, const char __user *, path,
  		lookup_flags &= ~LOOKUP_AUTOMOUNT;
  	if (flags & AT_SYMLINK_NOFOLLOW)
  		lookup_flags &= ~LOOKUP_FOLLOW;
@@ -38363,7 +38354,7 @@ index 3d5cd5bf3..aef48d29d 100644
  
  	kattr = (struct mount_kattr) {
  		.lookup_flags	= lookup_flags,
-@@ -6328,6 +6334,7 @@ bool our_mnt(struct vfsmount *mnt)
+@@ -6346,6 +6352,7 @@ bool our_mnt(struct vfsmount *mnt)
  {
  	return check_mnt(real_mount(mnt));
  }
@@ -38400,7 +38391,7 @@ index b56d1c1d9..9e2d893a3 100644
  /*
   * Drop a reference to a group.  Free it if it's through.
 diff --git a/fs/open.c b/fs/open.c
-index 408925d7b..e8be2af36 100644
+index 6b1c14e68..b67554089 100644
 --- a/fs/open.c
 +++ b/fs/open.c
 @@ -69,6 +69,7 @@ int do_truncate(struct mnt_idmap *idmap, struct dentry *dentry,
@@ -38421,7 +38412,7 @@ index 408925d7b..e8be2af36 100644
  
  	if (access_need_override_creds(flags)) {
  		old_cred = access_override_creds();
-@@ -675,6 +679,9 @@ static int do_fchmodat(int dfd, const char __user *filename, umode_t mode,
+@@ -724,6 +728,9 @@ static int do_fchmodat(int dfd, const char __user *filename, umode_t mode,
  		return -EINVAL;
  
  	lookup_flags = (flags & AT_SYMLINK_NOFOLLOW) ? 0 : LOOKUP_FOLLOW;
@@ -38431,7 +38422,7 @@ index 408925d7b..e8be2af36 100644
  	CLASS(filename_uflags, name)(filename, flags);
  retry:
  	error = filename_lookup(dfd, name, lookup_flags, &path, NULL);
-@@ -795,6 +802,9 @@ int do_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group,
+@@ -844,6 +851,9 @@ int do_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group,
  		return -EINVAL;
  
  	lookup_flags = (flag & AT_SYMLINK_NOFOLLOW) ? 0 : LOOKUP_FOLLOW;
@@ -38442,7 +38433,7 @@ index 408925d7b..e8be2af36 100644
  retry:
  	error = filename_lookup(dfd, name, lookup_flags, &path, NULL);
 diff --git a/fs/proc/base.c b/fs/proc/base.c
-index 780f81259..010e98f17 100644
+index 6a39de424..12ee342d9 100644
 --- a/fs/proc/base.c
 +++ b/fs/proc/base.c
 @@ -1765,8 +1765,8 @@ static int proc_exe_link(struct dentry *dentry, struct path *exe_path,
@@ -38523,7 +38514,7 @@ index d58979115..66a1a1346 100644
  ssize_t
  __vfs_getxattr(struct dentry *dentry, struct inode *inode, const char *name,
 diff --git a/include/linux/fs.h b/include/linux/fs.h
-index 09de7bf6f..d81351d40 100644
+index f9d1e05e8..8cfff2b58 100644
 --- a/include/linux/fs.h
 +++ b/include/linux/fs.h
 @@ -1385,6 +1385,7 @@ extern void fasync_free(struct fasync_struct *);
@@ -38534,7 +38525,7 @@ index 09de7bf6f..d81351d40 100644
  extern void __f_setown(struct file *filp, struct pid *, enum pid_type, int force);
  extern int f_setown(struct file *filp, int who, int force);
  extern void f_delown(struct file *filp);
-@@ -1941,6 +1942,7 @@ struct file_operations {
+@@ -1939,6 +1940,7 @@ struct file_operations {
  	int (*lock) (struct file *, int, struct file_lock *);
  	unsigned long (*get_unmapped_area)(struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
  	int (*check_flags)(int);
@@ -38542,7 +38533,7 @@ index 09de7bf6f..d81351d40 100644
  	int (*flock) (struct file *, int, struct file_lock *);
  	ssize_t (*splice_write)(struct pipe_inode_info *, struct file *, loff_t *, size_t, unsigned int);
  	ssize_t (*splice_read)(struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
-@@ -2500,6 +2502,21 @@ static inline void backing_file_set_security(struct file *f, void *security)
+@@ -2520,6 +2522,21 @@ static inline void backing_file_set_security(struct file *f, void *security)
  }
  #endif /* CONFIG_SECURITY */
  
@@ -38564,7 +38555,7 @@ index 09de7bf6f..d81351d40 100644
  /*
   * When mmapping a file on a stackable filesystem (e.g., overlayfs), the file
   * stored in ->vm_file is a backing file whose f_inode is on the underlying
-@@ -2512,15 +2529,25 @@ static inline void backing_file_set_security(struct file *f, void *security)
+@@ -2532,15 +2549,25 @@ static inline void backing_file_set_security(struct file *f, void *security)
  /* Get the path to display in /proc/<pid>/maps */
  static inline const struct path *file_user_path(const struct file *f)
  {
@@ -38591,7 +38582,7 @@ index 09de7bf6f..d81351d40 100644
  }
  
 diff --git a/include/linux/fs/super_types.h b/include/linux/fs/super_types.h
-index ef7941e9d..b866d11ca 100644
+index ecd96aeb1..181a42ebc 100644
 --- a/include/linux/fs/super_types.h
 +++ b/include/linux/fs/super_types.h
 @@ -132,3 +132,8 @@
@@ -38604,7 +38595,7 @@ index ef7941e9d..b866d11ca 100644
 
  struct super_block {
 diff --git a/include/linux/lockdep.h b/include/linux/lockdep.h
-index 621566345..24d2eca0d 100644
+index a6451ecbb..3653295b0 100644
 --- a/include/linux/lockdep.h
 +++ b/include/linux/lockdep.h
 @@ -210,6 +210,8 @@ static inline int lockdep_match_key(struct lockdep_map *lock,
@@ -38617,10 +38608,10 @@ index 621566345..24d2eca0d 100644
   * Acquire a lock.
   *
 diff --git a/include/linux/namei.h b/include/linux/namei.h
-index ebe6e29f7..6fbc20fdd 100644
+index 86d657b24..e9099a8dd 100644
 --- a/include/linux/namei.h
 +++ b/include/linux/namei.h
-@@ -159,6 +159,8 @@ extern int follow_down_one(struct path *);
+@@ -162,6 +162,8 @@ extern int follow_down_one(struct path *);
  extern int follow_down(struct path *path, unsigned int flags);
  extern int follow_up(struct path *);
  
@@ -38643,7 +38634,7 @@ index 9dec4861d..14583d846 100644
  #endif
 diff --git a/include/uapi/linux/aufs_type.h b/include/uapi/linux/aufs_type.h
 new file mode 100644
-index 000000000..0a7a6d38a
+index 000000000..d00e7fb0a
 --- /dev/null
 +++ b/include/uapi/linux/aufs_type.h
 @@ -0,0 +1,434 @@
@@ -38676,7 +38667,7 @@ index 000000000..0a7a6d38a
 +#include <limits.h>
 +#endif /* __KERNEL__ */
 +
-+#define AUFS_VERSION	"7.2-20260914"
++#define AUFS_VERSION	"7.x-rcN-20260914"
 +
 +/* todo? move this to linux-2.6.19/include/magic.h */
 +#define AUFS_SUPER_MAGIC	('a' << 24 | 'u' << 16 | 'f' << 8 | 's')
@@ -39082,7 +39073,7 @@ index 000000000..0a7a6d38a
 +
 +#endif /* __AUFS_TYPE_H__ */
 diff --git a/kernel/locking/lockdep.c b/kernel/locking/lockdep.c
-index 06f025abe..afbe7f6a9 100644
+index c3dc84a7c..3015d100b 100644
 --- a/kernel/locking/lockdep.c
 +++ b/kernel/locking/lockdep.c
 @@ -224,7 +224,7 @@ unsigned long max_lock_class_idx;
@@ -39113,7 +39104,7 @@ index 0f7519f8e..96c8ae627 100644
  }
 +EXPORT_SYMBOL_GPL(task_work_run);
 diff --git a/security/security.c b/security/security.c
-index 71aea8fdf..19bc738a4 100644
+index 2ee276ab1..870c73832 100644
 --- a/security/security.c
 +++ b/security/security.c
 @@ -1431,6 +1431,7 @@ void security_path_post_mknod(struct mnt_idmap *idmap, struct dentry *dentry)

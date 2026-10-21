@@ -8,11 +8,13 @@ which causes massive lock contention even if there is little work to do or to yi
 rare limit yielding since the base scheduler does a pretty good job already about just
 running the right things
 
-Rebased for SCHED_ALT: patches-p03/prjc.patch rewrites do_sched_yield()
-and declares "struct rq *rq" before "struct rq_flags rf", the reverse of
-the order this hunk used as context, so it stopped applying. The early
-return is taken before this_rq_lock_irq(), so it is correct under both
-CONFIG_SCHED_ALT and the stock scheduler.
+Rebased for SCHED_ALT (prjc 7.3-r0): prjc declares "struct task_struct *p"
+inside an #ifdef CONFIG_SCHED_ALT block after rq/rf, so the rate-limit
+statements cannot go above it without mixing declarations and code. The
+declaration is hoisted next to rq/rf (still under CONFIG_SCHED_ALT) and the
+rate limit follows all declarations. The early return is taken before
+this_rq_lock_irq(), so it is correct under both CONFIG_SCHED_ALT and the
+stock scheduler.
 
 Signed-off-by: Colin Ian King <colin.i.king@intel.com>
 ---
@@ -20,9 +22,10 @@ Signed-off-by: Colin Ian King <colin.i.king@intel.com>
  1 file changed, 12 insertions(+)
 
 diff --git a/kernel/sched/syscalls.c b/kernel/sched/syscalls.c
+index 0554fa684..824e868a1 100644
 --- a/kernel/sched/syscalls.c
 +++ b/kernel/sched/syscalls.c
-@@ -1453,10 +1453,22 @@
+@@ -1454,14 +1454,27 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
  	return ret;
  }
  
@@ -32,18 +35,22 @@ diff --git a/kernel/sched/syscalls.c b/kernel/sched/syscalls.c
  {
  	struct rq *rq;
  	struct rq_flags rf;
+-
 +	int cpu = raw_smp_processor_id();
+ #ifdef CONFIG_SCHED_ALT
+ 	struct task_struct *p;
++#endif
 +
 +	cond_resched();
 +
 +	/* rate limit yielding to something sensible */
-+
+ 
 +	if (!time_after(jiffies, per_cpu(last_yield, cpu)))
 +		return;
 +
 +	per_cpu(last_yield, cpu) = jiffies;
++
++#ifdef CONFIG_SCHED_ALT
+ 	if (!sched_yield_type)
+ 		return;
  
- 	rq = this_rq_lock_irq(&rf);
- 
--- 
-2.46.2

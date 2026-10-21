@@ -1,4 +1,4 @@
-From 0430eb5ac62a19b620a202d028716fda9dd6b29f Mon Sep 17 00:00:00 2001
+From 6e3d8cd6bd0e22b0635f9edcf86f782191fde00a Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Thu, 18 Jun 2026 12:23:07 -0700
 Subject: [PATCH] [FOR-UPSTREAM] drm/panel_orientation_quirks: Add missing
@@ -15,7 +15,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
  1 file changed, 18 insertions(+)
 
 diff --git a/drivers/gpu/drm/drm_panel_orientation_quirks.c b/drivers/gpu/drm/drm_panel_orientation_quirks.c
-index bed69253f0c18..422df329686ec 100644
+index bed69253..422df329 100644
 --- a/drivers/gpu/drm/drm_panel_orientation_quirks.c
 +++ b/drivers/gpu/drm/drm_panel_orientation_quirks.c
 @@ -576,6 +576,12 @@ static const struct dmi_system_id orientation_data[] = {

@@ -1,4 +1,4 @@
-From 51bf2304d5c649c81cc32d2e8acb31221e420b57 Mon Sep 17 00:00:00 2001
+From 0374bb947714563d6c83669b57432ec8f9d3a991 Mon Sep 17 00:00:00 2001
 From: Ahmed Yaseen <yaseen@ghoul.dev>
 Date: Wed, 3 Jun 2026 22:09:45 +0500
 Subject: [PATCH] [FROM-ML] HID: usbhid: skip interrupt IN polling for devices
@@ -35,7 +35,7 @@ Signed-off-by: Ahmed Yaseen <yaseen@ghoul.dev>
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/hid/usbhid/hid-core.c b/drivers/hid/usbhid/hid-core.c
-index 96b0181cf8194..90a8b34d9305b 100644
+index 96b0181c..90a8b34d 100644
 --- a/drivers/hid/usbhid/hid-core.c
 +++ b/drivers/hid/usbhid/hid-core.c
 @@ -688,7 +688,8 @@ static int usbhid_open(struct hid_device *hid)

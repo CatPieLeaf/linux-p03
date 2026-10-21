@@ -1,4 +1,4 @@
-From 1fb2b665fcba013a3064aec53466305718c3b78d Mon Sep 17 00:00:00 2001
+From 814334e2f244c00a5995eb99bfc83b9e2ba30ee7 Mon Sep 17 00:00:00 2001
 From: "Derek J. Clark" <derekjohn.clark@gmail.com>
 Date: Sat, 26 Jul 2025 13:40:41 -0700
 Subject: [PATCH] [FROM-ML] platform/x86: (ayn-ec) Add AYN EC Platform
@@ -15,7 +15,7 @@ Signed-off-by: Derek J. Clark <derekjohn.clark@gmail.com>
 
 diff --git a/Documentation/ABI/testing/sysfs-platform-ayn-ec b/Documentation/ABI/testing/sysfs-platform-ayn-ec
 new file mode 100644
-index 0000000000000..32cb6f7ca2fc5
+index 00000000..32cb6f7c
 --- /dev/null
 +++ b/Documentation/ABI/testing/sysfs-platform-ayn-ec
 @@ -0,0 +1,59 @@
@@ -79,7 +79,7 @@ index 0000000000000..32cb6f7ca2fc5
 +
 +    Applies to AYN Loki and Tectoy Zeenix lines of handheld devices.
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 9472521965bcb..4dae728bffcf5 100644
+index ee53e99d..8d84eede 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -4463,6 +4463,7 @@ AYN PLATFORM EC DRIVER
