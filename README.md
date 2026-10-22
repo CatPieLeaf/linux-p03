@@ -66,6 +66,20 @@
  - Catastrophic Misplay Screen: A custom P03-themed QR-Code panic screen for those rare, fatal errors.
  - And many more!
 
+> [!WARNING]
+> **Easy Anti-Cheat (Linux v2) / Fortnite:** EAC v2 requires kernel lockdown in `integrity` mode, which P03 does **not** enable by default. If you need it, add `lockdown=integrity` to your kernel cmdline:
+>
+> ```bash
+> # Fedora
+> sudo grubby --update-kernel=ALL --args="lockdown=integrity"
+> # openSUSE (GRUB)
+> sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="/&lockdown=integrity /' /etc/default/grub && sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+> ```
+>
+> **Why it's not the default:** lockdown can stop DKMS modules from loading on some setups, even ones signed with an enrolled MOK, and it also blocks hibernation and low-level tools (undervolting/MSR writes, `/dev/mem`). Breaking those for everyone just to satisfy one anti-cheat isn't worth it, so it's opt-in.
+>
+> Keep in mind that EAC v2 also requires the kernel and modules to be signed with a "well-known" distro key. P03 is signed with your own local MOK, so it may still be rejected even with lockdown enabled.
+
 ---
 
 <br>
