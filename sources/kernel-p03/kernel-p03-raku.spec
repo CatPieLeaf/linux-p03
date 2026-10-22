@@ -130,7 +130,7 @@
 %define _koji_nvr  kernel-7.3.0-65.fc46
 
 # p03-raku build number — the RPM Release (7.2.8.p03raku.v3-<N>.fc44).
-%define _release    1
+%define _release    2
 
 # raku-branch commit the patches and kconfig are fetched from. Full hash.
 # The spec can't name the commit that contains it: commit patch/kconfig
