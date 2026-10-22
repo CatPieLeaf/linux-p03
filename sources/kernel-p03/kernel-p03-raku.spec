@@ -69,6 +69,11 @@
 # rpmbuild --without secureboot ... to disable.
 %bcond secureboot 1
 
+# Module signing key: rpmbuild --define '_sign_key_dir /etc/kernel/certs/p03-kernel' ...
+# The dir must hold mok.key + mok.pem (same layout as the posttrans MOK dir).
+# In-tree and NVIDIA modules are then signed with it at build time instead of
+# the throwaway per-build key. Leave undefined for the old behaviour.
+
 # Tickrate: 100, 250, 300, 500, 600, 750, 1000. Invalid value falls back to 1000.
 %define _hz_tickrate 750
 
@@ -550,6 +555,13 @@ fi
     scripts/config --set-val SYSTEM_EXTRA_CERTIFICATE_SIZE 4096
     scripts/config -e  SYSTEM_TRUSTED_KEYRING
     scripts/config -d  CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT
+%if 0%{?_sign_key_dir:1}
+    # kbuild wants key + cert in one PEM. Kept outside the source tree so the
+    # -devel copy of scripts/ and friends can never pick up the private key.
+    cat "%{_sign_key_dir}/mok.key" "%{_sign_key_dir}/mok.pem" > %{_builddir}/p03-signing-key.pem
+    chmod 600 %{_builddir}/p03-signing-key.pem
+    scripts/config --set-str MODULE_SIG_KEY %{_builddir}/p03-signing-key.pem
+%endif
 %endif
 
     # Clang LTO
@@ -638,6 +650,11 @@ fi
     echo "Installing NVIDIA modules..."
     cd %{_builddir}/%{_nv_pkg}
     install -Dt %{buildroot}%{_kernel_dir}/nvidia -m644 kernel-open/*.ko
+%if %{with secureboot} && 0%{?_sign_key_dir:1}
+    for ko in %{buildroot}%{_kernel_dir}/nvidia/*.ko; do
+        %{_builddir}/%{_srcdir}/scripts/sign-file sha512 "%{_sign_key_dir}/mok.key" "%{_sign_key_dir}/mok.pem" "$ko"
+    done
+%endif
     find %{buildroot}%{_kernel_dir}/nvidia -name '*.ko' -exec zstd -19 --rm {} \;
     install -Dt %{buildroot}/%{_defaultlicensedir}/%{name}-nvidia-open -m644 COPYING
     cd %{_builddir}/%{_srcdir}
@@ -1071,7 +1088,8 @@ Conflicts: nvidia-kmod
     touch %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{_kver}
 
 %posttrans nvidia-open
-%if %{with secureboot}
+# Already signed at build time when _sign_key_dir was set.
+%if %{with secureboot} && !0%{?_sign_key_dir:1}
     # Sign NVIDIA modules on the target machine using the MOK key from posttrans core.
     MOK_KEY="%{_mok_key}"
     MOK_PEM="%{_mok_pem}"
