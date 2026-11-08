@@ -1,4 +1,4 @@
-From 156545ea7131255ca98a42c46331672ecf01d81d Mon Sep 17 00:00:00 2001
+From 72eaa7ffcd2098b8524d9d101d664d416727817e Mon Sep 17 00:00:00 2001
 From: Alexandre Frade <kernel@xanmod.org>
 Date: Mon, 28 Jul 2025 17:20:16 +0000
 Subject: [PATCH 12/18] XANMOD: vfs: Decrease rate at which vfs caches are
@@ -10,7 +10,7 @@ Signed-off-by: Alexandre Frade <kernel@xanmod.org>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/fs/dcache.c b/fs/dcache.c
-index 3e9af9de7074..c09929a1c18c 100644
+index f44c7b39c3b3..0697d3db919a 100644
 --- a/fs/dcache.c
 +++ b/fs/dcache.c
 @@ -73,7 +73,7 @@

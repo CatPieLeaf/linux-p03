@@ -1,4 +1,4 @@
-From 2cfe33494416293a56ad29a93f7097c2666c4b81 Mon Sep 17 00:00:00 2001
+From 1077e035cf0e2967ef9ba030a60c43a80259a682 Mon Sep 17 00:00:00 2001
 From: Kenny Levinsen <kl@kl.wtf>
 Date: Sun, 27 Dec 2020 14:43:13 +0000
 Subject: [PATCH 1/2] ZEN: input/evdev: Use call_rcu when detaching client
@@ -43,7 +43,7 @@ Signed-off-by: Alexandre Frade <kernel@xanmod.org>
  1 file changed, 11 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/input/evdev.c b/drivers/input/evdev.c
-index 3a718d600006..1689d9cdb259 100644
+index 8bfaaa45e0b9..cc3777938374 100644
 --- a/drivers/input/evdev.c
 +++ b/drivers/input/evdev.c
 @@ -47,6 +47,7 @@ struct evdev_client {

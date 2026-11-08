@@ -1,4 +1,4 @@
-From 39bc7f4b319af92cfcb8f010d9ca95b53f221ba1 Mon Sep 17 00:00:00 2001
+From 3fb0341c2b84585da8a59d3d435c0380af530db1 Mon Sep 17 00:00:00 2001
 From: Sachi King <nakato@nakato.io>
 Date: Tue, 5 Oct 2021 00:05:09 +1100
 Subject: [PATCH] Input: soc_button_array - support AMD variant Surface devices
@@ -20,10 +20,10 @@ Patchset: surface-button
  1 file changed, 8 insertions(+), 25 deletions(-)
 
 diff --git a/drivers/input/misc/soc_button_array.c b/drivers/input/misc/soc_button_array.c
-index f08e29af5..918a81ca9 100644
+index 064243677fc..aa86f00077f 100644
 --- a/drivers/input/misc/soc_button_array.c
 +++ b/drivers/input/misc/soc_button_array.c
-@@ -548,8 +548,8 @@ static const struct soc_device_data soc_device_MSHW0028 = {
+@@ -547,8 +547,8 @@ static const struct soc_device_data soc_device_MSHW0028 = {
   * Both, the Surface Pro 4 (surfacepro3_button.c) and the above mentioned
   * devices use MSHW0040 for power and volume buttons, however the way they
   * have to be addressed differs. Make sure that we only load this drivers
@@ -34,7 +34,7 @@ index f08e29af5..918a81ca9 100644
   */
  #define MSHW0040_DSM_REVISION		0x01
  #define MSHW0040_DSM_GET_OMPR		0x02	// get OEM Platform Revision
-@@ -560,31 +560,14 @@ static const guid_t MSHW0040_DSM_UUID =
+@@ -559,31 +559,14 @@ static const guid_t MSHW0040_DSM_UUID =
  static int soc_device_check_MSHW0040(struct device *dev)
  {
  	acpi_handle handle = ACPI_HANDLE(dev);
@@ -73,9 +73,9 @@ index f08e29af5..918a81ca9 100644
  
  /*
 -- 
-2.55.0
+2.56.0
 
-From b755a69b084fcabc70a1d2abe5af0b4d03e9054b Mon Sep 17 00:00:00 2001
+From 618b92bacfb1cc046a8b6ef6141063897e9753d9 Mon Sep 17 00:00:00 2001
 From: Sachi King <nakato@nakato.io>
 Date: Tue, 5 Oct 2021 00:22:57 +1100
 Subject: [PATCH] platform/surface: surfacepro3_button: don't load on amd
@@ -96,10 +96,10 @@ Patchset: surface-button
  1 file changed, 6 insertions(+), 25 deletions(-)
 
 diff --git a/drivers/platform/surface/surfacepro3_button.c b/drivers/platform/surface/surfacepro3_button.c
-index 388a3e1a4..f94510dbd 100644
+index b38aa010053..add5d003b97 100644
 --- a/drivers/platform/surface/surfacepro3_button.c
 +++ b/drivers/platform/surface/surfacepro3_button.c
-@@ -149,37 +149,18 @@ static int surface_button_resume(struct device *dev)
+@@ -148,37 +148,18 @@ static int surface_button_resume(struct device *dev)
  /*
   * Surface Pro 4 and Surface Book 2 / Surface Pro 2017 use the same device
   * ID (MSHW0040) for the power/volume buttons. Make sure this is the right
@@ -144,5 +144,5 @@ index 388a3e1a4..f94510dbd 100644
  
  
 -- 
-2.55.0
+2.56.0
 

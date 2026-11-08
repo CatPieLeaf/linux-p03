@@ -1,4 +1,4 @@
-From ad3b8892f56d330fcda02f07ea1cac733aacb5d5 Mon Sep 17 00:00:00 2001
+From 23c1ef78c137b730b6a5259b6f6a60f12f2c6c18 Mon Sep 17 00:00:00 2001
 From: William Douglas <william.douglas@intel.com>
 Date: Wed, 20 Jun 2018 17:23:21 +0000
 Subject: [PATCH 2/4] firmware: Enable stateless firmware loading

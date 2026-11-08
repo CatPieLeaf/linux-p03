@@ -1,3 +1,11 @@
+p03: mauri870's main/0001-hdmi_frl.patch (DRM-next backport), minus its
+drivers/gpu/drm/vc4/vc4_drv.c hunk: that change is already in 7.3.3 stable
+but not in 7.3.1, so it breaks one of Fedora/openSUSE either way, and vc4
+is ARM-only (never built on x86_64).
+
+Its drivers/accel/amdxdna/aie2_message.c hunk has the same 7.3.3-vs-7.3.1
+problem; it lives in patches-p03-suse/drm-next-hdmi-frl-amdxdna.patch.
+
 diff --git a/Documentation/devicetree/bindings/display/brcm,bcm2835-v3d.yaml b/Documentation/devicetree/bindings/display/brcm,bcm2835-v3d.yaml
 index c55a8217de25..1063e686647c 100644
 --- a/Documentation/devicetree/bindings/display/brcm,bcm2835-v3d.yaml
@@ -997,18 +1005,6 @@ index baf9a8b90a4d..164441e43940 100644
  	amdxdna_gem_unpin(hwctx->priv->heap);
  	drm_gem_object_put(to_gobj(hwctx->priv->heap));
  
-diff --git a/drivers/accel/amdxdna/aie2_message.c b/drivers/accel/amdxdna/aie2_message.c
-index b4c49259a1a2..f658760c3d48 100644
---- a/drivers/accel/amdxdna/aie2_message.c
-+++ b/drivers/accel/amdxdna/aie2_message.c
-@@ -277,6 +277,7 @@ int aie2_create_context(struct amdxdna_dev_hdl *ndev, struct amdxdna_hwctx *hwct
- 
- free_channel:
- 	xdna_mailbox_free_channel(hwctx->priv->mbox_chann);
-+	hwctx->priv->mbox_chann = NULL;
- del_ctx_req:
- 	aie2_destroy_context_req(ndev, hwctx->fw_ctx_id);
- 	return ret;
 diff --git a/drivers/accel/amdxdna/amdxdna_gem.c b/drivers/accel/amdxdna/amdxdna_gem.c
 index 4b0d58d0329b..f4832337ec31 100644
 --- a/drivers/accel/amdxdna/amdxdna_gem.c
@@ -331032,18 +331028,6 @@ index 4572b0b9bae1..f42cd5353230 100644
  	.atomic_duplicate_state = vc4_crtc_duplicate_state,
  	.atomic_destroy_state = vc4_crtc_destroy_state,
  	.enable_vblank = vc4_enable_vblank,
-diff --git a/drivers/gpu/drm/vc4/vc4_drv.c b/drivers/gpu/drm/vc4/vc4_drv.c
-index 7b64e1ed02d4..6930ca20e14b 100644
---- a/drivers/gpu/drm/vc4/vc4_drv.c
-+++ b/drivers/gpu/drm/vc4/vc4_drv.c
-@@ -279,7 +279,6 @@ static const struct of_device_id vc4_dma_range_matches[] = {
- 	{ .compatible = "brcm,bcm2835-hvs" },
- 	{ .compatible = "brcm,bcm2835-v3d" },
- 	{ .compatible = "brcm,cygnus-v3d" },
--	{ .compatible = "brcm,vc4-v3d" },
- 	{}
- };
- 
 diff --git a/drivers/gpu/drm/vc4/vc4_drv.h b/drivers/gpu/drm/vc4/vc4_drv.h
 index b0e82c2dc1ba..09134809bf15 100644
 --- a/drivers/gpu/drm/vc4/vc4_drv.h

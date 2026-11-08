@@ -1,7 +1,7 @@
-From c0cc876fbe4d3e0ae0d7efda952842c26a9555e7 Mon Sep 17 00:00:00 2001
+From 980391239f1206ca9934c2444ab21377d0cce7b4 Mon Sep 17 00:00:00 2001
 From: Masahito S <firelzrd@gmail.com>
-Date: Mon, 12 Oct 2026 21:29:41 +0900
-Subject: [PATCH] 6.12-nap-v0.6.5
+Date: Sun, 1 Nov 2026 05:32:27 +0900
+Subject: [PATCH] 6.12-nap-v0.6.6
 
 ---
  drivers/cpuidle/Kconfig                       |   24 +
@@ -10,7 +10,7 @@ Subject: [PATCH] 6.12-nap-v0.6.5
  drivers/cpuidle/governors/nap/nap.c           | 1240 +++++++++++++++++
  drivers/cpuidle/governors/nap/nap.h           |  116 ++
  drivers/cpuidle/governors/nap/nap_dims.h      |   18 +
- drivers/cpuidle/governors/nap/nap_fpu.c       |  508 +++++++
+ drivers/cpuidle/governors/nap/nap_fpu.c       |  535 +++++++
  drivers/cpuidle/governors/nap/nap_nn_avx2.c   |   11 +
  drivers/cpuidle/governors/nap/nap_nn_avx512.c |   11 +
  drivers/cpuidle/governors/nap/nap_nn_gh.h     |   99 ++
@@ -19,7 +19,7 @@ Subject: [PATCH] 6.12-nap-v0.6.5
  drivers/cpuidle/governors/nap/nap_nn_sse2.c   |   11 +
  drivers/cpuidle/governors/nap/nap_selftest.h  |  169 +++
  drivers/cpuidle/governors/nap/nap_weights.h   |  554 ++++++++
- 15 files changed, 2985 insertions(+)
+ 15 files changed, 3012 insertions(+)
  create mode 100644 drivers/cpuidle/governors/nap/Makefile
  create mode 100644 drivers/cpuidle/governors/nap/nap.c
  create mode 100644 drivers/cpuidle/governors/nap/nap.h
@@ -123,7 +123,7 @@ index 0000000000..fe201249ab
 +CFLAGS_nap_nn_avx512.o += $(CC_FLAGS_FPU) -mavx -mavx2 -mfma -mavx512f -mprefer-vector-width=512
 diff --git a/drivers/cpuidle/governors/nap/nap.c b/drivers/cpuidle/governors/nap/nap.c
 new file mode 100644
-index 0000000000..27ee85b99b
+index 0000000000..a8e39e8457
 --- /dev/null
 +++ b/drivers/cpuidle/governors/nap/nap.c
 @@ -0,0 +1,1240 @@
@@ -234,7 +234,7 @@ index 0000000000..27ee85b99b
 +#define CPUIDLE_NAP_PROGNAME "Nap CPUIdle Governor"
 +#define CPUIDLE_NAP_AUTHOR   "Masahito Suzuki"
 +
-+#define CPUIDLE_NAP_VERSION  "0.6.5"
++#define CPUIDLE_NAP_VERSION  "0.6.6"
 +
 +/* ================================================================
 + * Tunables (sysfs)
@@ -1515,10 +1515,10 @@ index 0000000000..afe220eebb
 +#endif
 diff --git a/drivers/cpuidle/governors/nap/nap_fpu.c b/drivers/cpuidle/governors/nap/nap_fpu.c
 new file mode 100644
-index 0000000000..02509c0bb0
+index 0000000000..98c207dd07
 --- /dev/null
 +++ b/drivers/cpuidle/governors/nap/nap_fpu.c
-@@ -0,0 +1,508 @@
+@@ -0,0 +1,535 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * nap_fpu.c -- scalar float work: features, decision, label construction.
@@ -1843,12 +1843,14 @@ index 0000000000..02509c0bb0
 +	float cs = (float)nap_c_stop_ns, cw = (float)nap_c_wake_ns;
 +	float rho = (float)nap_rho_ppm, cur;
 +	int k, b, bk = 0, i, ns = drv->state_count;
-+	bool bs = false;
++	bool bs = false, mono = true;
 +
 +	if (ns > NAP_MAXSTATE)
 +		ns = NAP_MAXSTATE;
 +	for (k = 0; k < ns; k++) {
 +		tgt[k] = (float)drv->states[k].target_residency_ns;
++		if (k && tgt[k] < tgt[k - 1])
++			mono = false;
 +		ex[k] = (float)drv->states[k].exit_latency_ns;
 +		pw[k] = (float)nap_pow_milli[k] * 1e-3f;
 +	}
@@ -1925,6 +1927,16 @@ index 0000000000..02509c0bb0
 +		float sp = 0.0f, spT = 0.0f, spnf = 0.0f, sprem = 0.0f, spr = 0.0f;
 +		float Pb[NAP_MAXSTATE] = { 0 }, Qc[NAP_MAXSTATE] = { 0 };
 +
++		/*
++		 * jb for the bins in order of T: with ascending target
++		 * residencies the states that fit T are a prefix of the table,
++		 * which only grows with T, so the deepest enabled one is found
++		 * by one sweep for all bins instead of a scan from the deepest
++		 * state for each. Otherwise nap_ideal() as it was.
++		 */
++		float Tprev = 0.0f;
++		int jbp = 0, jn = 1;
++
 +		for (b = 0; b < NB; b++) {
 +			float T = Tb[b], pb = p[b], nfb, remb;
 +			int jb, jc;
@@ -1933,8 +1945,23 @@ index 0000000000..02509c0bb0
 +				continue;
 +			nfb = (float)(s64)(T / tick);
 +			remb = T - nfb * tick;
-+			jb = nap_ideal(tgt, ns, dev, T);
-+			jc = nap_ideal(tgt, ns, dev, remb > 0.0f ? remb : tick);
++			if (T < Tprev)
++				mono = false;
++			Tprev = T;
++			if (mono) {
++				for (; jn < ns && tgt[jn] <= T; jn++)
++					if (!dev->states_usage[jn].disable)
++						jbp = jn;
++				jb = jbp;
++			} else {
++				jb = nap_ideal(tgt, ns, dev, T);
++			}
++			/* less than a tick: the remainder is T itself */
++			if (nfb == 0.0f && remb > 0.0f)
++				jc = jb;
++			else
++				jc = nap_ideal(tgt, ns, dev,
++					       remb > 0.0f ? remb : tick);
 +			sp += pb;
 +			spT += pb * T;
 +			spnf += pb * nfb;

@@ -1,4 +1,4 @@
-From 4468d46acfcccf3253aa9296a47f126bb8ed3e20 Mon Sep 17 00:00:00 2001
+From 61a362721dfec584e0dc9574a1c3119e84140a73 Mon Sep 17 00:00:00 2001
 From: Alexandre Frade <kernel@xanmod.org>
 Date: Mon, 27 Feb 2023 01:38:18 +0000
 Subject: [PATCH] netfilter: Add netfilter nf_tables fullcone support
@@ -179,7 +179,7 @@ index 000000000000..bfb4791421e9
 +
 +#endif /*_NF_NAT_FULLCONE_H_ */
 diff --git a/net/netfilter/Kconfig b/net/netfilter/Kconfig
-index 4c04cd8d40a2..c92f3290eb51 100644
+index 5b1c754616f6..31a155d557fb 100644
 --- a/net/netfilter/Kconfig
 +++ b/net/netfilter/Kconfig
 @@ -556,6 +556,21 @@ config NFT_NAT
@@ -205,10 +205,10 @@ index 4c04cd8d40a2..c92f3290eb51 100644
  	tristate "Netfilter nf_tables tunnel module"
  	help
 diff --git a/net/netfilter/Makefile b/net/netfilter/Makefile
-index 6bf74d488a29..a5b0cf1f9057 100644
+index 6dffc3f4a70a..79c5c6939d14 100644
 --- a/net/netfilter/Makefile
 +++ b/net/netfilter/Makefile
-@@ -241,6 +241,11 @@ obj-$(CONFIG_IP_VS) += ipvs/
+@@ -242,6 +242,11 @@ obj-$(CONFIG_IP_VS) += ipvs/
  # lwtunnel
  obj-$(CONFIG_LWTUNNEL) += nf_hooks_lwtunnel.o
  

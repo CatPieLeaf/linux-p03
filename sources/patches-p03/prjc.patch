@@ -46,6 +46,15 @@ p03 changes on top, carried over from the 7.2-r1 patch:
    way it applies to both; on vanilla wakee_flips stays outside the
    !SCHED_ALT block, an unused field under SCHED_ALT.
 
+ - kernel/sched/cpufreq_schedutil.c: the SCHED_ALT branch of
+   sugov_get_util() also sets bw_max (to full capacity). 7.3 passes it to
+   cpufreq_driver_adjust_perf() as the performance cap; left at 0 it
+   pinned intel_cpufreq to the minimum P-state.
+
+ - kernel/sched/alt_core.c: context_switch() and sched_tick() call
+   lru_cast_use_mm(), as lru_cast.patch adds to core.c, which SCHED_ALT
+   does not build. It is a stub without CONFIG_LRU_CAST.
+
 Signed-off-by: Alfred Chen <cchalpha@gmail.com>
 ---
 
@@ -876,7 +885,7 @@ new file mode 100644
 index 000000000000..a92eba316568
 --- /dev/null
 +++ b/kernel/sched/alt_core.c
-@@ -0,0 +1,7724 @@
+@@ -0,0 +1,7727 @@
 +/*
 + *  kernel/sched/alt_core.c
 + *
@@ -4641,6 +4650,7 @@ index 000000000000..a92eba316568
 +		 */
 +		switch_mm_irqs_off(prev->active_mm, next->mm, next);
 +		lru_gen_use_mm(next->mm);
++		lru_cast_use_mm(next->mm);
 +
 +		if (!prev->mm) {			// from kernel
 +			/* will mmdrop_lazy_tlb() in finish_task_switch(). */
@@ -4929,6 +4939,8 @@ index 000000000000..a92eba316568
 +
 +	raw_spin_lock(&rq->lock);
 +	curr = rq->curr;
++	/* a task that runs on without switching still sets young bits */
++	lru_cast_use_mm(curr->mm);
 +	update_rq_clock(rq);
 +
 +	if (dynamic_preempt_lazy() && tif_test_bit(TIF_NEED_RESCHED_LAZY))

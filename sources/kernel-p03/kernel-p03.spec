@@ -8,10 +8,10 @@
 # | |     =========        =========      | |     LINUX    LINUX   LINUX
 # |_|         =====            =====      | |     NU   L  L   N L      L
 # | |                                     | |     XLINUX  I  I  X   LIN
-# | |                        =            | |     IN      N L   U      N
+# | |           ==           ==           | |     IN      N L   U      N
 # | |             ============            | |     UX       UXLIN   LINUX
-# | |           ==          =             | |
-# | |_____                           _____| |
+# | |                                     | |
+# | |_____                           _____| |     Farewell!
 # |    =   \                       //  =  \ |
 # |  ===== |                       ||  =  | |
 # |    =   |_______________________|\  =  / |
@@ -114,8 +114,14 @@
 
 # NVIDIA open kernel modules. rpmbuild --without nv ... to disable.
 %bcond nv 1
-%define _nv_ver   615.78.08
+%define _nv_ver   620.70.06
 %define _nv_pkg   open-gpu-kernel-modules-%{_nv_ver}
+
+# Realtek r8125 out-of-tree driver (aravance/r8125, the tree CachyOS builds),
+# with sources/patchset-r8125/ applied. Packaged as %%{name}-r8125, which
+# makes r8169 defer to r8125. rpmbuild --with r8125 ... to enable.
+%bcond r8125 0
+%define _r8125_ver 9.018.00
 
 # ==============================================================================
 # Build identification — the only section you edit
@@ -126,7 +132,7 @@
 #   kernel-7.2.0-0.rc7.260814g2f1baf1fc892.58.fc46
 #   kernel-7.2.0-0.rc7.54.fc45
 #   kernel-7.1.8-200.fc44
-%define _koji_nvr  kernel-7.3.0-65.fc46
+%define _koji_nvr  kernel-7.3.3-300.fc45
 
 # openSUSE only — paste the NVR from either:
 #   Kernel:HEAD OBS project (RCs, bleeding edge):
@@ -142,12 +148,12 @@
 # uncommenting one of:
 #   %%define _suse_tumbleweed 1   -- force Tumbleweed src-oss
 #   %%define _suse_tumbleweed 0   -- force Kernel:HEAD OBS
-%define _suse_nvr  kernel-source-7.3.0-2.1.g079b40e
+%define _suse_nvr  kernel-source-7.3.1-1.1
 
 # p03 release tag — sets the version suffix and the GitHub source ref.
 # Must match an existing tag in the repo when building %%{with fetch_tag}.
 # Format: p03.N
-%define _tag_ver   p03.35
+%define _tag_ver   p03.36
 
 # with (default): fetch GitHub sources from %%_tag_ver above (tagged releases)
 # rpmbuild --without fetch_tag ... to fetch from the moving main branch
@@ -433,21 +439,29 @@ Source3: %{_gh_archive}
 Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%{_nv_pkg}.tar.gz
 %endif
 
+%if %{with r8125}
+Source11: https://github.com/aravance/r8125/archive/%{_r8125_ver}/r8125-%{_r8125_ver}.tar.gz
+%endif
+
 # Patches are NOT declared here individually.
 # Everything inside sources/patchset/, sources/patches-p03/, and
 # sources/patchset-nvidia/ in the GitHub repo is applied automatically
 # (plus sources/patchset-handheld/ and sources/p03-patches-handheld/
-# with --with handheld)
+# with --with handheld, the *-suse/ dirs on openSUSE, and
+# sources/patchset-r8125/ with --with r8125)
 # in %%prep. Drop a .patch into SOURCES/local-patches/ for local testing.
 
 # ==============================================================================
 %description
     The meta package for %{name}.
 
+    Kernel P03 has been archived: this is its final release and it will
+    not receive further updates.
+
 # ==============================================================================
 %prep
 # ==============================================================================
-%setup -q %{?SOURCE10:-b 10} -c -T -n %{_srcdir}
+%setup -q %{?SOURCE10:-b 10} %{?SOURCE11:-b 11} -c -T -n %{_srcdir}
 
     mkdir -p "%{_sourcedir}/local-patches"
     mkdir -p "%{_sourcedir}/local-patches-nvidia"
@@ -483,6 +497,15 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
         fi
         cd %{_builddir}/%{_srcdir}
     fi
+%endif
+
+%if %{with r8125} && %{without local_patches}
+    # ---- Apply r8125 patches -------------------------------------------------
+    cd %{_builddir}/r8125-%{_r8125_ver}
+    for p in $(find "${_gh_tmp}/sources/patchset-r8125" -maxdepth 1 -name "*.patch" | sort); do
+        patch -p1 --fuzz=2 < "${p}"
+    done
+    cd %{_builddir}/%{_srcdir}
 %endif
 
 %if %{_distro_suse}
@@ -602,6 +625,13 @@ Source10: https://github.com/NVIDIA/open-gpu-kernel-modules/archive/%{_nv_ver}/%
 %if %{with handheld}
     find "${_gh_tmp}/sources/patchset-handheld" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
     find "${_gh_tmp}/sources/p03-patches-handheld" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%endif
+%if %{_distro_suse}
+    # Fixes Fedora's newer stable base already carries (in 7.3.3, not 7.3.1).
+    find "${_gh_tmp}/sources/patches-p03-suse" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%if %{with handheld}
+    find "${_gh_tmp}/sources/p03-patches-handheld-suse" -maxdepth 1 -name "*.patch" -exec cp {} "%{_builddir}/patches/" \; 2>/dev/null
+%endif
 %endif
 %endif
 
@@ -769,6 +799,11 @@ fi
     CFLAGS= CXXFLAGS= LDFLAGS= %make_build %{?_clang_args} %{_module_args} IGNORE_CC_MISMATCH=yes modules
 %endif
 
+%if %{with r8125}
+    cd %{_builddir}/%{_srcdir}
+    %make_build %{_kver_make_args} M=%{_builddir}/r8125-%{_r8125_ver}/src modules
+%endif
+
 # ==============================================================================
 %install
 # ==============================================================================
@@ -790,6 +825,19 @@ fi
     find %{buildroot}%{_kernel_dir}/nvidia -name '*.ko' -exec zstd -19 --rm {} \;
     install -Dt %{buildroot}/%{_defaultlicensedir}/%{name}-nvidia-open -m644 COPYING
     cd %{_builddir}/%{_srcdir}
+%endif
+
+    # 2b. r8125 module
+%if %{with r8125}
+    install -Dt %{buildroot}%{_kernel_dir}/r8125 -m644 %{_builddir}/r8125-%{_r8125_ver}/src/r8125.ko
+%if %{with secureboot} && 0%{?_sign_key_dir:1}
+    %{_builddir}/%{_srcdir}/scripts/sign-file sha512 "%{_sign_key_dir}/mok.key" "%{_sign_key_dir}/mok.pem" %{buildroot}%{_kernel_dir}/r8125/r8125.ko
+%endif
+    zstd -19 --rm %{buildroot}%{_kernel_dir}/r8125/r8125.ko
+    # Same as CachyOS's linux-cachyos-r8125: r8169 hands its 8125 NICs to
+    # r8125, falling back to r8169 on kernels without it.
+    mkdir -p %{buildroot}%{_prefix}/lib/modprobe.d
+    echo "install r8169 /sbin/modprobe r8125 || /sbin/modprobe --ignore-install r8169" > %{buildroot}%{_prefix}/lib/modprobe.d/%{name}-r8125.conf
 %endif
 
     # 3. Kernel image — signing deferred to posttrans on the target machine;
@@ -1060,6 +1108,14 @@ Requires(post): sbsigntools
         echo "======================================================================"
     fi
 %endif
+    echo ""
+    echo "======================================================================"
+    echo " !!!   KERNEL P03 HAS BEEN ARCHIVED   !!!"
+    echo "======================================================================"
+    echo " %{_tag_ver} is the final release of Kernel P03. It will not receive"
+    echo " any further updates, including security fixes."
+    echo " Please plan to move to another kernel. Thanks for using P03!"
+    echo "======================================================================"
 
 %preun core
     if [ -e /.buildenv ]; then
@@ -1326,6 +1382,47 @@ Conflicts: nvidia-kmod
     %dir %{_defaultlicensedir}/%{name}-nvidia-open
     %license %{_defaultlicensedir}/%{name}-nvidia-open/COPYING
     %{_kernel_dir}/nvidia
+%endif
+
+%if %{with r8125}
+%package r8125
+# ==============================================================================
+Summary: Realtek r8125 %{_r8125_ver} kernel module for %{name}
+License: GPL-2.0-only
+
+Provides: installonlypkg(kernel-module)
+
+Requires: kernel-uname-r = %{?epoch:%{epoch}:}%{_kver}
+Requires: kmod
+%if %{with secureboot}
+Requires: zstd
+%endif
+
+%description r8125
+    This package provides the out-of-tree Realtek r8125 %{_r8125_ver} driver
+    for %{name}, and makes r8169 defer to it.
+
+%posttrans r8125
+# Already signed at build time when _sign_key_dir was set.
+%if %{with secureboot} && !0%{?_sign_key_dir:1}
+    # Same as the NVIDIA modules: sign with the MOK key from posttrans core.
+    KO="%{_kernel_dir}/r8125/r8125.ko.zst"
+    if [ -f "%{_mok_key}" ] && [ -x "%{_kernel_dir}/sign-file" ]; then
+        zstd -d --rm "${KO}" -o "${KO%.zst}" || exit 1
+        "%{_kernel_dir}/sign-file" sha512 "%{_mok_key}" "%{_mok_pem}" "${KO%.zst}" || exit 1
+        zstd -19 --rm "${KO%.zst}" -o "${KO}" || exit 1
+        echo "r8125 module signed."
+    else
+        echo "WARNING: MOK key not found at %{_mok_key}."
+        echo "         Install or reinstall %{name}-core first so the key is"
+        echo "         generated, then reinstall %{name}-r8125."
+    fi
+%endif
+    /sbin/depmod -a %{_kver}
+
+%files r8125
+    %{_kernel_dir}/r8125
+    %{_prefix}/lib/modprobe.d/%{name}-r8125.conf
 %endif
 
 # ==============================================================================

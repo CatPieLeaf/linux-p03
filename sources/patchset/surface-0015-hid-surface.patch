@@ -1,4 +1,4 @@
-From b1d063e3e71d18fe69c0ab48a2134c2195a27e0e Mon Sep 17 00:00:00 2001
+From de40c832f27257a140f440f6acfcd515c9dea273 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ciar=C3=A1n=20Coffey?= <github@ccoffey.ie>
 Date: Fri, 10 Oct 2025 19:04:03 +0100
 Subject: [PATCH] HID: Add hid-surface driver to filter BTN_0 (FN key)
@@ -27,10 +27,10 @@ Patchset: hid-surface
  create mode 100644 drivers/hid/hid-surface.c
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 4a19dbed1..113eb3f19 100644
+index e347d57e82d..033d3328f0f 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -1182,6 +1182,14 @@ config HID_SUNPLUS
+@@ -1218,6 +1218,14 @@ config HID_SUNPLUS
  	help
  	Support for Sunplus wireless desktop.
  
@@ -46,10 +46,10 @@ index 4a19dbed1..113eb3f19 100644
  	tristate "Synaptics RMI4 device support"
  	select RMI4_CORE
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index 02b0cca05..148ee0b9b 100644
+index 30970c7970f..e74f98f7915 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
-@@ -180,6 +180,7 @@ obj-$(CONFIG_INTEL_ISH_HID)	+= intel-ish-hid/
+@@ -182,6 +182,7 @@ obj-$(CONFIG_INTEL_ISH_HID)	+= intel-ish-hid/
  obj-$(CONFIG_AMD_SFH_HID)       += amd-sfh-hid/
  
  obj-$(CONFIG_SURFACE_HID_CORE)  += surface-hid/
@@ -59,7 +59,7 @@ index 02b0cca05..148ee0b9b 100644
  
 diff --git a/drivers/hid/hid-surface.c b/drivers/hid/hid-surface.c
 new file mode 100644
-index 000000000..a171ea656
+index 00000000000..a171ea65672
 --- /dev/null
 +++ b/drivers/hid/hid-surface.c
 @@ -0,0 +1,90 @@
@@ -154,9 +154,9 @@ index 000000000..a171ea656
 +MODULE_DESCRIPTION("Microsoft Surface HID driver");
 +MODULE_LICENSE("GPL");
 -- 
-2.55.0
+2.56.0
 
-From b918bc43ee0af0c3415f2edc7e7b701aae5c3a62 Mon Sep 17 00:00:00 2001
+From 3c3f95abeff01f34e204410bbc0b3e86a2a4a94b Mon Sep 17 00:00:00 2001
 From: LegendaryFire <tristan.balon@outlook.com>
 Date: Fri, 13 Mar 2026 10:16:37 +0100
 Subject: [PATCH] hid/multitouch: Prevent mode set on Surface Laptop Studio 2
@@ -171,7 +171,7 @@ Patchset: hid-surface
  1 file changed, 31 insertions(+)
 
 diff --git a/drivers/hid/hid-multitouch.c b/drivers/hid/hid-multitouch.c
-index 1c1dcf11e..25ff6a30c 100644
+index 59cecdc160c..967fe20b62c 100644
 --- a/drivers/hid/hid-multitouch.c
 +++ b/drivers/hid/hid-multitouch.c
 @@ -86,6 +86,7 @@ MODULE_LICENSE("GPL");
@@ -201,7 +201,7 @@ index 1c1dcf11e..25ff6a30c 100644
  	{ }
  };
  
-@@ -2455,6 +2461,17 @@ static void mt_remove(struct hid_device *hdev)
+@@ -2444,6 +2450,17 @@ static void mt_remove(struct hid_device *hdev)
  
  static void mt_on_hid_hw_open(struct hid_device *hdev)
  {
@@ -219,7 +219,7 @@ index 1c1dcf11e..25ff6a30c 100644
  	mt_set_modes(hdev, HID_LATENCY_NORMAL, TOUCHPAD_REPORT_ALL);
  }
  
-@@ -2462,6 +2479,15 @@ static void mt_on_hid_hw_close(struct hid_device *hdev)
+@@ -2451,6 +2468,15 @@ static void mt_on_hid_hw_close(struct hid_device *hdev)
  {
  	struct mt_device *td = hid_get_drvdata(hdev);
  
@@ -235,7 +235,7 @@ index 1c1dcf11e..25ff6a30c 100644
  	if (td->mtclass.quirks & MT_QUIRK_KEEP_LATENCY_ON_CLOSE)
  		mt_set_modes(hdev, HID_LATENCY_NORMAL, TOUCHPAD_REPORT_NONE);
  	else
-@@ -2919,6 +2945,11 @@ static const struct hid_device_id mt_devices[] = {
+@@ -2908,6 +2934,11 @@ static const struct hid_device_id mt_devices[] = {
  		HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY,
  			USB_VENDOR_ID_MICROSOFT, 0x09c0) },
  
@@ -248,5 +248,5 @@ index 1c1dcf11e..25ff6a30c 100644
  	{ .driver_data = MT_CLS_GOOGLE,
  		HID_DEVICE(HID_BUS_ANY, HID_GROUP_ANY, USB_VENDOR_ID_GOOGLE,
 -- 
-2.55.0
+2.56.0
 

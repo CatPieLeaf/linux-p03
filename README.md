@@ -13,19 +13,14 @@
 <br>
 <br>
 <p align="center">
-  <img src="https://img.shields.io/badge/kernel-7.2.6-f5bd20?logo=linux&logoColor=000000&style=for-the-badge&labelColor=FDEFC7" alt="Kernel version">
-  <a href="https://discord.gg/DSrbRk6dPp"><img src="https://img.shields.io/discord/1434166231274885313?label=support&logo=discord&style=for-the-badge&color=5965f1&labelColor=D6D9FC" alt="Discord"></a>
+  <img src="https://img.shields.io/badge/kernel-7.3.3-f5bd20?logo=linux&logoColor=000000&style=for-the-badge&labelColor=FDEFC7" alt="Kernel version">
   <a href="https://copr.fedorainfracloud.org/coprs/catpieleaf/kernel-p03/"><img src="https://img.shields.io/badge/COPR-catpieleaf%2Fkernel--p03-white?logo=fedora&style=for-the-badge&color=52a1d9&labelColor=D4E8F6" alt="Fedora COPR"></a>
   <a href="https://build.opensuse.org/package/show/home:CatPieLeaf:Kernel-P03/Kernel-P03"><img src="https://img.shields.io/badge/OBS-kernel--p03-white?logo=opensuse&style=for-the-badge&color=72b82a&labelColor=DCEDCA" alt="openSUSE OBS"></a>
-  <a href="https://repo.rakuos.org/">
-  <img src="https://img.shields.io/badge/RakuOS-kernel--p03--v3-white?style=for-the-badge&color=2462b3&labelColor=C8D8EC&logo=data:image/webp;base64,UklGRqgCAABXRUJQVlA4WAoAAAAQAAAAEwAAEwAAQUxQSJcAAAARgKtt+/nmjW1tGXUIGTNaZ6DVabu5k23bmDt18p6pk207zu93CBExASiUB7qWF1YWqsM6lDRv/GdKPjVxizgeM2UfyAHobzOEaQkwmCGuhe6D7ELgz1D0TtAY2KKxfUwjfUrjcJvGSYLGtu6PQi9GyL6t0LwQDQKoItkUAWBMl/UzLUYho+qoxNuwAaUZlshgb2ujjY2iAFZQOCDqAQAAMAsAnQEqFAAUAD4xFolDoiEhFAQAIAMEtgBOmUI6u9N4Qzi4g9agP2K8kDLGvKn9jrygKOBjt/1piN3oe/2PlN+VfYF/kH81/0/Aq/sAGsK5oB1BD9nc33T//pHhXfVVwKAA/v1N6gxzh9bFLSNq3fD/9bQLvB8jmwuVqVFW87yL1nWbIXgobaeeppFPl/yIAqlau4H9wNZ2RRxuKglF56f/hDX3qdmAlh4Kdl+CykAVS24ow2aZ4vh7v/SCp+Tv/WZ8yqculm3iFg3+3h1jFna3vpVsL/f4iyRk50SV5pf4dkjsOVQfXkEqPslHw/ho/M+q/UsNLkhWDv3/4lb/0+I4xfNKpEn/fSsU/mMa+mJ/VHSt6DaEvh0rl/+CQ0HFyrc47s/4zRIP1oJ9Gv/gPfbswij/Qn/4lkzhYti0AlqdMBC8b+8bAsc4KbFE8mlezbmStoOuSR8AnoRwZvfoLk7Ia8yhxr9xjEmZFpazcOHJc69Vg29PlPu/oL9niO5VUrTevJoulo332fXfz3XLM95ksoE1pvgf/AqbBpyedLsLz+S9BndULZm67j+3RA/Hk2hxqKyiK3qJPTd7XKm9PjbcJC7T67iE+vixaBmGlJcv8nI39Zkq//t90amPPW3KYuXlYMSHqqAAAA==" alt="RakuOS Repository"></a>
 </p>
   <p align="center">A zero-misplay kernel with Firelzrd, CachyOS, TKG, XanMod, Clear Linux patches and more, built from Fedora Koji and OpenSUSE SRPMs.</p>
 </div>
 
 <p align="center">This repository provides a set of tools to automatically build patch and compile the Linux Kernel from Fedora Koji and OpenSUSE SRPMs, with a selection of patches and configurations aiming for a better system responsiveness.</p>
-
-<p align="center">Support server: <a href="https://discord.gg/DSrbRk6dPp">RakuOS Discord</a></p>
 
 ---
 
@@ -47,8 +42,9 @@
  - Built on top of Fedora Koji and OpenSUSE's Sources with their respective baseconfigs
  - Local Automatic Secureboot Signing and Key generation (For nvidia drivers too!)
  - NVIDIA-Open Kernel Modules support
+ - Optional Realtek r8125 driver package (build with `--with r8125`)
  - ThinLTO or FullLTO (Copr builds are ThinLTO)
- - LRU-Marie and Zram-IR
+ - LRU-CAST and Zram-IR
  - Nap CPUIdle governor
  - Per-CPU ISA Optimizations (Copr only provides Generic x86-64v3 and v2)
  - 750hz tickrate
@@ -272,12 +268,12 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
 ---
 > [!WARNING]
 > ## Disable systemd-oomd
-> Disable or mask `systemd-oomd`. LRU-Marie already handles OOM promptly and correctly on its own; `systemd-oomd` misreads its proactive cache management as exhaustion and kills apps prematurely, or freezes the system.
+> Disable or mask `systemd-oomd`. LRU-CAST already handles OOM promptly and correctly on its own; `systemd-oomd` misreads its proactive cache management as exhaustion and kills apps prematurely, or freezes the system.
 > ```bash
 > sudo systemctl disable --now systemd-oomd
 > sudo systemctl mask systemd-oomd
 > ```
-> ⚠️ Very low-core / low-RAM machines: keep a PSI-based OOM daemon instead — Marie's mechanisms are kernel-side and can't help if CPU itself is saturated by compression.
+> ⚠️ Very low-core / low-RAM machines: keep a PSI-based OOM daemon instead — CAST's mechanisms are kernel-side and can't help if CPU itself is saturated by compression.
 
 <div align="center">
   <h1>📑</h1>
@@ -291,10 +287,12 @@ After installation, download and install the [NVIDIA driver](https://www.nvidia.
  - Patches from [babiulep's Custom Kernel](https://github.com/babiulep/my-kernel-patches)
  - Patches from [CachyOS Kernel](https://github.com/CachyOS/kernel-patches/)
  - Patches from [XanMod Kernel](https://gitlab.com/xanmod/linux-patches)
- - PRJC tree from [alfredchen](https://gitlab.com/alfredchen/linux-prjc/-/tree/linux-7.2.y-prjc?ref_type=heads)
+ - PRJC tree from [alfredchen](https://gitlab.com/alfredchen/linux-prjc/-/tree/linux-7.3.y-prjc?ref_type=heads)
  - Based on the specfile from [CachyOS for Fedora COPR](https://github.com/CachyOS/copr-linux-cachyos)
  - ISA Patches from [graysky2/kernel_compiler_patch](https://github.com/graysky2/kernel_compiler_patch)
  - Nap patches from [firelzrd/nap](https://github.com/firelzrd/nap)
+ - LRU-CAST from [firelzrd/lru_cast](https://github.com/firelzrd/lru_cast)
+ - Patches from [Open Gaming Collective](https://github.com/OpenGamingCollective)
  - Surface patches from [Linux-surface](https://github.com/linux-surface/linux-surface)
 
 ---

@@ -51,17 +51,14 @@ t() { TREE_URL["$1"]="$2"; TREE_REF["$1"]="$3"; TREE_SUBJECT["$1"]="$4"; TREE_KV
 # version THIS tree is diffed against — each tree pins its own, since forks
 # can be based on different releases:
 
+# prjc.patch carries p03 changes on top of upstream (see its header), so
+# the subject matches the current patch and this entry is skipped; only
+# regenerate it if those changes are re-applied afterwards.
 t "prjc.patch" \
     "https://gitlab.com/alfredchen/linux-prjc" \
-    "linux-7.2.y-prjc" \
-    "PRJC 7.2-r0 by alfredchen https://gitlab.com/alfredchen/linux-prjc" \
-    "v7.2"
-
-t "lfbmq.patch" \
-    "https://gitlab.com/alfredchen/linux-prjc" \
-    "linux-7.1.y-lfbmq" \
-    "LFBMQ 7.1 by alfredchen https://gitlab.com/alfredchen/linux-prjc" \
-    "v7.1"
+    "v7.3-prjc-r0" \
+    "Project-C 7.3-r0 (BMQ/PDS), with automatic P/E core detection" \
+    "v7.3"
 
 # ==============================================================================
 # — implementation — do not edit below this line —
