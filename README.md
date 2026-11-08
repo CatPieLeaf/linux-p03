@@ -87,23 +87,21 @@
 <br>
 
 <div align="center">
-  <img src=".github/adopted-darkmode.png#gh-dark-mode-only" width="500">
-  <img src=".github/adopted-lightmode.png#gh-light-mode-only" width="500">
+  <img src=".github/farewell-darkmode.png#gh-dark-mode-only" width="500">
+  <img src=".github/farewell-lightmode.png#gh-light-mode-only" width="500">
 </div>
 
 <div align="center">
-  <p><i>A massive thank you to <b><a href="https://rakuos.org/">RakuOS</a></b> for adopting this project as their <b><a href="https://rakuos.org/kernel">default system kernel</a></b>!<br><br>
-  Being chosen as the default kernel for an entire distribution is a huge honor. I am incredibly grateful to the RakuOS developers and community for their trust, valuable testing, and continuous support.
+  <p><b>Kernel-P03 is now being archived.</b><br><br>
+  It has been a fun experience working on this custom kernel, learn more about linux's internals, and work on making the best kernel i could make. Thank you for everyone who reported bugs, shared and participated in this experience.
 
-  For all those reading this, remember that P03 <u>is</u> and <u>will always be</u> Independent! Any distros are still totally welcome to adopt P03 as their default kernel!
-  </i></p>
+  But unfortunately, i no longer see motivation to continue this project.
+
+  I'll be keeping this repository around, and maybe continue someday if some distro further decides to adopt kernel-p03 along with my work and support. I'll be happy to work on kernels once again.
+
+  See ya!
+  </b></p>
 </div>
-
-<div align="center">
-  <img src=".github/stoatboat-darkmode.png#gh-dark-mode-only" width="500">
-  <img src=".github/stoatboat-lightmode.png#gh-light-mode-only" width="500">
-</div>
-
 <br>
 
 <div align="center">
